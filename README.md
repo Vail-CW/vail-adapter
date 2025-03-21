@@ -22,6 +22,11 @@ License: MIT
 
 [Vail Adapter benefits video](https://www.youtube.com/watch?v=XQ-mwdyLkOY) (4:46)
 
+# Bill of Materials
+* Seeed Studio XIAO SAMD21 (Available from [Amazon](https://www.amazon.com/gp/product/B08CN5YSQF?smid=A2OY3Y9CEYQQ5W) or [Adafruit](https://www.adafruit.com/product/4600))
+* PCB can be ordered from (JLCPCB or PCBWAY)
+* [PCB Mount TRS connector](https://www.amazon.com/Uxcell-a12062600ux0366-Female-Stereo-Connector/dp/B008SNZUYC?sr=8-7)
+
 # Setting Up
 
 * [Easy Setup](doc/easy-install.md)
