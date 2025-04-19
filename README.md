@@ -1,6 +1,6 @@
 ---
-Author: neale(original author)
-Email: neale@woozle.org
+Author: neale(original author) and Brett KE9BOS (Current Author)
+Email: ke9bos@pigletradio.org
 License: MIT
 ---
 
