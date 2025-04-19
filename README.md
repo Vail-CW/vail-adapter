@@ -1,5 +1,5 @@
 ---
-Author: neale
+Author: neale(original author)
 Email: neale@woozle.org
 License: MIT
 ---
@@ -22,10 +22,18 @@ License: MIT
 
 [Vail Adapter benefits video](https://www.youtube.com/watch?v=XQ-mwdyLkOY) (4:46)
 
-# Bill of Materials
-* Seeed Studio XIAO SAMD21 (Available from [Amazon](https://www.amazon.com/gp/product/B08CN5YSQF?smid=A2OY3Y9CEYQQ5W) or [Adafruit](https://www.adafruit.com/product/4600))
-* PCB can be ordered from (JLCPCB or PCBWAY)
-* [PCB Mount TRS connector](https://www.amazon.com/Uxcell-a12062600ux0366-Female-Stereo-Connector/dp/B008SNZUYC?sr=8-7)
+# Bill of Materials for PCB version
+* Seeed Studio XIAO SAMD21 (Available from [Amazon](https://www.amazon.com/gp/product/B08CN5YSQF?smid=A2OY3Y9CEYQQ5W) or [Adafruit QT Py](https://www.adafruit.com/product/4600))
+* PCB can be ordered from (JLCPCB or PCBWAY) yourself or from Brett KE9BOS as a bare PCB, kit with all parts needed, or assembled - email ke9bos@pigletradio.org
+* Buzzer Speaker
+* You need one of each of the below for V1.1 pcb(purple), or only the first one if you have a v1 pcb(black):
+  * [PCB Mount TRS connector](https://a.co/d/bLaRwym)
+  * [Switched PCB Mount Aux Jack](https://www.amazon.com/dp/B07WR748JS)
+ 
+# Bill of Materials if you don't want to use a PCB
+* Seeed Studio XIAO SAMD21 (Available from [Amazon](https://www.amazon.com/gp/product/B08CN5YSQF?smid=A2OY3Y9CEYQQ5W) or [Adafruit QT Py](https://www.adafruit.com/product/4600))
+* Buzzer Speaker
+* [Panel Aux Jack](https://www.amazon.com/dp/B01C3RFHDC)
 
 # Setting Up
 
@@ -38,26 +46,11 @@ License: MIT
 Things I plan to add:
 
 * [x] PCB to ease assembly and make a more robust shippable product
-* [ ] Debug tone changes
-* [ ] PCB v2 to get the speaker on pin 10 instead of pin 9
-* [ ] Unplug detection: send a pulse out one pin and detect it on the T pin to reset straight-key detection
+* [ ] Advanced PCB with capacitive touch built into pcb and enclosure, as well as radio passthrough
+* [ ] Wireless Vail Adapter
 
 
 # Contributing
-To contribute to this project please contact neale@woozle.org
-https://id.arduino.cc/neale
+To contribute to this project please contact ke9bos@pigletradio.org
 
 
-
-# Similar projects
-
-* Vail user Michele Giugliano's 
-  [MorsePaddle2USB](https://github.com/mgiugliano/MorsePaddle2USB),
-  which runs on a DigiSpark (attiny85). It only sends keystrokes, so you must keep the Vail
-  window focused: you can't switch to other apps and still transimit.
-* Ham Radio Solutions sells a 
-  [USB Paddle Interface](https://hamradio.solutions/vband/)
-  which appears to be very similar to Michele's project. You must keep the 
-  Vail window focused.
-* [CWKeyboard](https://github.com/kevintechie/CWKeyboard) looks almost 
-  exactly the same as the VBand adapter.
