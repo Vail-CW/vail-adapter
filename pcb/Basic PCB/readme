@@ -1,1 +1,12 @@
+This is where we have the basic PCB files. This would be what most folks likely have if you have built one off of a pcb in 2025 or bought a PCB or kit from Brett KE9BOS. 
 
+
+This version is the most recent version(v1.1 as of 4/19/2025), and includes the second aux jack for headphones. When you plug in headphones, the buzzer auto mutes. 
+
+
+If you have a pcb only one aux jack(v1), that one will continue to be supported with the code in this project but was replaced with the new pcb design. Same functionality besides the output jack for the headphones. 
+
+
+Black PCB = v1 basic
+
+Purple PCB = v1.1 basic
