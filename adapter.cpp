@@ -6,8 +6,13 @@
 #include "adapter.h"
 #include "polybuzzer.h"
 
+// Do NOT include FlashStorage_SAMD.h here - include it only in the main sketch
+
 #define MILLISECOND 1
 #define SECOND (1000 * MILLISECOND)
+
+// Forward declaration of the save settings function from the main sketch
+extern void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote);
 
 VailAdapter::VailAdapter(unsigned int PiezoPin) {
     this->buzzer = new PolyBuzzer(PiezoPin);
@@ -15,6 +20,14 @@ VailAdapter::VailAdapter(unsigned int PiezoPin) {
 
 bool VailAdapter::KeyboardMode() {
     return this->keyboardMode;
+}
+
+uint8_t VailAdapter::getCurrentKeyerType() const {
+    return getKeyerNumber(this->keyer);
+}
+
+uint16_t VailAdapter::getDitDuration() const {
+    return this->ditDuration;
 }
 
 // Send a MIDI Key Event
@@ -87,10 +100,9 @@ void VailAdapter::HandlePaddle(Paddle paddle, bool pressed) {
 }
 
 // Handle a MIDI event.
-//
-// We act as a MIDI 
 void VailAdapter::HandleMIDI(midiEventPacket_t event) {
     uint16_t msg = (event.byte1 << 8) | (event.byte2 << 0);
+    
     switch (event.byte1) {
     case 0xB0: // Controller Change
         switch (event.byte2) {
@@ -103,9 +115,13 @@ void VailAdapter::HandleMIDI(midiEventPacket_t event) {
                 if (this->keyer) {
                     this->keyer->SetDitDuration(this->ditDuration);
                 }
+                // Save settings to EEPROM
+                saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote);
                 break;
             case 2: // set tx note
                 this->txNote = event.byte3;
+                // Save settings to EEPROM
+                saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote);
                 break;
         }
         break;
@@ -115,6 +131,9 @@ void VailAdapter::HandleMIDI(midiEventPacket_t event) {
         }
         this->keyer = GetKeyerByNumber(event.byte2, this);
         this->keyer->SetDitDuration(this->ditDuration);
+        
+        // Save settings to EEPROM
+        saveSettingsToEEPROM(event.byte2, this->ditDuration, this->txNote);
         break;
     case 0x80: // Note off
         this->buzzer->NoTone(1);

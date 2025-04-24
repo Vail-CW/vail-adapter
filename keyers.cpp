@@ -403,3 +403,16 @@ Keyer *GetKeyerByNumber(int n, Transmitter *output) {
     k->SetOutput(output);
     return k;
 }
+
+int getKeyerNumber(Keyer* k) {
+    if (k == NULL) {
+        return 1; // Default to straight key if NULL
+    }
+    
+    for (int i = 1; i < len(keyers); i++) {
+        if (keyers[i] == k) {
+            return i;
+        }
+    }
+    return 1; // Default to straight key if not found
+}

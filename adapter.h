@@ -24,4 +24,6 @@ public:
     void BeginTx();
     void EndTx();
     void Tick(unsigned millis);
+    uint8_t getCurrentKeyerType() const;
+    uint16_t getDitDuration() const;
 };
