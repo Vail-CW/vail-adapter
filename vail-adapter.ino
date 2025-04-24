@@ -53,6 +53,14 @@ void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNot
   EEPROM.write(EEPROM_VALID_FLAG_ADDR, EEPROM_VALID_VALUE);
   // Make sure data is committed to EEPROM
   EEPROM.commit();
+  
+  // Debug output
+  Serial.print("Saved to EEPROM - Keyer: ");
+  Serial.print(keyerType);
+  Serial.print(", Dit Duration: ");
+  Serial.print(ditDuration);
+  Serial.print(", TX Note: ");
+  Serial.println(txNote);
 }
 
 // Function to load settings from EEPROM - this is only in the main file
@@ -68,6 +76,13 @@ void loadSettingsFromEEPROM() {
     
     // Read TX note
     uint8_t txNote = EEPROM.read(EEPROM_TX_NOTE_ADDR);
+    
+    Serial.print("EEPROM values - Keyer: ");
+    Serial.print(keyerType);
+    Serial.print(", Dit Duration: ");
+    Serial.print(ditDuration);
+    Serial.print(", TX Note: ");
+    Serial.println(txNote);
     
     // Apply the settings to the adapter
     midiEventPacket_t event;
@@ -102,10 +117,17 @@ void loadSettingsFromEEPROM() {
     EEPROM.write(EEPROM_VALID_FLAG_ADDR, EEPROM_VALID_VALUE);
     // Make sure data is committed to EEPROM
     EEPROM.commit();
+    
+    Serial.println("EEPROM initialized with default values");
   }
 }
 
 void setup() {
+  // Initialize serial for debugging
+  Serial.begin(9600);
+  delay(300);
+  Serial.println("Vail Adapter starting...");
+  
   pinMode(LED_BUILTIN, OUTPUT);
   dit.attach(DIT_PIN, INPUT_PULLUP);
   dah.attach(DAH_PIN, INPUT_PULLUP);
@@ -116,6 +138,14 @@ void setup() {
 
   // Load settings from EEPROM
   loadSettingsFromEEPROM();
+
+  // Print loaded settings for debugging
+  Serial.print("Current adapter settings - Keyer: ");
+  Serial.print(adapter.getCurrentKeyerType());
+  Serial.print(", Dit Duration: ");
+  Serial.print(adapter.getDitDuration());
+  Serial.print(", TX Note: ");
+  Serial.println(adapter.getTxNote());
 
   Keyboard.begin();
 
@@ -130,6 +160,16 @@ void setup() {
   if (dah.read() == LOW) {
     trs = true;
     key = dit;
+    Serial.println("TRS plug detected, using straight key mode");
+  }
+  
+  // Play a test tone using the stored TX note when in keyboard mode
+  if (adapter.KeyboardMode()) {
+    Serial.print("Playing test tone with note value: ");
+    Serial.println(adapter.getTxNote());
+    adapter.BeginTx();
+    delay(100);
+    adapter.EndTx();
   }
 }
 
@@ -164,6 +204,15 @@ void loop() {
   adapter.Tick(now);
 
   if (event.header) {
+    Serial.print("MIDI event received: header=");
+    Serial.print(event.header);
+    Serial.print(", byte1=");
+    Serial.print(event.byte1);
+    Serial.print(", byte2=");
+    Serial.print(event.byte2);
+    Serial.print(", byte3=");
+    Serial.println(event.byte3);
+    
     adapter.HandleMIDI(event);
   }
 
