@@ -52,5 +52,6 @@ Things I plan to add:
 
 # Contributing
 To contribute to this project please contact ke9bos@pigletradio.org
+Feel free to buy me a coffee if you find value in this project and want to see more improvements made with time. https://buymeacoffee.com/ke9bos
 
 
