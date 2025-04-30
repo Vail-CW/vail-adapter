@@ -17,4 +17,15 @@ public:
     void Tone(int slot, unsigned int frequency);
     void Note(int slot, uint8_t note);
     void NoTone(int slot);
+    
+    // Debug helper - print current state
+    void printDebugInfo() {
+        Serial.print("PolyBuzzer - Current tones: [");
+        for (int i = 0; i < POLYBUZZER_MAX_TONES; i++) {
+            Serial.print(tones[i]);
+            if (i < POLYBUZZER_MAX_TONES - 1) Serial.print(", ");
+        }
+        Serial.print("], Playing: ");
+        Serial.println(playing);
+    }
 };

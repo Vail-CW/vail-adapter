@@ -28,3 +28,4 @@ public:
 };
 
 Keyer *GetKeyerByNumber(int n, Transmitter *output);
+int getKeyerNumber(Keyer* k);
