@@ -11,7 +11,12 @@ private:
     bool keyboardMode = true;
     Keyer *keyer = NULL;
     PolyBuzzer *buzzer = NULL;
-
+    
+    // Variables for tracking consecutive dit presses
+    unsigned long lastDitTime = 0;
+    unsigned int ditPressCount = 0;
+    bool buzzerEnabled = true;
+    
     void midiKey(uint8_t key, bool down);
     void keyboardKey(uint8_t key, bool down);
 
@@ -24,7 +29,9 @@ public:
     void BeginTx();
     void EndTx();
     void Tick(unsigned millis);
+    void ResetDitCounter();
     uint8_t getCurrentKeyerType() const;
     uint16_t getDitDuration() const;
     uint8_t getTxNote() const;
+    bool isBuzzerEnabled() const;
 };
