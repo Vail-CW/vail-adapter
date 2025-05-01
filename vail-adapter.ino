@@ -10,6 +10,7 @@
 #include "bounce2.h"
 #include "touchbounce.h"
 #include "adapter.h"
+#include "equal_temperament.h"
 
 #define DIT_PIN 2
 #define DAH_PIN 1
@@ -23,10 +24,17 @@
 
 #define DIT_KEYBOARD_KEY KEY_LEFT_CTRL
 #define DAH_KEYBOARD_KEY KEY_RIGHT_CTRL
-#define TONE 3000
+#define DEFAULT_TONE_NOTE 69  // Default MIDI note (A4 = 440Hz)
 
 #define MILLISECOND 1
 #define SECOND (1 * MILLISECOND)
+
+// Morse code timing at 20 WPM
+#define DOT_DURATION 60
+#define DASH_DURATION (DOT_DURATION * 3)
+#define ELEMENT_SPACE (DOT_DURATION)
+#define CHAR_SPACE (DOT_DURATION * 3)
+#define WORD_SPACE (DOT_DURATION * 7)
 
 // EEPROM definitions
 #define EEPROM_KEYER_TYPE_ADDR 0      // Address for keyer type (1 byte)
@@ -44,6 +52,73 @@ TouchBounce qt_dit = TouchBounce();
 TouchBounce qt_dah = TouchBounce();
 TouchBounce qt_key = TouchBounce();
 VailAdapter adapter = VailAdapter(PIEZO);
+
+// Pre-declare functions we'll need early
+uint8_t loadToneFromEEPROM();
+
+// Function to play Morse code dot with a specific MIDI note
+void playDot(uint8_t noteNumber) {
+  digitalWrite(LED_BUILTIN, LED_ON);
+  tone(PIEZO, equalTemperamentNote[noteNumber]);
+  delay(DOT_DURATION);
+  digitalWrite(LED_BUILTIN, LED_OFF);
+  noTone(PIEZO);
+  delay(ELEMENT_SPACE);
+}
+
+// Function to play Morse code dash with a specific MIDI note
+void playDash(uint8_t noteNumber) {
+  digitalWrite(LED_BUILTIN, LED_ON);
+  tone(PIEZO, equalTemperamentNote[noteNumber]);
+  delay(DASH_DURATION);
+  digitalWrite(LED_BUILTIN, LED_OFF);
+  noTone(PIEZO);
+  delay(ELEMENT_SPACE);
+}
+
+// Function to play "VAIL" in Morse code at 20 WPM with a specific MIDI note
+void playVAIL(uint8_t noteNumber) {
+  // V: ···−
+  playDot(noteNumber);
+  playDot(noteNumber);
+  playDot(noteNumber);
+  playDash(noteNumber);
+  delay(CHAR_SPACE - ELEMENT_SPACE);  // Subtract the element space already added
+  
+  // A: ·−
+  playDot(noteNumber);
+  playDash(noteNumber);
+  delay(CHAR_SPACE - ELEMENT_SPACE);  // Subtract the element space already added
+  
+  // I: ··
+  playDot(noteNumber);
+  playDot(noteNumber);
+  delay(CHAR_SPACE - ELEMENT_SPACE);  // Subtract the element space already added
+  
+  // L: ·−··
+  playDot(noteNumber);
+  playDash(noteNumber);
+  playDot(noteNumber);
+  playDot(noteNumber);
+  // Make sure all tones are off
+  noTone(PIEZO);
+}
+
+// Function to load just the tone note from EEPROM
+uint8_t loadToneFromEEPROM() {
+  // Check if EEPROM has been initialized with our flag
+  if (EEPROM.read(EEPROM_VALID_FLAG_ADDR) == EEPROM_VALID_VALUE) {
+    // Read TX note
+    uint8_t txNote = EEPROM.read(EEPROM_TX_NOTE_ADDR);
+    Serial.print("EEPROM tone note: ");
+    Serial.println(txNote);
+    return txNote;
+  } else {
+    // Return default note if EEPROM not initialized
+    Serial.println("EEPROM not initialized, using default tone");
+    return DEFAULT_TONE_NOTE;
+  }
+}
 
 // Function to save settings to EEPROM - this is only in the main file
 void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote) {
@@ -63,7 +138,7 @@ void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNot
   Serial.println(txNote);
 }
 
-// Function to load settings from EEPROM - this is only in the main file
+// Function to load all settings from EEPROM - this is only in the main file
 void loadSettingsFromEEPROM() {
   // Check if EEPROM has been initialized with our flag
   if (EEPROM.read(EEPROM_VALID_FLAG_ADDR) == EEPROM_VALID_VALUE) {
@@ -113,7 +188,7 @@ void loadSettingsFromEEPROM() {
     // Initialize EEPROM with default values
     EEPROM.write(EEPROM_KEYER_TYPE_ADDR, 1);    // Default to straight key
     EEPROM.put(EEPROM_DIT_DURATION_ADDR, (uint16_t)100); // Default dit duration
-    EEPROM.write(EEPROM_TX_NOTE_ADDR, 69);      // Default note (A4 = 440Hz)
+    EEPROM.write(EEPROM_TX_NOTE_ADDR, DEFAULT_TONE_NOTE); // Default note (A4 = 440Hz)
     EEPROM.write(EEPROM_VALID_FLAG_ADDR, EEPROM_VALID_VALUE);
     // Make sure data is committed to EEPROM
     EEPROM.commit();
@@ -136,7 +211,14 @@ void setup() {
   qt_dah.attach(QT_DAH_PIN);
   qt_key.attach(QT_KEY_PIN);
 
-  // Load settings from EEPROM
+  // First, load just the tone from EEPROM for our startup sound
+  uint8_t startupTone = loadToneFromEEPROM();
+  
+  // Play VAIL in Morse code with the EEPROM tone
+  Serial.println("Playing VAIL in Morse code at 20 WPM");
+  playVAIL(startupTone);
+  
+  // Now load all settings from EEPROM
   loadSettingsFromEEPROM();
 
   // Print loaded settings for debugging
@@ -163,33 +245,24 @@ void setup() {
     Serial.println("TRS plug detected, using straight key mode");
   }
   
-  // Play a test tone using the stored TX note when in keyboard mode
-  if (adapter.KeyboardMode()) {
-    Serial.print("Playing test tone with note value: ");
-    Serial.println(adapter.getTxNote());
-    adapter.BeginTx();
-    delay(100);
-    adapter.EndTx();
-  }
+  // We'll skip the test tone here since we already played the VAIL morse
 }
 
-// A reentrant doodad to blink out the letter V at startup
-// After startup, display the status of the keyboard
-#define HELLO_BITS 0b0000101010111000
+// LED status function - shows keyboard mode or buzzer disabled status
 void setLED() {
-  static bool beepin = false;
-  int beat = millis() / iambicDelay;
-  bool on = adapter.KeyboardMode(); // If we're not in intro, display status of keyboard
-
-  if (beat < 16) {
-    on = HELLO_BITS & (1 << (15-beat));
-    if (on != beepin) {
-      if (on) {
-        tone(PIEZO, TONE);
-      } else {
-        noTone(PIEZO);
-      }
-      beepin = on;
+  bool on = adapter.KeyboardMode(); // Base LED state on keyboard mode
+  
+  // If buzzer is disabled, blink the LED to indicate
+  if (!adapter.isBuzzerEnabled()) {
+    // Blink the LED with a pattern (fast double blink every 2 seconds)
+    unsigned long currentMillis = millis();
+    unsigned long blinkCycle = currentMillis % 2000;
+    
+    // Double blink pattern (on for 100ms, off for 100ms, on for 100ms, off for 1700ms)
+    if (blinkCycle < 100 || (blinkCycle >= 200 && blinkCycle < 300)) {
+      on = true;  // LED on during blink periods
+    } else {
+      on = false; // LED off during non-blink periods
     }
   }
   
