@@ -11,11 +11,19 @@
 #define MILLISECOND 1
 #define SECOND (1000 * MILLISECOND)
 
+// Time window for consecutive dit presses (3 seconds)
+#define DIT_DISABLE_WINDOW 3000
+// Number of consecutive dit presses required to disable buzzer
+#define DIT_DISABLE_COUNT 10
+
 // Forward declaration of the save settings function from the main sketch
 extern void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote);
 
 VailAdapter::VailAdapter(unsigned int PiezoPin) {
     this->buzzer = new PolyBuzzer(PiezoPin);
+    this->lastDitTime = 0;
+    this->ditPressCount = 0;
+    this->buzzerEnabled = true;
 }
 
 bool VailAdapter::KeyboardMode() {
@@ -32,6 +40,15 @@ uint16_t VailAdapter::getDitDuration() const {
 
 uint8_t VailAdapter::getTxNote() const {
     return this->txNote;
+}
+
+bool VailAdapter::isBuzzerEnabled() const {
+    return this->buzzerEnabled;
+}
+
+void VailAdapter::ResetDitCounter() {
+    this->ditPressCount = 0;
+    Serial.println("Dit counter reset to 0");
 }
 
 // Send a MIDI Key Event
@@ -56,7 +73,11 @@ void VailAdapter::BeginTx() {
     Serial.print("BeginTx using note: ");
     Serial.println(this->txNote);
     
-    this->buzzer->Note(0, this->txNote);
+    // Only play the sidetone if buzzer is enabled
+    if (this->buzzerEnabled) {
+        this->buzzer->Note(0, this->txNote);
+    }
+    
     if (this->keyboardMode) {
         this->keyboardKey(KEY_LEFT_CTRL, true);
     } else {
@@ -66,7 +87,10 @@ void VailAdapter::BeginTx() {
 
 // Stop transmitting
 void VailAdapter::EndTx() {
-    this->buzzer->NoTone(0);
+    if (this->buzzerEnabled) {
+        this->buzzer->NoTone(0);
+    }
+    
     if (this->keyboardMode) {
         this->keyboardKey(KEY_LEFT_CTRL, false);
     } else {
@@ -80,13 +104,60 @@ void VailAdapter::EndTx() {
 void VailAdapter::HandlePaddle(Paddle paddle, bool pressed) {
     switch (paddle) {
     case PADDLE_STRAIGHT:
+        // Reset dit counter if straight key is used
         if (pressed) {
+            this->ResetDitCounter();
             this->BeginTx();
         } else {
             this->EndTx();
         }
         return;
+        
     case PADDLE_DIT:
+        // Track dit presses for buzzer disable feature
+        if (pressed) {
+            unsigned long currentTime = millis();
+            
+            // Only process the dit counting logic if the buzzer is still enabled
+            if (this->buzzerEnabled) {
+                // Check if this press is within the time window
+                if (currentTime - this->lastDitTime < DIT_DISABLE_WINDOW) {
+                    this->ditPressCount++;
+                    
+                    // Debug output
+                    Serial.print("Dit press #");
+                    Serial.print(this->ditPressCount);
+                    Serial.print(" at ");
+                    Serial.println(currentTime);
+                    
+                    // If we've reached the threshold, disable the buzzer
+                    if (this->ditPressCount >= DIT_DISABLE_COUNT) {
+                        // Play a quick descending tone pattern to indicate buzzer disabled
+                        // Do this BEFORE disabling the buzzer
+                        Serial.println("Playing disable notification tones...");
+                        this->buzzer->Note(1, 70);
+                        delay(100);
+                        this->buzzer->Note(1, 65);
+                        delay(100);
+                        this->buzzer->Note(1, 60);
+                        delay(100);
+                        this->buzzer->NoTone(1);
+                        
+                        // Now disable the buzzer
+                        this->buzzerEnabled = false;
+                        Serial.println("Buzzer disabled by user!");
+                    }
+                } else {
+                    // If too much time has passed, reset the counter
+                    this->ditPressCount = 1;
+                }
+                
+                // Update the timestamp
+                this->lastDitTime = currentTime;
+            }
+        }
+        
+        // Handle the dit paddle normally
         if (this->keyer) {
             this->keyer->Key(paddle, pressed);
         } else if (this->keyboardMode) {
@@ -95,7 +166,13 @@ void VailAdapter::HandlePaddle(Paddle paddle, bool pressed) {
             this->midiKey(1, pressed);
         }
         break;
+        
     case PADDLE_DAH:
+        // Reset dit counter if dah paddle is used
+        if (pressed) {
+            this->ResetDitCounter();
+        }
+        
         if (this->keyer) {
             this->keyer->Key(paddle, pressed);
         } else if (this->keyboardMode) {
@@ -141,11 +218,15 @@ void VailAdapter::HandleMIDI(midiEventPacket_t event) {
                 
                 this->txNote = event.byte3;
                 
-                // Test the new tone by playing it briefly
+                // Test the new tone by playing it briefly, only if buzzer is enabled
                 Serial.println("Testing new tone...");
-                this->buzzer->Note(1, this->txNote);
-                delay(100);
-                this->buzzer->NoTone(1);
+                if (this->buzzerEnabled) {
+                    this->buzzer->Note(1, this->txNote);
+                    delay(100);
+                    this->buzzer->NoTone(1);
+                } else {
+                    Serial.println("Buzzer is disabled, not playing test tone");
+                }
                 
                 // Save settings to EEPROM
                 saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote);
@@ -175,13 +256,17 @@ void VailAdapter::HandleMIDI(midiEventPacket_t event) {
     case 0x80: // Note off
         Serial.print("MIDI Note OFF: ");
         Serial.println(event.byte2);
-        this->buzzer->NoTone(1);
+        if (this->buzzerEnabled) {
+            this->buzzer->NoTone(1);
+        }
         break;
         
     case 0x90: // Note on
         Serial.print("MIDI Note ON: ");
         Serial.println(event.byte2);
-        this->buzzer->Note(1, event.byte2);
+        if (this->buzzerEnabled) {
+            this->buzzer->Note(1, event.byte2);
+        }
         break;
         
     default:
