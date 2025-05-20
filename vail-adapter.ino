@@ -12,15 +12,38 @@
 #include "adapter.h"
 #include "equal_temperament.h"
 
-#define DIT_PIN 2
-#define DAH_PIN 1
-#define KEY_PIN 0
-#define QT_DIT_PIN A6
-#define QT_DAH_PIN A7
+// uncomment this section if you are using the V1 PCB
+// #define DIT_PIN 1
+// #define DAH_PIN 0
+// #define KEY_PIN 3
+// #define QT_DIT_PIN A6
+// #define QT_DAH_PIN A7
+// #define QT_KEY_PIN A8
+// #define PIEZO 9
+// #define LED_ON true 
+// #define LED_OFF (!LED_ON)
+
+// uncomment this section if you are using the V2 Advanced PCB
+#define DIT_PIN 1
+#define DAH_PIN 0
+#define KEY_PIN 9
+#define QT_DIT_PIN A7
+#define QT_DAH_PIN A6
 #define QT_KEY_PIN A8
 #define PIEZO 10
-#define LED_ON false // Xiao inverts this logic for some reason
+#define LED_ON true 
 #define LED_OFF (!LED_ON)
+
+// uncomment this section if you are built your adapter per github specs WITHOUT a PCB
+// #define DIT_PIN 2
+// #define DAH_PIN 1
+// #define KEY_PIN 0
+// #define QT_DIT_PIN A6
+// #define QT_DAH_PIN A7
+// #define QT_KEY_PIN A8
+// #define PIEZO 10
+// #define LED_ON false // Xiao inverts this logic for some reason
+// #define LED_OFF (!LED_ON)
 
 #define DIT_KEYBOARD_KEY KEY_LEFT_CTRL
 #define DAH_KEYBOARD_KEY KEY_RIGHT_CTRL
