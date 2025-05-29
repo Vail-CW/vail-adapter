@@ -76,11 +76,9 @@ jobs:
           arduino-cli lib update-index
           echo "Installing required libraries..."
           arduino-cli lib install MIDIUSB
-          # --- Installing Adafruit FreeTouch Library ---
-          echo "Installing 'Adafruit FreeTouch Library' by its full name..."
-          arduino-cli lib install "Adafruit FreeTouch Library" # <--- USING EXACT NAME FROM SEARCH
-          # --- End Adafruit FreeTouch Install ---
+          arduino-cli lib install "Adafruit FreeTouch Library"
           arduino-cli lib install FlashStorage
+          arduino-cli lib install Keyboard # <--- ADDED THIS LINE
           echo "Library installation complete."
           echo "--- Installed Libraries ---"
           arduino-cli lib list
