@@ -77,8 +77,8 @@ jobs:
           echo "Installing required libraries..."
           arduino-cli lib install MIDIUSB
           arduino-cli lib install "Adafruit FreeTouch Library"
-          arduino-cli lib install FlashStorage_SAMD # <--- CHANGED THIS LINE
-          arduino-cli lib install Keyboard 
+          arduino-cli lib install FlashStorage_SAMD
+          arduino-cli lib install Keyboard
           echo "Library installation complete."
           echo "--- Installed Libraries ---"
           arduino-cli lib list
@@ -113,20 +113,20 @@ jobs:
         run: |
           arduino-cli compile --fqbn ${{ matrix.fqbn }} --output-dir build_output --export-binaries $SKETCH_DIR
 
-      - name: Find uf2conv.py
+      - name: Find or Clone uf2conv.py # <--- MODIFIED THIS STEP
         id: find_uf2conv
         run: |
-          UF2_CONV_PATH=$(find $HOME/.arduino15/packages/adafruit/ -name "uf2conv.py" | head -n 1)
+          # Try to find it in Arduino packages first
+          UF2_CONV_PATH=$(find $HOME/.arduino15/packages/ -name "uf2conv.py" | head -n 1)
+          
           if [ -z "$UF2_CONV_PATH" ]; then
-            UF2_CONV_PATH=$(find $HOME/.arduino15/packages/ -name "uf2conv.py" | head -n 1)
-          fi
-          if [ -z "$UF2_CONV_PATH" ]; then
-            echo "uf2conv.py not found! Attempting to install adafruit-nrfutil."
-            pip install adafruit-nrfutil
-            UF2_CONV_PATH=$(which uf2conv.py)
-            if [ -z "$UF2_CONV_PATH" ]; then 
-              echo "Failed to find or install uf2conv.py. Aborting."
-              exit 1
+            echo "uf2conv.py not found in Arduino packages. Cloning Microsoft UF2 repo..."
+            git clone https://github.com/microsoft/uf2.git 
+            if [ -f "uf2/utils/uf2conv.py" ]; then
+               UF2_CONV_PATH="uf2/utils/uf2conv.py"
+            else
+               echo "Failed to find uf2conv.py in cloned repo. Aborting."
+               exit 1
             fi
           fi
           echo "Using uf2conv.py at $UF2_CONV_PATH"
