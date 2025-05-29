@@ -113,13 +113,12 @@ jobs:
         run: |
           arduino-cli compile --fqbn ${{ matrix.fqbn }} --output-dir build_output --export-binaries $SKETCH_DIR
           echo "--- Contents of build_output after compile ---"
-          ls -R build_output # <--- ADDED LS COMMAND FOR DEBUGGING
+          ls -R build_output
           echo "----------------------------------------------"
 
       - name: Find or Clone uf2conv.py
         id: find_uf2conv
         run: |
-          # Try to find it in Arduino packages first
           UF2_CONV_PATH=$(find $HOME/.arduino15/packages/ -name "uf2conv.py" | head -n 1)
           
           if [ -z "$UF2_CONV_PATH" ]; then
@@ -135,7 +134,7 @@ jobs:
           echo "Using uf2conv.py at $UF2_CONV_PATH"
           echo "UF2_CONV=$UF2_CONV_PATH" >> $GITHUB_ENV
 
-      - name: Convert to UF2 # <--- MODIFIED THIS STEP
+      - name: Convert to UF2
         env:
           UF2_FAMILY_ID: "0x68ED2B88" 
           UF2_BASE_ADDR: "0x2000"     
@@ -143,7 +142,6 @@ jobs:
           echo "--- Contents of build_output before convert ---"
           ls -R build_output
           echo "-----------------------------------------------"
-          # Find the .bin file dynamically
           BIN_FILE=$(find build_output -name "*.bin" | head -n 1)
           
           if [ -z "$BIN_FILE" ]; then
@@ -161,9 +159,4 @@ jobs:
           name: ${{ matrix.uf2_name }}
           path: ${{ matrix.uf2_name }}
 
-      - name: Upload All UF2 Artifacts (Optional)
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: all-firmware-uf2
-          path: "*.uf2"
+      # --- REMOVED THE "Upload All" STEP ---
