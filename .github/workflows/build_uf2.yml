@@ -112,8 +112,11 @@ jobs:
           SKETCH_DIR: "." 
         run: |
           arduino-cli compile --fqbn ${{ matrix.fqbn }} --output-dir build_output --export-binaries $SKETCH_DIR
+          echo "--- Contents of build_output after compile ---"
+          ls -R build_output # <--- ADDED LS COMMAND FOR DEBUGGING
+          echo "----------------------------------------------"
 
-      - name: Find or Clone uf2conv.py # <--- MODIFIED THIS STEP
+      - name: Find or Clone uf2conv.py
         id: find_uf2conv
         run: |
           # Try to find it in Arduino packages first
@@ -132,13 +135,23 @@ jobs:
           echo "Using uf2conv.py at $UF2_CONV_PATH"
           echo "UF2_CONV=$UF2_CONV_PATH" >> $GITHUB_ENV
 
-      - name: Convert to UF2
+      - name: Convert to UF2 # <--- MODIFIED THIS STEP
         env:
-          SKETCH_NAME: "firmware" 
           UF2_FAMILY_ID: "0x68ED2B88" 
           UF2_BASE_ADDR: "0x2000"     
         run: |
-          BIN_FILE="build_output/${SKETCH_NAME}.ino.bin"
+          echo "--- Contents of build_output before convert ---"
+          ls -R build_output
+          echo "-----------------------------------------------"
+          # Find the .bin file dynamically
+          BIN_FILE=$(find build_output -name "*.bin" | head -n 1)
+          
+          if [ -z "$BIN_FILE" ]; then
+            echo "Error: No .bin file found in build_output!"
+            exit 1
+          fi
+
+          echo "Found .bin file: $BIN_FILE"
           echo "Converting $BIN_FILE to ${{ matrix.uf2_name }}"
           python3 ${{ env.UF2_CONV }} -c -f ${{ env.UF2_FAMILY_ID }} -b ${{ env.UF2_BASE_ADDR }} "$BIN_FILE" -o "${{ matrix.uf2_name }}"
 
