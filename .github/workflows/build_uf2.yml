@@ -76,12 +76,10 @@ jobs:
           arduino-cli lib update-index
           echo "Installing required libraries..."
           arduino-cli lib install MIDIUSB
-          # --- Attempting to install Adafruit_FreeTouch ---
-          echo "Searching for Adafruit_FreeTouch..."
-          arduino-cli lib search Adafruit_FreeTouch || echo "Search failed, proceeding with Git install."
-          echo "Installing Adafruit_FreeTouch via Git URL..."
-          arduino-cli lib install --git-url https://github.com/adafruit/Adafruit_FreeTouch.git # <--- INSTALLING VIA GIT
-          # --- End Adafruit_FreeTouch Install ---
+          # --- Installing Adafruit FreeTouch Library ---
+          echo "Installing 'Adafruit FreeTouch Library' by its full name..."
+          arduino-cli lib install "Adafruit FreeTouch Library" # <--- USING EXACT NAME FROM SEARCH
+          # --- End Adafruit FreeTouch Install ---
           arduino-cli lib install FlashStorage
           echo "Library installation complete."
           echo "--- Installed Libraries ---"
