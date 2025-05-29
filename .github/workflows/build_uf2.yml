@@ -118,7 +118,7 @@ jobs:
       - name: Checkout GitHub Pages Repo
         uses: actions/checkout@v4
         with:
-          repository: 'YourUsername/YourGitHubPagesRepo' # <--- IMPORTANT: Change this!
+          repository: 'WrathPak/vail_web_updater' # <--- IMPORTANT: Change this!
           ssh-key: ${{ secrets.GH_PAGES_DEPLOY_KEY }} # Use the secret we created
           path: 'gh_pages_repo' # Checkout to a specific directory
 
