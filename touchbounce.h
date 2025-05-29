@@ -3,7 +3,7 @@
 #include <Adafruit_FreeTouch.h>
 #include "bounce2.h"
 
-#define QT_THRESHOLD 310
+#define QT_THRESHOLD 450
 
 class TouchBounce: public Bounce {
 public:
