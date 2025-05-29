@@ -1,4 +1,4 @@
-name: Build Arduino UF2 Firmware
+name: Build and Deploy Arduino UF2 Firmware
 
 on:
   push:
@@ -6,84 +6,66 @@ on:
       - main # Or your primary development branch
   release:
     types: [published] # Triggers when you publish a new release
-  workflow_dispatch: # Allows manual triggering from the Actions tab
+  workflow_dispatch: # Allows manual triggering
 
 jobs:
-  build_firmware:
+  build_firmware: # This remains mostly the same
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false # Ensures all builds attempt to run even if one fails
+      fail-fast: false
       matrix:
         include:
           # --- XIAO SAMD21 Configurations ---
           - board_name: "XIAO_SAMD21"
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
-            package_url: "https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json"
             hw_define: "V1_PCB"
             uf2_name: "xiao_basic_pcb_v1.uf2"
           - board_name: "XIAO_SAMD21"
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
-            package_url: "https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json"
             hw_define: "V1_2_PCB"
             uf2_name: "xiao_basic_pcb_v2.uf2"
           - board_name: "XIAO_SAMD21"
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
-            package_url: "https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json"
             hw_define: "NO_PCB_GITHUB_SPECS"
             uf2_name: "xiao_non_pcb.uf2"
-
           # --- Adafruit QT Py SAMD21 Configurations ---
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
-            package_url: "https://adafruit.github.io/arduino-board-index/package_adafruit_index.json"
             hw_define: "V1_PCB"
             uf2_name: "qtpy_basic_pcb_v1.uf2"
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
-            package_url: "https://adafruit.github.io/arduino-board-index/package_adafruit_index.json"
             hw_define: "V1_2_PCB"
             uf2_name: "qtpy_basic_pcb_v2.uf2"
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
-            package_url: "https://adafruit.github.io/arduino-board-index/package_adafruit_index.json"
             hw_define: "V2_ADVANCED_PCB"
             uf2_name: "qtpy_advanced_pcb.uf2"
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
-            package_url: "https://adafruit.github.io/arduino-board-index/package_adafruit_index.json"
             hw_define: "NO_PCB_GITHUB_SPECS"
             uf2_name: "qtpy_non_pcb.uf2"
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.x'
-
       - name: Install Arduino CLI
         uses: arduino/setup-arduino-cli@v2
-
       - name: Configure Arduino CLI and Install Cores & Libraries
         run: |
           arduino-cli config init
           arduino-cli config add board_manager.additional_urls https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json https://adafruit.github.io/arduino-board-index/package_adafruit_index.json
           arduino-cli core update-index
-          arduino-cli core install Seeeduino:samd --additional-urls https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json
-          arduino-cli core install adafruit:samd --additional-urls https://adafruit.github.io/arduino-board-index/package_adafruit_index.json
+          arduino-cli core install Seeeduino:samd
+          arduino-cli core install adafruit:samd
           arduino-cli lib update-index
-          echo "Installing required libraries..."
           arduino-cli lib install MIDIUSB
           arduino-cli lib install "Adafruit FreeTouch Library"
           arduino-cli lib install FlashStorage_SAMD
           arduino-cli lib install Keyboard
-          echo "Library installation complete."
-          echo "--- Installed Libraries ---"
-          arduino-cli lib list
-          echo "---------------------------"
-
       - name: Set Hardware Define in Header
         env:
           CONFIG_FILE: "config.h" 
@@ -91,72 +73,75 @@ jobs:
           DEFINES_LIST: "V1_PCB V1_2_PCB V2_ADVANCED_PCB NO_PCB_GITHUB_SPECS"
         run: |
           echo "Setting Hardware Define to: ${CONFIG_DEFINE} in ${CONFIG_FILE}"
-          
-          if [ ! -f "$CONFIG_FILE" ]; then
-            echo "Error: $CONFIG_FILE not found!"
-            exit 1
-          fi
-
-          for DEF in $DEFINES_LIST; do
-            sed -i -E "s|^(\s*#define\s+${DEF})|//#define ${DEF}|" $CONFIG_FILE
-          done
-          
+          if [ ! -f "$CONFIG_FILE" ]; then echo "Error: $CONFIG_FILE not found!"; exit 1; fi
+          for DEF in $DEFINES_LIST; do sed -i -E "s|^(\s*#define\s+${DEF})|//#define ${DEF}|" $CONFIG_FILE; done
           sed -i -E "s|^(\s*//\s*#define\s+${CONFIG_DEFINE})|#define ${CONFIG_DEFINE}|" $CONFIG_FILE
-          
-          echo "--- Config File ($CONFIG_FILE) after modification ---"
-          grep "#define" $CONFIG_FILE || echo "No active #defines found"
-          echo "---------------------------------------------------"
-
       - name: Compile Sketch
-        env:
-          SKETCH_DIR: "." 
-        run: |
-          arduino-cli compile --fqbn ${{ matrix.fqbn }} --output-dir build_output --export-binaries $SKETCH_DIR
-          echo "--- Contents of build_output after compile ---"
-          ls -R build_output
-          echo "----------------------------------------------"
-
+        env: { SKETCH_DIR: "." }
+        run: arduino-cli compile --fqbn ${{ matrix.fqbn }} --output-dir build_output --export-binaries $SKETCH_DIR
       - name: Find or Clone uf2conv.py
         id: find_uf2conv
         run: |
           UF2_CONV_PATH=$(find $HOME/.arduino15/packages/ -name "uf2conv.py" | head -n 1)
-          
           if [ -z "$UF2_CONV_PATH" ]; then
-            echo "uf2conv.py not found in Arduino packages. Cloning Microsoft UF2 repo..."
+            echo "Cloning Microsoft UF2 repo..."
             git clone https://github.com/microsoft/uf2.git 
-            if [ -f "uf2/utils/uf2conv.py" ]; then
-               UF2_CONV_PATH="uf2/utils/uf2conv.py"
-            else
-               echo "Failed to find uf2conv.py in cloned repo. Aborting."
-               exit 1
-            fi
+            if [ -f "uf2/utils/uf2conv.py" ]; then UF2_CONV_PATH="uf2/utils/uf2conv.py"; else echo "Failed to find uf2conv.py."; exit 1; fi
           fi
-          echo "Using uf2conv.py at $UF2_CONV_PATH"
           echo "UF2_CONV=$UF2_CONV_PATH" >> $GITHUB_ENV
-
       - name: Convert to UF2
-        env:
-          UF2_FAMILY_ID: "0x68ED2B88" 
-          UF2_BASE_ADDR: "0x2000"     
+        env: { UF2_FAMILY_ID: "0x68ED2B88", UF2_BASE_ADDR: "0x2000" }
         run: |
-          echo "--- Contents of build_output before convert ---"
-          ls -R build_output
-          echo "-----------------------------------------------"
           BIN_FILE=$(find build_output -name "*.bin" | head -n 1)
-          
-          if [ -z "$BIN_FILE" ]; then
-            echo "Error: No .bin file found in build_output!"
-            exit 1
-          fi
-
-          echo "Found .bin file: $BIN_FILE"
-          echo "Converting $BIN_FILE to ${{ matrix.uf2_name }}"
+          if [ -z "$BIN_FILE" ]; then echo "Error: No .bin file found!"; exit 1; fi
           python3 ${{ env.UF2_CONV }} -c -f ${{ env.UF2_FAMILY_ID }} -b ${{ env.UF2_BASE_ADDR }} "$BIN_FILE" -o "${{ matrix.uf2_name }}"
-
       - name: Upload UF2 Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.uf2_name }}
+          name: ${{ matrix.uf2_name }} # Upload each UF2 with its unique name
           path: ${{ matrix.uf2_name }}
 
-      # --- REMOVED THE "Upload All" STEP ---
+  deploy: # <--- NEW JOB
+    needs: build_firmware # Runs only after all build_firmware jobs succeed
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all UF2 artifacts
+        uses: actions/download-artifact@v4 # Downloads all artifacts from this run
+        with:
+          path: all_uf2_files # Download to this directory
+
+      - name: List downloaded files
+        run: |
+          echo "Listing downloaded artifacts:"
+          ls -R all_uf2_files
+
+      - name: Checkout GitHub Pages Repo
+        uses: actions/checkout@v4
+        with:
+          repository: 'YourUsername/YourGitHubPagesRepo' # <--- IMPORTANT: Change this!
+          ssh-key: ${{ secrets.GH_PAGES_DEPLOY_KEY }} # Use the secret we created
+          path: 'gh_pages_repo' # Checkout to a specific directory
+
+      - name: Copy UF2 files to Pages Repo
+        run: |
+          echo "Copying UF2 files..."
+          # Create a target directory if it doesn't exist (e.g., 'firmware')
+          mkdir -p gh_pages_repo/firmware 
+          # Copy all downloaded UF2 files (they are in subdirs named after artifacts)
+          find all_uf2_files -name "*.uf2" -exec cp {} gh_pages_repo/firmware/ \;
+          echo "Files in target directory:"
+          ls gh_pages_repo/firmware/
+
+      - name: Commit and Push to Pages Repo
+        run: |
+          cd gh_pages_repo
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git add firmware/ # Add the directory (or specific files)
+          # Only commit & push if there are changes
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Update firmware UF2 files"
+            git push
+          fi
