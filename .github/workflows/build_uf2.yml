@@ -1,0 +1,156 @@
+name: Build Arduino UF2 Firmware
+
+on:
+  push:
+    branches:
+      - main # Or your primary development branch
+  release:
+    types: [published] # Triggers when you publish a new release
+  workflow_dispatch: # Allows manual triggering from the Actions tab
+
+jobs:
+  build_firmware:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false # Ensures all builds attempt to run even if one fails
+      matrix:
+        include:
+          # --- XIAO SAMD21 Configurations ---
+          - board_name: "XIAO_SAMD21"
+            fqbn: "Seeeduino:samd:seeed_XIAO_m0"
+            package_url: "https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json"
+            hw_define: "V1_PCB"
+            uf2_name: "xiao_basic_pcb_v1.uf2"
+          - board_name: "XIAO_SAMD21"
+            fqbn: "Seeeduino:samd:seeed_XIAO_m0"
+            package_url: "https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json"
+            hw_define: "V1_2_PCB"
+            uf2_name: "xiao_basic_pcb_v2.uf2"
+          - board_name: "XIAO_SAMD21"
+            fqbn: "Seeeduino:samd:seeed_XIAO_m0"
+            package_url: "https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json"
+            hw_define: "NO_PCB_GITHUB_SPECS"
+            uf2_name: "xiao_non_pcb.uf2"
+
+          # --- Adafruit QT Py SAMD21 Configurations ---
+          - board_name: "QTPY_SAMD21"
+            fqbn: "adafruit:samd:adafruit_qtpy_m0"
+            package_url: "https://adafruit.github.io/arduino-board-index/package_adafruit_index.json"
+            hw_define: "V1_PCB"
+            uf2_name: "qtpy_basic_pcb_v1.uf2"
+          - board_name: "QTPY_SAMD21"
+            fqbn: "adafruit:samd:adafruit_qtpy_m0"
+            package_url: "https://adafruit.github.io/arduino-board-index/package_adafruit_index.json"
+            hw_define: "V1_2_PCB"
+            uf2_name: "qtpy_basic_pcb_v2.uf2"
+          - board_name: "QTPY_SAMD21"
+            fqbn: "adafruit:samd:adafruit_qtpy_m0"
+            package_url: "https://adafruit.github.io/arduino-board-index/package_adafruit_index.json"
+            hw_define: "V2_ADVANCED_PCB"
+            uf2_name: "qtpy_advanced_pcb.uf2"
+          - board_name: "QTPY_SAMD21"
+            fqbn: "adafruit:samd:adafruit_qtpy_m0"
+            package_url: "https://adafruit.github.io/arduino-board-index/package_adafruit_index.json"
+            hw_define: "NO_PCB_GITHUB_SPECS"
+            uf2_name: "qtpy_non_pcb.uf2"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Configure Arduino CLI and Install Cores
+        run: |
+          arduino-cli config init
+          # Add both Seeed and Adafruit board URLs
+          arduino-cli config add board_manager.additional_urls https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json https://adafruit.github.io/arduino-board-index/package_adafruit_index.json
+          arduino-cli core update-index
+          # Install both SAMD cores
+          arduino-cli core install Seeeduino:samd --additional-urls https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json
+          arduino-cli core install adafruit:samd --additional-urls https://adafruit.github.io/arduino-board-index/package_adafruit_index.json
+          arduino-cli lib update-index
+          # -------------------------------------------------------------------
+          # !!! ADD YOUR LIBRARY INSTALLATIONS HERE IF NEEDED !!!
+          # Example: arduino-cli lib install "Adafruit NeoPixel"
+          # -------------------------------------------------------------------
+
+      - name: Set Hardware Define in Sketch
+        env:
+          SKETCH_FILE: "firmware.ino" # Set to your sketch filename
+          CONFIG_DEFINE: ${{ matrix.hw_define }}
+          DEFINES_LIST: "V1_PCB V1_2_PCB V2_ADVANCED_PCB NO_PCB_GITHUB_SPECS"
+        run: |
+          echo "Setting Hardware Define to: ${CONFIG_DEFINE} in ${SKETCH_FILE}"
+          
+          # First, ensure all target defines are commented out
+          for DEF in $DEFINES_LIST; do
+            sed -i -E "s|^(\s*#define\s+${DEF})|//#define ${DEF}|" $SKETCH_FILE
+          done
+          
+          # Now, uncomment only the desired define
+          sed -i -E "s|^(\s*//\s*#define\s+${CONFIG_DEFINE})|#define ${CONFIG_DEFINE}|" $SKETCH_FILE
+          
+          echo "--- Sketch File ($SKETCH_FILE) after modification ---"
+          grep "#define" $SKETCH_FILE || echo "No active #defines found"
+          echo "---------------------------------------------------"
+
+
+      - name: Compile Sketch
+        env:
+          SKETCH_DIR: "." # Assuming firmware.ino is in the root. Adjust if it's in a subdirectory.
+        run: |
+          arduino-cli compile --fqbn ${{ matrix.fqbn }} --output-dir build_output --export-binaries $SKETCH_DIR
+
+      - name: Find uf2conv.py
+        id: find_uf2conv
+        run: |
+          # Search within Arduino packages, prioritize Adafruit's if multiple exist, then fallback
+          UF2_CONV_PATH=$(find $HOME/.arduino15/packages/adafruit/ -name "uf2conv.py" | head -n 1)
+          if [ -z "$UF2_CONV_PATH" ]; then
+            UF2_CONV_PATH=$(find $HOME/.arduino15/packages/ -name "uf2conv.py" | head -n 1)
+          fi
+          
+          if [ -z "$UF2_CONV_PATH" ]; then
+            echo "uf2conv.py not found! Attempting to install adafruit-nrfutil."
+            pip install adafruit-nrfutil
+            UF2_CONV_PATH=$(which uf2conv.py)
+            if [ -z "$UF2_CONV_PATH" ]; then 
+              echo "Failed to find or install uf2conv.py. Aborting."
+              exit 1
+            fi
+          fi
+          echo "Using uf2conv.py at $UF2_CONV_PATH"
+          echo "UF2_CONV=$UF2_CONV_PATH" >> $GITHUB_ENV
+
+
+      - name: Convert to UF2
+        env:
+          SKETCH_NAME: "firmware" # Your sketch name without .ino
+          UF2_FAMILY_ID: "0x68ED2B88" # Common for SAMD21 - VERIFY if needed
+          UF2_BASE_ADDR: "0x2000"     # Common for SAMD21 - VERIFY if needed
+        run: |
+          BIN_FILE="build_output/${SKETCH_NAME}.ino.bin"
+          echo "Converting $BIN_FILE to ${{ matrix.uf2_name }}"
+          python3 ${{ env.UF2_CONV }} -c -f ${{ env.UF2_FAMILY_ID }} -b ${{ env.UF2_BASE_ADDR }} "$BIN_FILE" -o "${{ matrix.uf2_name }}"
+
+      - name: Upload UF2 Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.uf2_name }} # Creates an artifact for each specific UF2
+          path: ${{ matrix.uf2_name }}
+
+      - name: Upload All UF2 Artifacts (Optional)
+        # This step runs only once after all matrix jobs succeed (if needed)
+        # It's generally easier to download individual artifacts or a zip via the UI
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-firmware-uf2
+          path: "*.uf2"
