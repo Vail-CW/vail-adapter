@@ -76,30 +76,27 @@ jobs:
           arduino-cli lib update-index
           echo "Installing required libraries..."
           arduino-cli lib install MIDIUSB
-          arduino-cli lib install "Adafruit FreeTouch"
+          arduino-cli lib install Adafruit_FreeTouch # <--- CHANGED THIS LINE
           arduino-cli lib install FlashStorage
           echo "Library installation complete."
 
-      - name: Set Hardware Define in Header  # <--- RENAMED STEP TITLE
+      - name: Set Hardware Define in Header
         env:
-          CONFIG_FILE: "config.h" # <--- CHANGED TO config.h
+          CONFIG_FILE: "config.h" 
           CONFIG_DEFINE: ${{ matrix.hw_define }}
           DEFINES_LIST: "V1_PCB V1_2_PCB V2_ADVANCED_PCB NO_PCB_GITHUB_SPECS"
         run: |
           echo "Setting Hardware Define to: ${CONFIG_DEFINE} in ${CONFIG_FILE}"
           
-          # Check if config.h exists
           if [ ! -f "$CONFIG_FILE" ]; then
             echo "Error: $CONFIG_FILE not found!"
             exit 1
           fi
 
-          # First, ensure all target defines are commented out
           for DEF in $DEFINES_LIST; do
             sed -i -E "s|^(\s*#define\s+${DEF})|//#define ${DEF}|" $CONFIG_FILE
           done
           
-          # Now, uncomment only the desired define
           sed -i -E "s|^(\s*//\s*#define\s+${CONFIG_DEFINE})|#define ${CONFIG_DEFINE}|" $CONFIG_FILE
           
           echo "--- Config File ($CONFIG_FILE) after modification ---"
@@ -108,9 +105,8 @@ jobs:
 
       - name: Compile Sketch
         env:
-          SKETCH_DIR: "." # Assuming firmware.ino and config.h are in the root.
+          SKETCH_DIR: "." 
         run: |
-          # We still compile the directory containing firmware.ino
           arduino-cli compile --fqbn ${{ matrix.fqbn }} --output-dir build_output --export-binaries $SKETCH_DIR
 
       - name: Find uf2conv.py
@@ -134,9 +130,9 @@ jobs:
 
       - name: Convert to UF2
         env:
-          SKETCH_NAME: "firmware" # Your sketch name without .ino
-          UF2_FAMILY_ID: "0x68ED2B88" # Common for SAMD21 - VERIFY if needed
-          UF2_BASE_ADDR: "0x2000"     # Common for SAMD21 - VERIFY if needed
+          SKETCH_NAME: "firmware" 
+          UF2_FAMILY_ID: "0x68ED2B88" 
+          UF2_BASE_ADDR: "0x2000"     
         run: |
           BIN_FILE="build_output/${SKETCH_NAME}.ino.bin"
           echo "Converting $BIN_FILE to ${{ matrix.uf2_name }}"
