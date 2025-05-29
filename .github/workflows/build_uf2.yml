@@ -77,8 +77,8 @@ jobs:
           echo "Installing required libraries..."
           arduino-cli lib install MIDIUSB
           arduino-cli lib install "Adafruit FreeTouch Library"
-          arduino-cli lib install FlashStorage
-          arduino-cli lib install Keyboard # <--- ADDED THIS LINE
+          arduino-cli lib install FlashStorage_SAMD # <--- CHANGED THIS LINE
+          arduino-cli lib install Keyboard 
           echo "Library installation complete."
           echo "--- Installed Libraries ---"
           arduino-cli lib list
