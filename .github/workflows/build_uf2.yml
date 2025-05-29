@@ -66,57 +66,60 @@ jobs:
       - name: Install Arduino CLI
         uses: arduino/setup-arduino-cli@v2
 
-      - name: Configure Arduino CLI and Install Cores
+      - name: Configure Arduino CLI and Install Cores & Libraries
         run: |
           arduino-cli config init
-          # Add both Seeed and Adafruit board URLs
           arduino-cli config add board_manager.additional_urls https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json https://adafruit.github.io/arduino-board-index/package_adafruit_index.json
           arduino-cli core update-index
-          # Install both SAMD cores
           arduino-cli core install Seeeduino:samd --additional-urls https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json
           arduino-cli core install adafruit:samd --additional-urls https://adafruit.github.io/arduino-board-index/package_adafruit_index.json
           arduino-cli lib update-index
-          # -------------------------------------------------------------------
-          # !!! ADD YOUR LIBRARY INSTALLATIONS HERE IF NEEDED !!!
-          # Example: arduino-cli lib install "Adafruit NeoPixel"
-          # -------------------------------------------------------------------
+          echo "Installing required libraries..."
+          arduino-cli lib install MIDIUSB
+          arduino-cli lib install "Adafruit FreeTouch"
+          arduino-cli lib install FlashStorage
+          echo "Library installation complete."
 
-      - name: Set Hardware Define in Sketch
+      - name: Set Hardware Define in Header  # <--- RENAMED STEP TITLE
         env:
-          SKETCH_FILE: "firmware.ino" # Set to your sketch filename
+          CONFIG_FILE: "config.h" # <--- CHANGED TO config.h
           CONFIG_DEFINE: ${{ matrix.hw_define }}
           DEFINES_LIST: "V1_PCB V1_2_PCB V2_ADVANCED_PCB NO_PCB_GITHUB_SPECS"
         run: |
-          echo "Setting Hardware Define to: ${CONFIG_DEFINE} in ${SKETCH_FILE}"
+          echo "Setting Hardware Define to: ${CONFIG_DEFINE} in ${CONFIG_FILE}"
           
+          # Check if config.h exists
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "Error: $CONFIG_FILE not found!"
+            exit 1
+          fi
+
           # First, ensure all target defines are commented out
           for DEF in $DEFINES_LIST; do
-            sed -i -E "s|^(\s*#define\s+${DEF})|//#define ${DEF}|" $SKETCH_FILE
+            sed -i -E "s|^(\s*#define\s+${DEF})|//#define ${DEF}|" $CONFIG_FILE
           done
           
           # Now, uncomment only the desired define
-          sed -i -E "s|^(\s*//\s*#define\s+${CONFIG_DEFINE})|#define ${CONFIG_DEFINE}|" $SKETCH_FILE
+          sed -i -E "s|^(\s*//\s*#define\s+${CONFIG_DEFINE})|#define ${CONFIG_DEFINE}|" $CONFIG_FILE
           
-          echo "--- Sketch File ($SKETCH_FILE) after modification ---"
-          grep "#define" $SKETCH_FILE || echo "No active #defines found"
+          echo "--- Config File ($CONFIG_FILE) after modification ---"
+          grep "#define" $CONFIG_FILE || echo "No active #defines found"
           echo "---------------------------------------------------"
-
 
       - name: Compile Sketch
         env:
-          SKETCH_DIR: "." # Assuming firmware.ino is in the root. Adjust if it's in a subdirectory.
+          SKETCH_DIR: "." # Assuming firmware.ino and config.h are in the root.
         run: |
+          # We still compile the directory containing firmware.ino
           arduino-cli compile --fqbn ${{ matrix.fqbn }} --output-dir build_output --export-binaries $SKETCH_DIR
 
       - name: Find uf2conv.py
         id: find_uf2conv
         run: |
-          # Search within Arduino packages, prioritize Adafruit's if multiple exist, then fallback
           UF2_CONV_PATH=$(find $HOME/.arduino15/packages/adafruit/ -name "uf2conv.py" | head -n 1)
           if [ -z "$UF2_CONV_PATH" ]; then
             UF2_CONV_PATH=$(find $HOME/.arduino15/packages/ -name "uf2conv.py" | head -n 1)
           fi
-          
           if [ -z "$UF2_CONV_PATH" ]; then
             echo "uf2conv.py not found! Attempting to install adafruit-nrfutil."
             pip install adafruit-nrfutil
@@ -128,7 +131,6 @@ jobs:
           fi
           echo "Using uf2conv.py at $UF2_CONV_PATH"
           echo "UF2_CONV=$UF2_CONV_PATH" >> $GITHUB_ENV
-
 
       - name: Convert to UF2
         env:
@@ -143,12 +145,10 @@ jobs:
       - name: Upload UF2 Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.uf2_name }} # Creates an artifact for each specific UF2
+          name: ${{ matrix.uf2_name }}
           path: ${{ matrix.uf2_name }}
 
       - name: Upload All UF2 Artifacts (Optional)
-        # This step runs only once after all matrix jobs succeed (if needed)
-        # It's generally easier to download individual artifacts or a zip via the UI
         if: success()
         uses: actions/upload-artifact@v4
         with:
