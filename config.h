@@ -34,7 +34,7 @@
   #define PIEZO_PIN 10
   #define LED_ON true
   #define LED_OFF (!LED_ON)
-  #define BOARD_NAME "V1 PCB"
+  #define BOARD_NAME "V1_2 PCB"
   // Radio pins not defined, so HAS_RADIO_OUTPUT will not be defined
 #endif
 
