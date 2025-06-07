@@ -1,8 +1,5 @@
-// Copyright 2020 Neale Pickett
-// Distributed under the MIT license
-// Please see https://github.com/nealey/vail-adapter/
+#include "config.h" 
 
-// MIDIUSB - Version: Latest 
 #include <MIDIUSB.h>
 #include <Keyboard.h>
 #include <Adafruit_FreeTouch.h>
@@ -10,231 +7,231 @@
 #include "bounce2.h"
 #include "touchbounce.h"
 #include "adapter.h"
+#include "equal_temperament.h"
 
-#define DIT_PIN 2
-#define DAH_PIN 1
-#define KEY_PIN 0
-#define QT_DIT_PIN A6
-#define QT_DAH_PIN A7
-#define QT_KEY_PIN A8
-#define PIEZO 10
-#define LED_ON false // Xiao inverts this logic for some reason
-#define LED_OFF (!LED_ON)
+bool trs = false;
 
-#define DIT_KEYBOARD_KEY KEY_LEFT_CTRL
-#define DAH_KEYBOARD_KEY KEY_RIGHT_CTRL
-#define TONE 3000
-
-#define MILLISECOND 1
-#define SECOND (1 * MILLISECOND)
-
-// EEPROM definitions
-#define EEPROM_KEYER_TYPE_ADDR 0      // Address for keyer type (1 byte)
-#define EEPROM_DIT_DURATION_ADDR 1    // Address for dit duration (2 bytes)
-#define EEPROM_TX_NOTE_ADDR 3         // Address for TX tone/note (1 byte)
-#define EEPROM_VALID_FLAG_ADDR 4      // Address for valid flag (1 byte)
-#define EEPROM_VALID_VALUE 0x42       // Magic value to indicate EEPROM is initialized
-
-bool trs = false; // true if a TRS plug is in a TRRS jack
-uint16_t iambicDelay = 80 * MILLISECOND;
 Bounce dit = Bounce();
 Bounce dah = Bounce();
-Bounce key = Bounce();
+Bounce key = Bounce(); 
 TouchBounce qt_dit = TouchBounce();
 TouchBounce qt_dah = TouchBounce();
-TouchBounce qt_key = TouchBounce();
-VailAdapter adapter = VailAdapter(PIEZO);
+TouchBounce qt_key = TouchBounce(); 
 
-// Function to save settings to EEPROM - this is only in the main file
-void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote) {
+VailAdapter adapter = VailAdapter(PIEZO_PIN);
+
+uint8_t loadToneFromEEPROM(); 
+
+void playDot(uint8_t noteNumber) {
+  digitalWrite(LED_BUILTIN, LED_ON);
+  tone(PIEZO_PIN, equalTemperamentNote[noteNumber]);
+  delay(DOT_DURATION);
+  digitalWrite(LED_BUILTIN, LED_OFF);
+  noTone(PIEZO_PIN);
+  delay(ELEMENT_SPACE);
+}
+
+void playDash(uint8_t noteNumber) {
+  digitalWrite(LED_BUILTIN, LED_ON);
+  tone(PIEZO_PIN, equalTemperamentNote[noteNumber]);
+  delay(DASH_DURATION);
+  digitalWrite(LED_BUILTIN, LED_OFF);
+  noTone(PIEZO_PIN);
+  delay(ELEMENT_SPACE);
+}
+
+void playVAIL(uint8_t noteNumber) {
+  playDot(noteNumber); playDot(noteNumber); playDot(noteNumber); playDash(noteNumber);
+  delay(CHAR_SPACE - ELEMENT_SPACE);
+  playDot(noteNumber); playDash(noteNumber);
+  delay(CHAR_SPACE - ELEMENT_SPACE);
+  playDot(noteNumber); playDot(noteNumber);
+  delay(CHAR_SPACE - ELEMENT_SPACE);
+  playDot(noteNumber); playDash(noteNumber); playDot(noteNumber); playDot(noteNumber);
+  noTone(PIEZO_PIN);
+}
+
+uint8_t loadToneFromEEPROM() {
+  if (EEPROM.read(EEPROM_VALID_FLAG_ADDR) == EEPROM_VALID_VALUE) {
+    uint8_t txNote = EEPROM.read(EEPROM_TX_NOTE_ADDR);
+    return txNote;
+  } else {
+    Serial.println("EEPROM not initialized, using default tone");
+    return DEFAULT_TONE_NOTE;
+  }
+}
+
+void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote, uint8_t ditKey, uint8_t dahKey) {
   EEPROM.write(EEPROM_KEYER_TYPE_ADDR, keyerType);
   EEPROM.put(EEPROM_DIT_DURATION_ADDR, ditDuration);
   EEPROM.write(EEPROM_TX_NOTE_ADDR, txNote);
+  EEPROM.write(EEPROM_DIT_KEY_ADDR, ditKey);
+  EEPROM.write(EEPROM_DAH_KEY_ADDR, dahKey);
   EEPROM.write(EEPROM_VALID_FLAG_ADDR, EEPROM_VALID_VALUE);
-  // Make sure data is committed to EEPROM
   EEPROM.commit();
-  
-  // Debug output
-  Serial.print("Saved to EEPROM - Keyer: ");
-  Serial.print(keyerType);
-  Serial.print(", Dit Duration: ");
-  Serial.print(ditDuration);
-  Serial.print(", TX Note: ");
-  Serial.println(txNote);
+  Serial.print("Saved to EEPROM - Keyer: "); Serial.print(keyerType);
+  Serial.print(", Dit Duration: "); Serial.print(ditDuration);
+  Serial.print(", TX Note: "); Serial.println(txNote);
+  Serial.print(", Dit Key: "); Serial.print(ditKey);
+  Serial.print(", Dah Key: "); Serial.println(dahKey);
 }
 
-// Function to load settings from EEPROM - this is only in the main file
 void loadSettingsFromEEPROM() {
-  // Check if EEPROM has been initialized with our flag
   if (EEPROM.read(EEPROM_VALID_FLAG_ADDR) == EEPROM_VALID_VALUE) {
-    // Read keyer type
     uint8_t keyerType = EEPROM.read(EEPROM_KEYER_TYPE_ADDR);
-    
-    // Read dit duration (stored as 2 bytes)
-    uint16_t ditDuration;
-    EEPROM.get(EEPROM_DIT_DURATION_ADDR, ditDuration);
-    
-    // Read TX note
-    uint8_t txNote = EEPROM.read(EEPROM_TX_NOTE_ADDR);
-    
-    Serial.print("EEPROM values - Keyer: ");
-    Serial.print(keyerType);
-    Serial.print(", Dit Duration: ");
-    Serial.print(ditDuration);
-    Serial.print(", TX Note: ");
-    Serial.println(txNote);
-    
-    // Apply the settings to the adapter
+    uint16_t ditDurationVal; 
+    EEPROM.get(EEPROM_DIT_DURATION_ADDR, ditDurationVal);
+    uint8_t txNoteVal = EEPROM.read(EEPROM_TX_NOTE_ADDR); 
+    uint8_t ditKeyVal = EEPROM.read(EEPROM_DIT_KEY_ADDR);
+    uint8_t dahKeyVal = EEPROM.read(EEPROM_DAH_KEY_ADDR);
+
+    adapter.setKeybindings(ditKeyVal, dahKeyVal);
+
+    Serial.print("EEPROM values - Keyer: "); Serial.print(keyerType);
+    Serial.print(", Dit Duration: "); Serial.print(ditDurationVal);
+    Serial.print(", TX Note: "); Serial.println(txNoteVal);
+    Serial.print(", Dit Key: "); Serial.print(ditKeyVal);
+    Serial.print(", Dah Key: "); Serial.println(dahKeyVal);
+
     midiEventPacket_t event;
-    
-    // Set dit duration
-    event.header = 0x0B;
-    event.byte1 = 0xB0; // Controller Change
-    event.byte2 = 1;    // Dit duration controller
-    event.byte3 = ditDuration / 2; // Convert back to MIDI value (0-254)
+    event.header = 0x0B; event.byte1 = 0xB0; 
+    event.byte2 = 1; 
+    event.byte3 = ditDurationVal / (2 * MILLISECOND); 
     adapter.HandleMIDI(event);
-    
-    // Set TX note
-    event.header = 0x0B;
-    event.byte1 = 0xB0; // Controller Change
-    event.byte2 = 2;    // TX note controller
-    event.byte3 = txNote;
+
+    event.byte2 = 2; 
+    event.byte3 = txNoteVal; 
     adapter.HandleMIDI(event);
-    
-    // Set keyer type if it's valid (between 1-9)
-    if (keyerType >= 1 && keyerType <= 9) {
-      event.header = 0x0C;
-      event.byte1 = 0xC0; // Program Change
-      event.byte2 = keyerType;
-      event.byte3 = 0;
+
+    if (keyerType >= 0 && keyerType <= 9) { 
+      event.header = 0x0C; event.byte1 = 0xC0; 
+      event.byte2 = keyerType; event.byte3 = 0;
       adapter.HandleMIDI(event);
     }
   } else {
-    // Initialize EEPROM with default values
-    EEPROM.write(EEPROM_KEYER_TYPE_ADDR, 1);    // Default to straight key
-    EEPROM.put(EEPROM_DIT_DURATION_ADDR, (uint16_t)100); // Default dit duration
-    EEPROM.write(EEPROM_TX_NOTE_ADDR, 69);      // Default note (A4 = 440Hz)
+    Serial.println("EEPROM initializing with default values...");
+    EEPROM.write(EEPROM_KEYER_TYPE_ADDR, 1); 
+    EEPROM.put(EEPROM_DIT_DURATION_ADDR, (uint16_t)DEFAULT_ADAPTER_DIT_DURATION_MS);
+    EEPROM.write(EEPROM_TX_NOTE_ADDR, DEFAULT_TONE_NOTE);
+    EEPROM.write(EEPROM_DIT_KEY_ADDR, DEFAULT_DIT_KEY);
+    EEPROM.write(EEPROM_DAH_KEY_ADDR, DEFAULT_DAH_KEY);
     EEPROM.write(EEPROM_VALID_FLAG_ADDR, EEPROM_VALID_VALUE);
-    // Make sure data is committed to EEPROM
     EEPROM.commit();
-    
-    Serial.println("EEPROM initialized with default values");
+    Serial.println("EEPROM initialized. Loading these defaults now.");
+    loadSettingsFromEEPROM(); 
   }
 }
 
 void setup() {
-  // Initialize serial for debugging
   Serial.begin(9600);
-  delay(300);
-  Serial.println("Vail Adapter starting...");
-  
+  delay(500); 
+  Serial.print("\n\nVail Adapter starting on: ");
+  Serial.println(BOARD_NAME);
+
   pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LED_OFF); 
+
   dit.attach(DIT_PIN, INPUT_PULLUP);
   dah.attach(DAH_PIN, INPUT_PULLUP);
   key.attach(KEY_PIN, INPUT_PULLUP);
+  
   qt_dit.attach(QT_DIT_PIN);
   qt_dah.attach(QT_DAH_PIN);
   qt_key.attach(QT_KEY_PIN);
 
-  // Load settings from EEPROM
-  loadSettingsFromEEPROM();
+#ifdef HAS_RADIO_OUTPUT
+  pinMode(RADIO_DIT_PIN, OUTPUT);
+  pinMode(RADIO_DAH_PIN, OUTPUT);
+  digitalWrite(RADIO_DIT_PIN, RADIO_INACTIVE_LEVEL); // Use configured inactive level
+  digitalWrite(RADIO_DAH_PIN, RADIO_INACTIVE_LEVEL); // Use configured inactive level
+  Serial.print("Radio Output Pins Initialized. Inactive Level: ");
+  Serial.println(RADIO_INACTIVE_LEVEL == LOW ? "LOW" : "HIGH");
+#endif
 
-  // Print loaded settings for debugging
-  Serial.print("Current adapter settings - Keyer: ");
-  Serial.print(adapter.getCurrentKeyerType());
-  Serial.print(", Dit Duration: ");
-  Serial.print(adapter.getDitDuration());
-  Serial.print(", TX Note: ");
-  Serial.println(adapter.getTxNote());
+  uint8_t startupTone = loadToneFromEEPROM(); 
+  Serial.println("Playing VAIL in Morse code at 20 WPM");
+  playVAIL(startupTone);
+  
+  loadSettingsFromEEPROM(); 
+
+  Serial.print("Adapter settings loaded - Keyer: "); Serial.print(adapter.getCurrentKeyerType());
+  Serial.print(", Dit Duration (ms): "); Serial.print(adapter.getDitDuration());
+  Serial.print(", TX Note: "); Serial.println(adapter.getTxNote());
+  Serial.print(", Dit Key: "); Serial.print(adapter.getDitKey());
+  Serial.print(", Dah Key: "); Serial.println(adapter.getDahKey());
+  Serial.print("Buzzer initially: "); Serial.println(adapter.isBuzzerEnabled() ? "ON" : "OFF");
+  Serial.print("Radio Mode initially: "); Serial.println(adapter.isRadioModeActive() ? "ON" : "OFF");
 
   Keyboard.begin();
+  MidiUSB.flush(); 
 
-  // To auto-sense a straight key in a TRRS jack,
-  // we just check to see if DAH is closed. 
-  // The sleeve on the straight key's TRS plug
-  // will short the second ring to the sleeve.
-  for (int i = 0; i < 16; i++) {
-    delay(20);
-    dah.update();
+  for (int i = 0; i < 16; i++) { 
+    delay(20); 
+    dah.update(); 
   }
-  if (dah.read() == LOW) {
+  if (dah.read() == LOW) { 
     trs = true;
-    key = dit;
-    Serial.println("TRS plug detected, using straight key mode");
-  }
-  
-  // Play a test tone using the stored TX note when in keyboard mode
-  if (adapter.KeyboardMode()) {
-    Serial.print("Playing test tone with note value: ");
-    Serial.println(adapter.getTxNote());
-    adapter.BeginTx();
-    delay(100);
-    adapter.EndTx();
+    Serial.println("TRS plug potentially detected (DAH pin grounded).");
   }
 }
 
-// A reentrant doodad to blink out the letter V at startup
-// After startup, display the status of the keyboard
-#define HELLO_BITS 0b0000101010111000
 void setLED() {
-  static bool beepin = false;
-  int beat = millis() / iambicDelay;
-  bool on = adapter.KeyboardMode(); // If we're not in intro, display status of keyboard
+  bool finalLedState = false; 
 
-  if (beat < 16) {
-    on = HELLO_BITS & (1 << (15-beat));
-    if (on != beepin) {
-      if (on) {
-        tone(PIEZO, TONE);
-      } else {
-        noTone(PIEZO);
-      }
-      beepin = on;
-    }
+  if (adapter.isRadioModeActive()) {
+    finalLedState = (millis() % 400 < 200); 
+  } else if (!adapter.isBuzzerEnabled()) {
+    finalLedState = (millis() % 2000 < 1000); 
+  } else {
+    finalLedState = adapter.KeyboardMode();
   }
-  
-  digitalWrite(LED_BUILTIN, on?LED_ON:LED_OFF);
+  digitalWrite(LED_BUILTIN, finalLedState ? LED_ON : LED_OFF);
 }
 
 void loop() {
-  unsigned now = millis();  
+  unsigned int currentTime = millis(); 
   midiEventPacket_t event = MidiUSB.read();
 
   setLED();
-  adapter.Tick(now);
+  adapter.Tick(currentTime);
 
   if (event.header) {
-    Serial.print("MIDI event received: header=");
-    Serial.print(event.header);
-    Serial.print(", byte1=");
-    Serial.print(event.byte1);
-    Serial.print(", byte2=");
-    Serial.print(event.byte2);
-    Serial.print(", byte3=");
-    Serial.println(event.byte3);
-    
     adapter.HandleMIDI(event);
   }
 
-  // Monitor straight key pin
-  if (key.update() || qt_key.update()) {
-    bool pressed = !key.read() || qt_key.read();
-    adapter.HandlePaddle(PADDLE_STRAIGHT, pressed);
+  if (key.update()) { 
+    adapter.ProcessPaddleInput(PADDLE_STRAIGHT, !key.read(), false); 
   }
 
-  // If we made dit = dah, we have a straight key on the dit pin,
-  // so we skip other keys polling.
   if (trs) {
-    return;
+      // If DAH pin is grounded (TRS), this suggests a straight key might be plugged in
+      // where DIT line (tip) is the key and DAH line (ring) is shorted to GND (sleeve).
+      // The current Bounce objects 'dit' and 'dah' are still attached to their original pins.
+      // If your TRS straight key uses the DIT_PIN for keying and grounds DAH_PIN:
+      // You might want to only read the 'dit' object as a straight key when trs is true.
+      // if (dit.update()) {
+      //   adapter.ProcessPaddleInput(PADDLE_STRAIGHT, !dit.read(), false);
+      // }
+      // And then skip the separate DIT/DAH paddle processing below if trs == true.
+      // This part depends on your exact TRS wiring and desired behavior.
+      // For now, assuming all inputs are polled and 'trs' is just an indicator.
   }
 
-  if (dit.update() || qt_dit.update()) {
-    bool pressed = !dit.read() || qt_dit.read();
-    adapter.HandlePaddle(PADDLE_DIT, pressed);
+
+  if (dit.update()) {
+    adapter.ProcessPaddleInput(PADDLE_DIT, !dit.read(), false);
   }
-  
-  if (dah.update() || qt_dah.update()) {
-    bool pressed = !dah.read() || qt_dah.read();
-    adapter.HandlePaddle(PADDLE_DAH, pressed);
+  if (dah.update()) {
+    adapter.ProcessPaddleInput(PADDLE_DAH, !dah.read(), false);
+  }
+
+  if (qt_key.update()) {
+    adapter.ProcessPaddleInput(PADDLE_STRAIGHT, qt_key.read(), true); 
+  }
+  if (qt_dit.update()) {
+    adapter.ProcessPaddleInput(PADDLE_DIT, qt_dit.read(), true);
+  }
+  if (qt_dah.update()) {
+    adapter.ProcessPaddleInput(PADDLE_DAH, qt_dah.read(), true);
   }
 }
