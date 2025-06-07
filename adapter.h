@@ -26,6 +26,9 @@ private:
     bool radioDitState = false;
     bool radioDahState = false;
 
+    uint8_t ditKey; // New member for dit key
+    uint8_t dahKey; // New member for dah key
+
 
     void midiKey(uint8_t key, bool down);
     void keyboardKey(uint8_t key, bool down);
@@ -56,4 +59,8 @@ public:
     uint8_t getCurrentKeyerType() const;
     uint16_t getDitDuration() const;
     uint8_t getTxNote() const;
+
+    void setKeybindings(uint8_t newDitKey, uint8_t newDahKey); // New method to set keybindings
+    uint8_t getDitKey() const; // New getter for dit key
+    uint8_t getDahKey() const; // New getter for dah key
 };

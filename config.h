@@ -86,8 +86,8 @@
 
 
 // --- COMMON DEFINITIONS ---
-#define DIT_KEYBOARD_KEY KEY_LEFT_CTRL
-#define DAH_KEYBOARD_KEY KEY_RIGHT_CTRL
+#define DEFAULT_DIT_KEY KEY_LEFT_CTRL
+#define DEFAULT_DAH_KEY KEY_RIGHT_CTRL
 #define DEFAULT_TONE_NOTE 69
 #define DEFAULT_ADAPTER_DIT_DURATION_MS 100
 
@@ -105,7 +105,9 @@
 #define EEPROM_KEYER_TYPE_ADDR 0
 #define EEPROM_DIT_DURATION_ADDR 1
 #define EEPROM_TX_NOTE_ADDR 3
-#define EEPROM_VALID_FLAG_ADDR 4
+#define EEPROM_DIT_KEY_ADDR 4 // New address for dit key
+#define EEPROM_DAH_KEY_ADDR 5 // New address for dah key
+#define EEPROM_VALID_FLAG_ADDR 6 // Incremented to make space for new keys
 #define EEPROM_VALID_VALUE 0x42
 
 // Spam detection and feature thresholds

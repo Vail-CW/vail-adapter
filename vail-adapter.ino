@@ -61,15 +61,19 @@ uint8_t loadToneFromEEPROM() {
   }
 }
 
-void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote) {
+void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote, uint8_t ditKey, uint8_t dahKey) {
   EEPROM.write(EEPROM_KEYER_TYPE_ADDR, keyerType);
   EEPROM.put(EEPROM_DIT_DURATION_ADDR, ditDuration);
   EEPROM.write(EEPROM_TX_NOTE_ADDR, txNote);
+  EEPROM.write(EEPROM_DIT_KEY_ADDR, ditKey);
+  EEPROM.write(EEPROM_DAH_KEY_ADDR, dahKey);
   EEPROM.write(EEPROM_VALID_FLAG_ADDR, EEPROM_VALID_VALUE);
   EEPROM.commit();
   Serial.print("Saved to EEPROM - Keyer: "); Serial.print(keyerType);
   Serial.print(", Dit Duration: "); Serial.print(ditDuration);
   Serial.print(", TX Note: "); Serial.println(txNote);
+  Serial.print(", Dit Key: "); Serial.print(ditKey);
+  Serial.print(", Dah Key: "); Serial.println(dahKey);
 }
 
 void loadSettingsFromEEPROM() {
@@ -78,10 +82,16 @@ void loadSettingsFromEEPROM() {
     uint16_t ditDurationVal; 
     EEPROM.get(EEPROM_DIT_DURATION_ADDR, ditDurationVal);
     uint8_t txNoteVal = EEPROM.read(EEPROM_TX_NOTE_ADDR); 
+    uint8_t ditKeyVal = EEPROM.read(EEPROM_DIT_KEY_ADDR);
+    uint8_t dahKeyVal = EEPROM.read(EEPROM_DAH_KEY_ADDR);
+
+    adapter.setKeybindings(ditKeyVal, dahKeyVal);
 
     Serial.print("EEPROM values - Keyer: "); Serial.print(keyerType);
     Serial.print(", Dit Duration: "); Serial.print(ditDurationVal);
     Serial.print(", TX Note: "); Serial.println(txNoteVal);
+    Serial.print(", Dit Key: "); Serial.print(ditKeyVal);
+    Serial.print(", Dah Key: "); Serial.println(dahKeyVal);
 
     midiEventPacket_t event;
     event.header = 0x0B; event.byte1 = 0xB0; 
@@ -103,6 +113,8 @@ void loadSettingsFromEEPROM() {
     EEPROM.write(EEPROM_KEYER_TYPE_ADDR, 1); 
     EEPROM.put(EEPROM_DIT_DURATION_ADDR, (uint16_t)DEFAULT_ADAPTER_DIT_DURATION_MS);
     EEPROM.write(EEPROM_TX_NOTE_ADDR, DEFAULT_TONE_NOTE);
+    EEPROM.write(EEPROM_DIT_KEY_ADDR, DEFAULT_DIT_KEY);
+    EEPROM.write(EEPROM_DAH_KEY_ADDR, DEFAULT_DAH_KEY);
     EEPROM.write(EEPROM_VALID_FLAG_ADDR, EEPROM_VALID_VALUE);
     EEPROM.commit();
     Serial.println("EEPROM initialized. Loading these defaults now.");
@@ -145,6 +157,8 @@ void setup() {
   Serial.print("Adapter settings loaded - Keyer: "); Serial.print(adapter.getCurrentKeyerType());
   Serial.print(", Dit Duration (ms): "); Serial.print(adapter.getDitDuration());
   Serial.print(", TX Note: "); Serial.println(adapter.getTxNote());
+  Serial.print(", Dit Key: "); Serial.print(adapter.getDitKey());
+  Serial.print(", Dah Key: "); Serial.println(adapter.getDahKey());
   Serial.print("Buzzer initially: "); Serial.println(adapter.isBuzzerEnabled() ? "ON" : "OFF");
   Serial.print("Radio Mode initially: "); Serial.println(adapter.isRadioModeActive() ? "ON" : "OFF");
 
@@ -196,7 +210,7 @@ void loop() {
       // If your TRS straight key uses the DIT_PIN for keying and grounds DAH_PIN:
       // You might want to only read the 'dit' object as a straight key when trs is true.
       // if (dit.update()) {
-      //    adapter.ProcessPaddleInput(PADDLE_STRAIGHT, !dit.read(), false);
+      //   adapter.ProcessPaddleInput(PADDLE_STRAIGHT, !dit.read(), false);
       // }
       // And then skip the separate DIT/DAH paddle processing below if trs == true.
       // This part depends on your exact TRS wiring and desired behavior.
