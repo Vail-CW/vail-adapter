@@ -6,12 +6,24 @@
 #include "adapter.h"
 #include "polybuzzer.h"
 
-// For SAMD21 software reset if needed by other parts of code
 #if defined(ARDUINO_ARCH_SAMD)
-// NVIC_SystemReset() is typically available through Arduino.h / CMSIS includes
 #endif
 
 extern void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote, uint8_t ditKey, uint8_t dahKey);
+
+uint8_t getSpecialKey(uint8_t keyCode) {
+  switch (keyCode) {
+    case 120: return '[';
+    case 121: return ']';
+    case 122: return '\\';
+    case 123: return '/';
+    case 124: return KEY_LEFT_SHIFT;
+    case 125: return KEY_RIGHT_SHIFT;
+    case 126: return KEY_LEFT_CTRL;
+    case 127: return KEY_RIGHT_CTRL;
+    default: return keyCode;
+  }
+}
 
 VailAdapter::VailAdapter(unsigned int PiezoPin) {
     this->buzzer = new PolyBuzzer(PiezoPin);
@@ -25,7 +37,7 @@ VailAdapter::VailAdapter(unsigned int PiezoPin) {
     this->capDahPressCount = 0;
     this->radioDitState = false;
     this->radioDahState = false;
-    this.keyboardMode = true;
+    this->keyboardMode = true;
     this->keyer = NULL;
     this->txNote = DEFAULT_TONE_NOTE;
     this->ditDuration = DEFAULT_ADAPTER_DIT_DURATION_MS;
@@ -65,32 +77,31 @@ void VailAdapter::ResetDahCounter() {
     this->capDahPressCount = 0;
 }
 
-// Corrected MIDI key event function
 void VailAdapter::midiKey(uint8_t key, bool down) {
     uint8_t header;
     uint8_t status_byte;
     uint8_t velocity;
 
-    if (down) { // Note On
-        header = 0x09;      // CIN = 9 (Note On) for USB MIDI event packet
-        status_byte = 0x90; // MIDI Status = 0x90 (Note On, Channel 1)
-        velocity = 0x7F;    // Standard velocity for Note On
-    } else { // Note Off
-        header = 0x08;      // CIN = 8 (Note Off) for USB MIDI event packet
-        status_byte = 0x80; // MIDI Status = 0x80 (Note Off, Channel 1)
-        velocity = 0x00;    // Velocity for Note Off (0x00 is common)
+    if (down) {
+        header = 0x09;
+        status_byte = 0x90;
+        velocity = 0x7F;
+    } else {
+        header = 0x08;
+        status_byte = 0x80;
+        velocity = 0x00;
     }
-    // Construct the MIDI event packet for MIDIUSB library
     midiEventPacket_t event = {header, status_byte, key, velocity};
     MidiUSB.sendMIDI(event);
     MidiUSB.flush();
 }
 
 void VailAdapter::keyboardKey(uint8_t key, bool down) {
+    uint8_t keyToUse = getSpecialKey(key);
     if (down) {
-        Keyboard.press(key);
+        Keyboard.press(keyToUse);
     } else {
-        Keyboard.release(key);
+        Keyboard.release(keyToUse);
     }
 }
 
@@ -107,25 +118,24 @@ void VailAdapter::setRadioDit(bool active) {(void)active;}
 void VailAdapter::setRadioDah(bool active) {(void)active;}
 #endif
 
-void VailAdapter::BeginTx() {
+void VailAdapter::BeginTx(Paddle p) {
     if (!keyIsPressed) {
         keyIsPressed = true;
-        if (!this->radioModeActive) {
-            if (this->keyPressStartTime == 0) {
-                this->keyPressStartTime = millis();
-            }
+        if (!this->radioModeActive && this->keyPressStartTime == 0) {
+            this->keyPressStartTime = millis();
         }
     }
 
-    if (this->buzzerEnabled && !this->radioModeActive) { 
+    if (this->buzzerEnabled && !this->radioModeActive) {
         this->buzzer->Note(0, this->txNote);
     }
 
-    if (!this->radioModeActive) { 
+    if (!this->radioModeActive) {
         if (this->keyboardMode) {
-            this->keyboardKey(KEY_LEFT_CTRL, true);
+            uint8_t keyToPress = (p == PADDLE_DAH) ? this->dahKey : this->ditKey;
+            this->keyboardKey(keyToPress, true);
         } else {
-            this->midiKey(0, true); 
+            this->midiKey(0, true);
         }
     }
 }
@@ -138,11 +148,12 @@ void VailAdapter::EndTx() {
         }
     }
 
-    this->buzzer->NoTone(0); 
+    this->buzzer->NoTone(0);
 
-    if (!this->radioModeActive) { 
+    if (!this->radioModeActive) {
         if (this->keyboardMode) {
-            this->keyboardKey(KEY_LEFT_CTRL, false);
+            this->keyboardKey(this->ditKey, false);
+            this->keyboardKey(this->dahKey, false);
         } else {
             this->midiKey(0, false);
         }
@@ -163,18 +174,18 @@ void VailAdapter::ToggleRadioMode() {
     #ifdef HAS_RADIO_OUTPUT
     this->radioModeActive = !this->radioModeActive;
 
-    if (keyer) keyer->Release(); 
-    if (keyIsPressed) EndTx(); 
+    if (keyer) keyer->Release();
+    if (keyIsPressed) EndTx();
 
-    setRadioDit(false); 
+    setRadioDit(false);
     setRadioDah(false);
     radioDitState = false;
     radioDahState = false;
-    keyIsPressed = false; 
+    keyIsPressed = false;
 
     if (this->radioModeActive) {
         Serial.println("Radio Mode Activated (Sidetone Disabled)");
-        this->buzzer->NoTone(0); 
+        this->buzzer->NoTone(0);
         this->buzzer->Note(1, 60); delay(100);
         this->buzzer->Note(1, 65); delay(100);
         this->buzzer->Note(1, 70); delay(100);
@@ -185,9 +196,9 @@ void VailAdapter::ToggleRadioMode() {
         this->buzzer->Note(1, 65); delay(100);
         this->buzzer->Note(1, 60); delay(100);
         this->buzzer->NoTone(1);
-        delay(100); 
-        
-        NVIC_SystemReset(); 
+        delay(100);
+
+        NVIC_SystemReset();
     }
     #else
     Serial.println("Radio output not configured. Radio mode unavailable.");
@@ -198,9 +209,6 @@ void VailAdapter::ToggleRadioMode() {
 void VailAdapter::setKeybindings(uint8_t newDitKey, uint8_t newDahKey) {
     this->ditKey = newDitKey;
     this->dahKey = newDahKey;
-    Serial.print("Keybindings updated - DIT: "); Serial.print(this->ditKey);
-    Serial.print(", DAH: "); Serial.println(this->dahKey);
-    saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote, this->ditKey, this->dahKey);
 }
 
 uint8_t VailAdapter::getDitKey() const {
@@ -219,7 +227,7 @@ void VailAdapter::ProcessPaddleInput(Paddle paddle, bool pressed, bool isCapacit
             this->ditPressCount++;
             if (this->ditPressCount >= DIT_SPAM_COUNT_BUZZER_DISABLE) {
                 this->DisableBuzzer();
-                this->ditPressCount = 0; 
+                this->ditPressCount = 0;
             }
         } else {
             this->ditPressCount = 1;
@@ -255,31 +263,25 @@ void VailAdapter::ProcessPaddleInput(Paddle paddle, bool pressed, bool isCapacit
         } else if (paddle == PADDLE_DAH) {
             radioDahState = pressed;
             setRadioDah(radioDahState);
-        } else if (paddle == PADDLE_STRAIGHT) { 
-            radioDitState = pressed; 
+        } else if (paddle == PADDLE_STRAIGHT) {
+            radioDitState = pressed;
             setRadioDit(pressed);
         }
 
-        keyIsPressed = radioDitState || radioDahState; 
+        keyIsPressed = radioDitState || radioDahState;
 
-        if (!keyIsPressed && radioKeyIsActiveBefore) { 
+        if (!keyIsPressed && radioKeyIsActiveBefore) {
             this->buzzer->NoTone(0);
         }
         #endif
     } else {
-        if (paddle == PADDLE_STRAIGHT) {
-            if (pressed) BeginTx(); else EndTx();
+        if (this->keyer) {
+            this->keyer->Key(paddle, pressed);
         } else {
-            if (this->keyer) {
-                this->keyer->Key(paddle, pressed);
+            if (pressed) {
+                this->BeginTx(paddle);
             } else {
-                if (paddle == PADDLE_DIT) {
-                    if (this->keyboardMode) this->keyboardKey(this->ditKey, pressed);
-                    else this->midiKey(1, pressed);
-                } else if (paddle == PADDLE_DAH) {
-                    if (this->keyboardMode) this->keyboardKey(this->dahKey, pressed);
-                    else this->midiKey(2, pressed);
-                }
+                this->EndTx();
             }
         }
     }
@@ -315,11 +317,15 @@ void VailAdapter::HandleMIDI(midiEventPacket_t event) {
                     }
                     saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote, this->ditKey, this->dahKey);
                     break;
-                case 3: // New case for setting dit key
+                case 3:
                     this->setKeybindings(event.byte3, this->dahKey);
+                    Serial.print("DIT key updated to: "); Serial.println(event.byte3);
+                    saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote, this->ditKey, this->dahKey);
                     break;
-                case 4: // New case for setting dah key
+                case 4:
                     this->setKeybindings(this->ditKey, event.byte3);
+                    Serial.print("DAH key updated to: "); Serial.println(event.byte3);
+                    saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote, this->ditKey, this->dahKey);
                     break;
             }
             break;
@@ -353,7 +359,7 @@ void VailAdapter::Tick(unsigned int currentMillis) {
         }
     }
 
-    if (this->keyer && !this->radioModeActive) { 
+    if (this->keyer && !this->radioModeActive) {
         this->keyer->Tick(currentMillis);
     }
 }

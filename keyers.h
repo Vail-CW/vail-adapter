@@ -10,7 +10,7 @@ typedef enum {
 
 class Transmitter {
 public:
-    virtual void BeginTx();
+    virtual void BeginTx(Paddle p);
     virtual void EndTx();
 };
 

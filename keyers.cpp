@@ -94,7 +94,7 @@ public:
 
         if (wasClosed != nowClosed) {
             if (nowClosed) {
-                this->output->BeginTx();
+                this->output->BeginTx((Paddle)relay);
             } else {
                 this->output->EndTx();
             }
@@ -159,6 +159,7 @@ public:
 class ElBugKeyer: public BugKeyer {
 public:
     unsigned int nextRepeat;
+    Paddle currentElement;
 
     using BugKeyer::BugKeyer;
 
@@ -213,6 +214,7 @@ public:
         } else {
             int next = this->nextTx();
             if (next >= 0) {
+                this->currentElement = (Paddle)next;
                 nextPulse = this->keyDuration(next);
                 this->Tx(0, true);
             }
@@ -222,6 +224,20 @@ public:
             this->nextPulse = millis + nextPulse;
         } else {
             this->nextPulse = 0;
+        }
+    }
+
+    void Tx(int relay, bool closed) {
+        bool wasClosed = this->TxClosed();
+        this->txRelays[relay] = closed;
+        bool nowClosed = this->TxClosed();
+
+        if (wasClosed != nowClosed) {
+            if (nowClosed) {
+                this->output->BeginTx(this->currentElement);
+            } else {
+                this->output->EndTx();
+            }
         }
     }
 };

@@ -4,8 +4,8 @@
 // --- SELECT YOUR HARDWARE CONFIGURATION ---
 // Uncomment only one of the following lines:
 // #define V1_PCB // 
-// #define V1_2_PCB // Currently selected
- #define V2_ADVANCED_PCB  
+ #define V1_2_PCB // Currently selected
+// #define V2_ADVANCED_PCB  
 // #define NO_PCB_GITHUB_SPECS
 
 // --- PIN DEFINITIONS BASED ON SELECTION ---
