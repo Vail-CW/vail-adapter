@@ -297,13 +297,7 @@ break;
 case 2:
 this->txNote = event.byte3;
 Serial.print("TX Note set to: "); Serial.println(this->txNote);
-if (this->buzzerEnabled && !this->radioModeActive) {
-this->buzzer->Note(1, this->txNote); delay(100); this->buzzer->NoTone(1);
-} else if (this->buzzerEnabled && this->radioModeActive) {
-this->buzzer->Note(1, DEFAULT_TONE_NOTE); delay(50);
-this->buzzer->Note(1, DEFAULT_TONE_NOTE+5); delay(50);
-this->buzzer->NoTone(1);
-}
+
 saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote);
 break;
 }
