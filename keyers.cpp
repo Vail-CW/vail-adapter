@@ -1,5 +1,7 @@
+// keyers.cpp - FINAL VERSION
 #include <stddef.h>
 #include "keyers.h"
+#include "adapter.h" // <-- ADDED INCLUDE
 
 #define len(t) (sizeof(t)/sizeof(*t))
 
@@ -213,6 +215,18 @@ public:
         } else {
             int next = this->nextTx();
             if (next >= 0) {
+                // *** THIS IS THE CRITICAL FIX ***
+                // Before we transmit, tell the adapter which element we are sending.
+                if (this->output) {
+                    VailAdapter* adapter = static_cast<VailAdapter*>(this->output);
+                    if (next == PADDLE_DAH) {
+                        adapter->activePaddle = 2; // 2 for DAH
+                    } else {
+                        adapter->activePaddle = 1; // 1 for DIT
+                    }
+                }
+                // *** END OF FIX ***
+
                 nextPulse = this->keyDuration(next);
                 this->Tx(0, true);
             }
@@ -400,13 +414,15 @@ Keyer *GetKeyerByNumber(int n, Transmitter *output) {
     }
 
     Keyer *k = keyers[n];
-    k->SetOutput(output);
+	if (k) {
+    	k->SetOutput(output);
+	}
     return k;
 }
 
 int getKeyerNumber(Keyer* k) {
     if (k == NULL) {
-        return 1; // Default to straight key if NULL
+        return 0; // 0 is no keyer (passthrough)
     }
     
     for (int i = 1; i < len(keyers); i++) {
@@ -414,5 +430,5 @@ int getKeyerNumber(Keyer* k) {
             return i;
         }
     }
-    return 1; // Default to straight key if not found
+    return 0; // Default to passthrough if not found
 }
