@@ -1,4 +1,4 @@
-// Please read Bounce2.h for information about the liscence and authors
+// Please read Bounce2.h for information about the licence and authors
 
 
 #include "bounce2.h"
@@ -72,7 +72,7 @@ bool Bounce::update()
     // If the readState is different from previous readState, reset the debounce timer - as input is still unstable
     // and we want to prevent new button state changes until the previous one has remained stable for the timeout.
     if ( readState != getStateFlag(UNSTABLE_STATE) ) {
-	// Update Unstable Bit to macth readState
+	// Update Unstable Bit to match readState
         toggleStateFlag(UNSTABLE_STATE);
         previous_millis = millis();
     }
