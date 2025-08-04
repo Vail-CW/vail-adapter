@@ -24,3 +24,5 @@ or take advantage of some of the adapters other features,
 such as dedicated straight key, sidetone generation,
 or capacative touch,
 see the [advanced install instructions](advanced-install.md).
+
+There is a Vail Discord run by Vail user K6JSC.
