@@ -26,3 +26,4 @@ or capacative touch,
 see the [advanced install instructions](advanced-install.md).
 
 There is a Vail Discord run by Vail user K6JSC.
+https://discord.gg/GBzj8cBat7
