@@ -1,4 +1,4 @@
-// Please read Bounce2.h for information about the liscence and authors
+// Please read Bounce2.h for information about the licence and authors
 
 
 #include "bounce2.h"
