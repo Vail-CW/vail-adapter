@@ -28,6 +28,10 @@ jobs:
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
             hw_define: "NO_PCB_GITHUB_SPECS"
             uf2_name: "xiao_non_pcb.uf2"
+          - board_name: "XIAO_SAMD21"
+            fqbn: "Seeeduino:samd:seeed_XIAO_m0"
+            hw_define: "V2_ADVANCED_PCB"
+            uf2_name: "xiao_advanced_pcb.uf2"
           # --- Adafruit QT Py SAMD21 Configurations ---
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
