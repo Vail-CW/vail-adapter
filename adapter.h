@@ -25,7 +25,6 @@ private:
     unsigned int capDahPressCount = 0;
     bool radioDitState = false;
     bool radioDahState = false;
-    
 
 
     void midiKey(uint8_t key, bool down);
@@ -37,7 +36,7 @@ private:
 public:
     VailAdapter(unsigned int PiezoPin);
     bool KeyboardMode();
-    uint8_t activePaddle;
+    
     void ProcessPaddleInput(Paddle paddle, bool pressed, bool isCapacitive);
     void HandleMIDI(midiEventPacket_t event);
     
