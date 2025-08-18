@@ -1,4 +1,3 @@
-// adapter.cpp - FINAL VERSION
 #include <Arduino.h>
 #include <Keyboard.h>
 #include <MIDIUSB.h>
@@ -7,7 +6,9 @@
 #include "adapter.h"
 #include "polybuzzer.h"
 
+// For SAMD21 software reset if needed by other parts of code
 #if defined(ARDUINO_ARCH_SAMD)
+// NVIC_SystemReset() is typically available through Arduino.h / CMSIS includes
 #endif
 
 extern void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote);
@@ -24,7 +25,6 @@ this->lastCapDahTime = 0;
 this->capDahPressCount = 0;
 this->radioDitState = false;
 this->radioDahState = false;
-this->activePaddle = 0;
 this->keyboardMode = true;
 this->keyer = NULL;
 this->txNote = DEFAULT_TONE_NOTE;
@@ -63,20 +63,22 @@ void VailAdapter::ResetDahCounter() {
 this->capDahPressCount = 0;
 }
 
+// Corrected MIDI key event function
 void VailAdapter::midiKey(uint8_t key, bool down) {
 uint8_t header;
 uint8_t status_byte;
 uint8_t velocity;
 
-if (down) {
-    header = 0x09;
-    status_byte = 0x90;
-    velocity = 0x7F;
-} else {
-    header = 0x08;
-    status_byte = 0x80;
-    velocity = 0x00;
+if (down) { // Note On
+    header = 0x09;      // CIN = 9 (Note On) for USB MIDI event packet
+    status_byte = 0x90; // MIDI Status = 0x90 (Note On, Channel 1)
+    velocity = 0x7F;    // Standard velocity for Note On
+} else { // Note Off
+    header = 0x08;      // CIN = 8 (Note Off) for USB MIDI event packet
+    status_byte = 0x80; // MIDI Status = 0x80 (Note Off, Channel 1)
+    velocity = 0x00;    // Velocity for Note Off (0x00 is common)
 }
+// Construct the MIDI event packet for MIDIUSB library
 midiEventPacket_t event = {header, status_byte, key, velocity};
 MidiUSB.sendMIDI(event);
 MidiUSB.flush();
@@ -105,58 +107,44 @@ void VailAdapter::setRadioDah(bool active) {(void)active;}
 
 void VailAdapter::BeginTx() {
 if (!keyIsPressed) {
-    keyIsPressed = true;
-    if (!this->radioModeActive) {
-        if (this->keyPressStartTime == 0) {
-            this->keyPressStartTime = millis();
-        }
-    }
+keyIsPressed = true;
+if (!this->radioModeActive) {
+if (this->keyPressStartTime == 0) {
+this->keyPressStartTime = millis();
+}
+}
 }
 
-if (this->buzzerEnabled && !this->radioModeActive) {
+if (this->buzzerEnabled && !this->radioModeActive) { 
     this->buzzer->Note(0, this->txNote);
 }
 
-if (!this->radioModeActive) {
+if (!this->radioModeActive) { 
     if (this->keyboardMode) {
-        if (this->activePaddle == 2) { // DAH
-            this->keyboardKey(KEY_RIGHT_CTRL, true);
-            this->keyboardKey(']', true);
-        } else { // DIT, STRAIGHT, or IAMBIC default
-            this->keyboardKey(KEY_LEFT_CTRL, true);
-            this->keyboardKey('[', true);
-        }
+        this->keyboardKey(KEY_LEFT_CTRL, true);
     } else {
-        this->midiKey(0, true);
+        this->midiKey(0, true); 
     }
 }
 }
 
 void VailAdapter::EndTx() {
 if (keyIsPressed) {
-    keyIsPressed = false;
-    if (!this->radioModeActive) {
-        this->keyPressStartTime = 0;
-    }
+keyIsPressed = false;
+if (!this->radioModeActive) {
+this->keyPressStartTime = 0;
+}
 }
 
-this->buzzer->NoTone(0);
+this->buzzer->NoTone(0); 
 
-if (!this->radioModeActive) {
+if (!this->radioModeActive) { 
     if (this->keyboardMode) {
-        if (this->activePaddle == 2) { // DAH
-            this->keyboardKey(KEY_RIGHT_CTRL, false);
-            this->keyboardKey(']', false);
-        } else { // DIT, STRAIGHT, or IAMBIC default
-            this->keyboardKey(KEY_LEFT_CTRL, false);
-            this->keyboardKey('[', false);
-        }
+        this->keyboardKey(KEY_LEFT_CTRL, false);
     } else {
         this->midiKey(0, false);
     }
 }
-// Reset state AFTER using it, so iambic keyer can read the last state
-// this->activePaddle = 0; // We will now set this on the next paddle press instead.
 }
 
 void VailAdapter::DisableBuzzer() {
@@ -173,18 +161,18 @@ void VailAdapter::ToggleRadioMode() {
 #ifdef HAS_RADIO_OUTPUT
 this->radioModeActive = !this->radioModeActive;
 
-if (keyer) keyer->Release();
-if (keyIsPressed) EndTx();
+if (keyer) keyer->Release(); 
+if (keyIsPressed) EndTx(); 
 
-setRadioDit(false);
+setRadioDit(false); 
 setRadioDah(false);
 radioDitState = false;
 radioDahState = false;
-keyIsPressed = false;
+keyIsPressed = false; 
 
 if (this->radioModeActive) {
     Serial.println("Radio Mode Activated (Sidetone Disabled)");
-    this->buzzer->NoTone(0);
+    this->buzzer->NoTone(0); 
     this->buzzer->Note(1, 60); delay(100);
     this->buzzer->Note(1, 65); delay(100);
     this->buzzer->Note(1, 70); delay(100);
@@ -195,9 +183,9 @@ if (this->radioModeActive) {
     this->buzzer->Note(1, 65); delay(100);
     this->buzzer->Note(1, 60); delay(100);
     this->buzzer->NoTone(1);
-    delay(100);
-
-    NVIC_SystemReset();
+    delay(100); 
+    
+    NVIC_SystemReset(); 
 }
 #else
 Serial.println("Radio output not configured. Radio mode unavailable.");
@@ -213,7 +201,7 @@ if (paddle == PADDLE_DIT && pressed && this->buzzerEnabled) {
         this->ditPressCount++;
         if (this->ditPressCount >= DIT_SPAM_COUNT_BUZZER_DISABLE) {
             this->DisableBuzzer();
-            this->ditPressCount = 0;
+            this->ditPressCount = 0; 
         }
     } else {
         this->ditPressCount = 1;
@@ -241,41 +229,54 @@ this->capDahPressCount = 0;
 
 if (this->radioModeActive) {
 #ifdef HAS_RADIO_OUTPUT
-    // ... Radio logic unchanged ...
-#endif
-} else { // Computer mode
-    if (paddle == PADDLE_STRAIGHT) {
-        this->activePaddle = 0;
-        if (pressed) BeginTx(); else EndTx();
-    } else { // Paddle mode
-        if (this->keyer) {
-            this->keyer->Key(paddle, pressed);
-        } else { // Passthrough paddle mode
-            bool currentPaddleActivity = false;
-            if (paddle == PADDLE_DIT) {
-                this->activePaddle = 1;
-                if (this->keyboardMode) this->keyboardKey(DIT_KEYBOARD_KEY, pressed);
-                else this->midiKey(1, pressed);
-                if (pressed) currentPaddleActivity = true;
-            } else if (paddle == PADDLE_DAH) {
-                this->activePaddle = 2;
-                if (this->keyboardMode) this->keyboardKey(DAH_KEYBOARD_KEY, pressed);
-                else this->midiKey(2, pressed);
-                if (pressed) currentPaddleActivity = true;
-            }
+bool radioKeyIsActiveBefore = radioDitState || radioDahState;
 
-            if (currentPaddleActivity) {
-                if (!keyIsPressed) BeginTx();
-            } else {
-                if (keyIsPressed) EndTx();
+    if (paddle == PADDLE_DIT) {
+        radioDitState = pressed;
+        setRadioDit(radioDitState);
+    } else if (paddle == PADDLE_DAH) {
+        radioDahState = pressed;
+        setRadioDah(radioDahState);
+    } else if (paddle == PADDLE_STRAIGHT) { 
+        radioDitState = pressed; 
+        setRadioDit(pressed);
+    }
+
+    keyIsPressed = radioDitState || radioDahState; 
+
+    if (!keyIsPressed && radioKeyIsActiveBefore) { 
+         this->buzzer->NoTone(0);
+    }
+#endif
+} else {
+if (paddle == PADDLE_STRAIGHT) {
+if (pressed) BeginTx(); else EndTx();
+} else {
+if (this->keyer) {
+this->keyer->Key(paddle, pressed);
+} else {
+bool currentPaddleActivity = false;
+if (paddle == PADDLE_DIT) {
+if (this->keyboardMode) this->keyboardKey(DIT_KEYBOARD_KEY, pressed);
+else this->midiKey(1, pressed);
+if (pressed) currentPaddleActivity = true;
+} else if (paddle == PADDLE_DAH) {
+if (this->keyboardMode) this->keyboardKey(DAH_KEYBOARD_KEY, pressed);
+else this->midiKey(2, pressed);
+if (pressed) currentPaddleActivity = true;
+}
+
+            if (currentPaddleActivity) { 
+                if(!keyIsPressed) BeginTx(); 
+            } else { 
+                if(keyIsPressed) EndTx();
             }
         }
     }
-}
+  }
 }
 
 void VailAdapter::HandleMIDI(midiEventPacket_t event) {
-// ... This function is unchanged ...
 uint16_t msg = (event.byte1 << 8) | (event.byte2 << 0);
 switch (event.byte1) {
 case 0xB0:
@@ -296,6 +297,7 @@ break;
 case 2:
 this->txNote = event.byte3;
 Serial.print("TX Note set to: "); Serial.println(this->txNote);
+
 saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote);
 break;
 }
@@ -325,12 +327,13 @@ break;
 
 void VailAdapter::Tick(unsigned int currentMillis) {
 if (!radioModeActive && keyIsPressed && this->buzzerEnabled && this->keyPressStartTime > 0) {
-    if (currentMillis - this->keyPressStartTime >= KEY_HOLD_DISABLE_THRESHOLD) {
-        this->DisableBuzzer();
-    }
+if (currentMillis - this->keyPressStartTime >= KEY_HOLD_DISABLE_THRESHOLD) {
+this->DisableBuzzer();
+}
 }
 
-if (this->keyer && !this->radioModeActive) {
+if (this->keyer && !this->radioModeActive) { 
     this->keyer->Tick(currentMillis);
 }
 }
+
