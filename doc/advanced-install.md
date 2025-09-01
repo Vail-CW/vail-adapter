@@ -81,7 +81,7 @@ The adapter works as a capacative touch sensor,
 like a touch lamp.
 
 You might wire these pins to screws or conductive pads. 
-These can be used instead of, or in additon to, the normal pins D0, D1, and D2.
+These can be used instead of, or in addition to, the normal pins D0, D1, and D2.
 
 You do not need a ground wire with capacative touch!
 
