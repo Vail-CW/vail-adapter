@@ -92,6 +92,22 @@ Keyboard.release(key);
 }
 }
 
+void VailAdapter::keyboardDit(bool down) {
+if (down) {
+Keyboard.press(DIT_KEYBOARD_KEY);
+} else {
+Keyboard.release(DIT_KEYBOARD_KEY);
+}
+}
+
+void VailAdapter::keyboardDah(bool down) {
+if (down) {
+Keyboard.press(DAH_KEYBOARD_KEY);
+} else {
+Keyboard.release(DAH_KEYBOARD_KEY);
+}
+}
+
 #ifdef HAS_RADIO_OUTPUT
 void VailAdapter::setRadioDit(bool active) {
 digitalWrite(RADIO_DIT_PIN, active ? RADIO_ACTIVE_LEVEL : RADIO_INACTIVE_LEVEL);
@@ -110,7 +126,7 @@ if (!keyIsPressed) {
 keyIsPressed = true;
 if (!this->radioModeActive) {
 if (this->keyPressStartTime == 0) {
-this->keyPressStartTime = millis();
+this->keyPressStartTime = ::millis();
 }
 }
 }
@@ -119,12 +135,10 @@ if (this->buzzerEnabled && !this->radioModeActive) {
     this->buzzer->Note(0, this->txNote);
 }
 
-if (!this->radioModeActive) { 
-    if (this->keyboardMode) {
-        this->keyboardKey(KEY_LEFT_CTRL, true);
-    } else {
-        this->midiKey(0, true); 
-    }
+if (!this->radioModeActive) {
+    // Always send both keyboard and MIDI
+    this->keyboardDit(true);
+    this->midiKey(0, true);
 }
 }
 
@@ -136,14 +150,58 @@ this->keyPressStartTime = 0;
 }
 }
 
-this->buzzer->NoTone(0); 
+this->buzzer->NoTone(0);
 
-if (!this->radioModeActive) { 
-    if (this->keyboardMode) {
-        this->keyboardKey(KEY_LEFT_CTRL, false);
+if (!this->radioModeActive) {
+    // Always send both keyboard and MIDI
+    this->keyboardDit(false);
+    this->midiKey(0, false);
+}
+}
+
+void VailAdapter::BeginTx(int relay) {
+if (!keyIsPressed) {
+keyIsPressed = true;
+if (!this->radioModeActive) {
+if (this->keyPressStartTime == 0) {
+this->keyPressStartTime = ::millis();
+}
+}
+}
+
+if (this->buzzerEnabled && !this->radioModeActive) {
+    this->buzzer->Note(0, this->txNote);
+}
+
+if (!this->radioModeActive) {
+    // Always send both keyboard and MIDI
+    if (relay == PADDLE_DAH) {
+        this->keyboardDah(true);
     } else {
-        this->midiKey(0, false);
+        this->keyboardDit(true);
     }
+    this->midiKey(relay, true);
+}
+}
+
+void VailAdapter::EndTx(int relay) {
+if (keyIsPressed) {
+keyIsPressed = false;
+if (!this->radioModeActive) {
+this->keyPressStartTime = 0;
+}
+}
+
+this->buzzer->NoTone(0);
+
+if (!this->radioModeActive) {
+    // Always send both keyboard and MIDI
+    if (relay == PADDLE_DAH) {
+        this->keyboardDah(false);
+    } else {
+        this->keyboardDit(false);
+    }
+    this->midiKey(relay, false);
 }
 }
 
@@ -257,12 +315,14 @@ this->keyer->Key(paddle, pressed);
 } else {
 bool currentPaddleActivity = false;
 if (paddle == PADDLE_DIT) {
-if (this->keyboardMode) this->keyboardKey(DIT_KEYBOARD_KEY, pressed);
-else this->midiKey(1, pressed);
+// Always send both keyboard and MIDI
+this->keyboardDit(pressed);
+this->midiKey(1, pressed);
 if (pressed) currentPaddleActivity = true;
 } else if (paddle == PADDLE_DAH) {
-if (this->keyboardMode) this->keyboardKey(DAH_KEYBOARD_KEY, pressed);
-else this->midiKey(2, pressed);
+// Always send both keyboard and MIDI
+this->keyboardDah(pressed);
+this->midiKey(2, pressed);
 if (pressed) currentPaddleActivity = true;
 }
 

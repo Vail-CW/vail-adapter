@@ -94,9 +94,9 @@ public:
 
         if (wasClosed != nowClosed) {
             if (nowClosed) {
-                this->output->BeginTx();
+                this->output->BeginTx(relay);
             } else {
-                this->output->EndTx();
+                this->output->EndTx(relay);
             }
         }
     }
@@ -144,7 +144,7 @@ public:
     }
 
     virtual void pulse(unsigned int millis) {
-        if (this->TxClosed(0)) {
+        if (this->TxClosed()) {
             this->Tx(0, false);
         } else if (this->keyPressed[0]) {
             this->Tx(0, true);
@@ -159,12 +159,14 @@ public:
 class ElBugKeyer: public BugKeyer {
 public:
     unsigned int nextRepeat;
+    int currentlyTransmittingRelay;
 
     using BugKeyer::BugKeyer;
 
     void Reset() {
         BugKeyer::Reset();
         this->nextRepeat = -1;
+        this->currentlyTransmittingRelay = -1;
     }
 
     // Return which key is pressed. If none, return -1.
@@ -206,15 +208,21 @@ public:
 
     virtual void pulse(unsigned int millis) {
         int nextPulse = 0;
-        if (this->TxClosed(0)) {
+        if (this->TxClosed()) {
             // Pause if we're currently transmitting
             nextPulse = this->keyDuration(PADDLE_DIT);
-            this->Tx(0, false);
+            if (this->currentlyTransmittingRelay >= 0) {
+                this->Tx(this->currentlyTransmittingRelay, false);
+                this->currentlyTransmittingRelay = -1;
+            } else {
+                this->Tx(0, false);
+            }
         } else {
             int next = this->nextTx();
             if (next >= 0) {
                 nextPulse = this->keyDuration(next);
-                this->Tx(0, true);
+                this->Tx(next, true);
+                this->currentlyTransmittingRelay = next;
             }
         }
 

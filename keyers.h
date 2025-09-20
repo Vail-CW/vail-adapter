@@ -12,6 +12,8 @@ class Transmitter {
 public:
     virtual void BeginTx();
     virtual void EndTx();
+    virtual void BeginTx(int relay);
+    virtual void EndTx(int relay);
 };
 
 class Keyer {

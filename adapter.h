@@ -29,7 +29,9 @@ private:
 
     void midiKey(uint8_t key, bool down);
     void keyboardKey(uint8_t key, bool down);
-    
+    void keyboardDit(bool down);
+    void keyboardDah(bool down);
+
     void setRadioDit(bool active);
     void setRadioDah(bool active);
 
@@ -40,8 +42,10 @@ public:
     void ProcessPaddleInput(Paddle paddle, bool pressed, bool isCapacitive);
     void HandleMIDI(midiEventPacket_t event);
     
-    void BeginTx() override; 
-    void EndTx() override;   
+    void BeginTx() override;
+    void EndTx() override;
+    void BeginTx(int relay) override;
+    void EndTx(int relay) override;   
 
     void Tick(unsigned int millis);
     
