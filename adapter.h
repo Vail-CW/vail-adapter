@@ -16,8 +16,8 @@ private:
     unsigned long keyPressStartTime = 0;
     bool keyIsPressed = false; 
 
-    unsigned long lastDitTime = 0;
-    unsigned int ditPressCount = 0;
+    unsigned long ditHoldStartTime = 0;
+    bool ditIsHeld = false;
     bool buzzerEnabled = true;
 
     bool radioModeActive = false;
