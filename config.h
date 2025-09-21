@@ -108,10 +108,10 @@
 #define EEPROM_VALID_FLAG_ADDR 4
 #define EEPROM_VALID_VALUE 0x42
 
-// Spam detection and feature thresholds
-#define SPAM_DISABLE_WINDOW 500
-#define DIT_SPAM_COUNT_BUZZER_DISABLE 10
+// Feature activation thresholds
+#define DIT_HOLD_BUZZER_DISABLE_THRESHOLD 5000   // 5 seconds
 #define DAH_SPAM_COUNT_RADIO_MODE 10
+#define DAH_SPAM_WINDOW 500
 #define KEY_HOLD_DISABLE_THRESHOLD 6000
 
 #endif // CONFIG_H

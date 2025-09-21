@@ -19,8 +19,8 @@ this->buzzerEnabled = true;
 this->radioModeActive = false;
 this->keyIsPressed = false;
 this->keyPressStartTime = 0;
-this->lastDitTime = 0;
-this->ditPressCount = 0;
+this->ditHoldStartTime = 0;
+this->ditIsHeld = false;
 this->lastCapDahTime = 0;
 this->capDahPressCount = 0;
 this->radioDitState = false;
@@ -56,7 +56,8 @@ return this->radioModeActive;
 }
 
 void VailAdapter::ResetDitCounter() {
-this->ditPressCount = 0;
+this->ditIsHeld = false;
+this->ditHoldStartTime = 0;
 }
 
 void VailAdapter::ResetDahCounter() {
@@ -196,21 +197,25 @@ this->buzzer->Tone(1, 100); delay(200); this->buzzer->NoTone(1);
 void VailAdapter::ProcessPaddleInput(Paddle paddle, bool pressed, bool isCapacitive) {
 unsigned long currentTime = millis();
 
-if (paddle == PADDLE_DIT && pressed && this->buzzerEnabled) {
-    if (currentTime - this->lastDitTime < SPAM_DISABLE_WINDOW) {
-        this->ditPressCount++;
-        if (this->ditPressCount >= DIT_SPAM_COUNT_BUZZER_DISABLE) {
-            this->DisableBuzzer();
-            this->ditPressCount = 0; 
-        }
-    } else {
-        this->ditPressCount = 1;
+// Track dit paddle state for hold detection
+if (paddle == PADDLE_DIT) {
+    if (pressed && !this->ditIsHeld) {
+        // Dit just pressed - start timer
+        this->ditHoldStartTime = currentTime;
+        this->ditIsHeld = true;
+        Serial.println("Dit hold started");
+    } else if (!pressed && this->ditIsHeld) {
+        // Dit released - reset timer
+        unsigned long holdTime = currentTime - this->ditHoldStartTime;
+        Serial.print("Dit released after ");
+        Serial.print(holdTime);
+        Serial.println("ms");
+        this->ditIsHeld = false;
     }
-    this->lastDitTime = currentTime;
 }
 #ifdef HAS_RADIO_OUTPUT
 if (paddle == PADDLE_DAH && isCapacitive && pressed) {
-if (currentTime - this->lastCapDahTime < SPAM_DISABLE_WINDOW) {
+if (currentTime - this->lastCapDahTime < DAH_SPAM_WINDOW) {
 this->capDahPressCount++;
 if (this->capDahPressCount >= DAH_SPAM_COUNT_RADIO_MODE) {
 this->ToggleRadioMode();
@@ -326,13 +331,30 @@ break;
 }
 
 void VailAdapter::Tick(unsigned int currentMillis) {
+// Check for dit hold during each tick
+if (this->ditIsHeld && this->buzzerEnabled) {
+    unsigned long holdTime = currentMillis - this->ditHoldStartTime;
+    if (holdTime >= DIT_HOLD_BUZZER_DISABLE_THRESHOLD) {
+        Serial.print("Dit held for ");
+        Serial.print(holdTime);
+        Serial.println("ms - disabling buzzer");
+        this->DisableBuzzer();
+        this->ditIsHeld = false; // Reset to prevent re-triggering
+    } else if (holdTime % 1000 == 0) {
+        // Debug: show progress every second
+        Serial.print("Dit held for ");
+        Serial.print(holdTime);
+        Serial.println("ms");
+    }
+}
+
 if (!radioModeActive && keyIsPressed && this->buzzerEnabled && this->keyPressStartTime > 0) {
 if (currentMillis - this->keyPressStartTime >= KEY_HOLD_DISABLE_THRESHOLD) {
 this->DisableBuzzer();
 }
 }
 
-if (this->keyer && !this->radioModeActive) { 
+if (this->keyer && !this->radioModeActive) {
     this->keyer->Tick(currentMillis);
 }
 }
