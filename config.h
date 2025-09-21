@@ -3,9 +3,9 @@
 
 // --- SELECT YOUR HARDWARE CONFIGURATION ---
 // Uncomment only one of the following lines based on your build:
-// #define V1_PCB 
-// #define V1_2_PCB 
-// #define V2_ADVANCED_PCB  
+// #define V1_PCB
+// #define V1_2_PCB           // Basic PCB V2 (recommended for new builds)
+#define V2_ADVANCED_PCB      // Advanced PCB with radio output
 // #define NO_PCB_GITHUB_SPECS
 
 // --- PIN DEFINITIONS BASED ON SELECTION ---
@@ -34,7 +34,7 @@
   #define PIEZO_PIN 10
   #define LED_ON true
   #define LED_OFF (!LED_ON)
-  #define BOARD_NAME "V1_2 PCB"
+  #define BOARD_NAME "Basic PCB V2"
   // Radio pins not defined, so HAS_RADIO_OUTPUT will not be defined
 #endif
 
@@ -48,7 +48,7 @@
   #define PIEZO_PIN 10
   #define LED_ON true
   #define LED_OFF (!LED_ON)
-  #define BOARD_NAME "V2 Advanced PCB"
+  #define BOARD_NAME "Advanced PCB"
   // Radio Output Pins for Advanced PCB
   #define RADIO_DIT_PIN A3
   #define RADIO_DAH_PIN A2
