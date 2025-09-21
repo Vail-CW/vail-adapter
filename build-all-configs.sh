@@ -6,7 +6,7 @@
 set -e  # Exit on any error
 
 # Hardware configurations to build
-CONFIGS=("V1_PCB" "V1_2_PCB" "V2_ADVANCED_PCB" "NO_PCB_GITHUB_SPECS")
+CONFIGS=("BASIC_PCB_V1" "BASIC_PCB_V2" "ADVANCED_PCB" "NO_PCB_GITHUB_SPECS")
 
 # Board FQBNs (Fully Qualified Board Names)
 declare -A BOARDS
@@ -25,9 +25,9 @@ modify_config() {
     cp config.h config.h.bak
 
     # Comment out all configurations first (handle both uncommented and commented lines)
-    sed -i 's/^#define V1_PCB/\/\/ #define V1_PCB/' config.h
-    sed -i 's/^#define V1_2_PCB/\/\/ #define V1_2_PCB/' config.h
-    sed -i 's/^#define V2_ADVANCED_PCB/\/\/ #define V2_ADVANCED_PCB/' config.h
+    sed -i 's/^#define BASIC_PCB_V1/\/\/ #define BASIC_PCB_V1/' config.h
+    sed -i 's/^#define BASIC_PCB_V2/\/\/ #define BASIC_PCB_V2/' config.h
+    sed -i 's/^#define ADVANCED_PCB/\/\/ #define ADVANCED_PCB/' config.h
     sed -i 's/^#define NO_PCB_GITHUB_SPECS/\/\/ #define NO_PCB_GITHUB_SPECS/' config.h
 
     # Uncomment the specific configuration
@@ -95,15 +95,8 @@ for config in "${CONFIGS[@]}"; do
         bin_file="build/vail-adapter.ino.bin"
         if [ -f "$bin_file" ] && [ -s "$bin_file" ]; then
             # Generate UF2 file with descriptive name (underscores, period only before extension)
-            # Use more intuitive naming for PCB configs
+            # Config names are now already intuitive, use them directly
             config_name="$config"
-            if [ "$config" = "V1_PCB" ]; then
-                config_name="BASIC_PCB_V1"
-            elif [ "$config" = "V1_2_PCB" ]; then
-                config_name="BASIC_PCB_V2"
-            elif [ "$config" = "V2_ADVANCED_PCB" ]; then
-                config_name="ADVANCED_PCB"
-            fi
 
             uf2_file="build/vail-adapter_${config_name}_${board_name}.uf2"
             echo "Converting $bin_file to $uf2_file"
@@ -131,7 +124,7 @@ echo "- For QT Py boards: Use files ending with _qtpy.uf2"
 echo "- For Xiao boards: Use files ending with _xiao.uf2"
 echo "- File naming: vail-adapter_[CONFIG]_[BOARD].uf2"
 echo "- Hardware configurations:"
-echo "  * V1_PCB → BASIC_PCB_V1: Original V1 PCB design"
-echo "  * V1_2_PCB → BASIC_PCB_V2: Basic PCB V2 (recommended for new builds)"
-echo "  * V2_ADVANCED_PCB → ADVANCED_PCB: Advanced PCB with radio output"
+echo "  * BASIC_PCB_V1: Original V1 PCB design"
+echo "  * BASIC_PCB_V2: Basic PCB V2 (recommended for new builds)"
+echo "  * ADVANCED_PCB: Advanced PCB with radio output"
 echo "  * NO_PCB_GITHUB_SPECS: Breadboard/no PCB configuration"

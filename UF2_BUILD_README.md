@@ -5,9 +5,9 @@ This document explains how to build UF2 firmware files for all hardware configur
 ## Overview
 
 The Vail Adapter supports 4 different hardware configurations defined in `config.h`:
-- `V1_PCB` - Original V1 PCB design
-- `V1_2_PCB` - Basic PCB V2 (recommended for new builds)
-- `V2_ADVANCED_PCB` - Advanced PCB with radio output capabilities
+- `BASIC_PCB_V1` - Original V1 PCB design
+- `BASIC_PCB_V2` - Basic PCB V2 (recommended for new builds)
+- `ADVANCED_PCB` - Advanced PCB with radio output capabilities
 - `NO_PCB_GITHUB_SPECS` - Breadboard/no PCB configuration
 
 Each configuration can be built for 2 different microcontroller boards:
@@ -49,9 +49,9 @@ vail-adapter_[CONFIG]_[BOARD].uf2
 ```
 
 For example:
-- `vail-adapter_BASIC_PCB_V1_qtpy.uf2` (for V1_PCB config)
-- `vail-adapter_BASIC_PCB_V2_qtpy.uf2` (for V1_2_PCB config)
-- `vail-adapter_ADVANCED_PCB_xiao.uf2` (for V2_ADVANCED_PCB config)
+- `vail-adapter_BASIC_PCB_V1_qtpy.uf2`
+- `vail-adapter_BASIC_PCB_V2_qtpy.uf2`
+- `vail-adapter_ADVANCED_PCB_xiao.uf2`
 
 ## Manual Build Process
 
@@ -60,9 +60,9 @@ If you need to build a specific configuration manually:
 ### 1. Modify config.h
 Edit `config.h` to uncomment only the desired configuration:
 ```c
-#define V1_PCB          // Enable this configuration
-// #define V1_2_PCB     // Basic PCB V2 (recommended for new builds)
-// #define V2_ADVANCED_PCB  // Advanced PCB with radio output
+#define BASIC_PCB_V1          // Enable this configuration
+// #define BASIC_PCB_V2       // Basic PCB V2 (recommended for new builds)
+// #define ADVANCED_PCB       // Advanced PCB with radio output
 // #define NO_PCB_GITHUB_SPECS
 ```
 
@@ -141,9 +141,9 @@ vail-adapter_[HARDWARE_CONFIG]_[BOARD_TYPE].uf2
 ```
 
 Where:
-- `HARDWARE_CONFIG`: BASIC_PCB_V1 (V1_PCB), BASIC_PCB_V2 (V1_2_PCB), ADVANCED_PCB (V2_ADVANCED_PCB), NO_PCB_GITHUB_SPECS
+- `HARDWARE_CONFIG`: BASIC_PCB_V1, BASIC_PCB_V2, ADVANCED_PCB, NO_PCB_GITHUB_SPECS
 - `BOARD_TYPE`: qtpy, xiao
 - All components separated by underscores
 - Only one period before the file extension
 
-Note: Config names are renamed in output files for clarity: V1_PCB → BASIC_PCB_V1, V1_2_PCB → BASIC_PCB_V2, V2_ADVANCED_PCB → ADVANCED_PCB
+Note: The config define names now match the output file names directly for consistency.
