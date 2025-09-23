@@ -1,0 +1,10 @@
+CompileFlags:
+    Add:
+        - "--include-directory=/opt/arduino/hardware/arduino/avr/cores/arduino"
+        - "--include-directory=/opt/arduino/hardware/arduino/avr/variants/standard"
+        - "--include-directory=/opt/arduino/hardware/arduino/avr/libraries/HID/src"
+        - "--include-directory=/opt/arduino/hardware/tools/avr/avr/include"
+        - "--include-directory=/opt/arduino/libraries/Keyboard/src"
+        - "--include-directory=/opt/arduino/libraries/HID/src"
+        - "--include-directory=/home/dartcatcher/Arduino/libraries/MIDIUSB/src"
+        
