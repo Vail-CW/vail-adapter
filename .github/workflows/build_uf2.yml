@@ -108,7 +108,14 @@ jobs:
   deploy: # <--- NEW JOB
     needs: build_firmware # Runs only after all build_firmware jobs succeed
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # Allow writing to repository
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Download all UF2 artifacts
         uses: actions/download-artifact@v4 # Downloads all artifacts from this run
         with:
