@@ -122,8 +122,8 @@ jobs:
       - name: Checkout GitHub Pages Repo
         uses: actions/checkout@v4
         with:
-          repository: 'Vail-CW/vail_web_updater' # Fixed: correct repository owner
-          token: ${{ secrets.GH_TOKEN_PAT }} # Use Personal Access Token
+          repository: 'Vail-CW/vail_web_updater' # Target repository
+          ssh-key: ${{ secrets.DEPLOY_KEY_PRIVATE }} # Use SSH deploy key
           ref: 'firmware-update-website' # Use the correct default branch
           path: 'gh_pages_repo' # Checkout to a specific directory
 
