@@ -122,8 +122,9 @@ jobs:
       - name: Checkout GitHub Pages Repo
         uses: actions/checkout@v4
         with:
-          repository: 'WrathPak/vail_web_updater' # <--- IMPORTANT: Change this!
-          ssh-key: ${{ secrets.GH_PAGES_DEPLOY_KEY }} # Use the secret we created
+          repository: 'Vail-CW/vail_web_updater' # Fixed: correct repository owner
+          token: ${{ secrets.GH_TOKEN_PAT }} # Use Personal Access Token
+          ref: 'firmware-update-website' # Use the correct default branch
           path: 'gh_pages_repo' # Checkout to a specific directory
 
       - name: Copy UF2 files to Pages Repo
