@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vail Adapter Firmware Update</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<nav>
+    <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="assembly.html">Assembly Instructions</a></li>
+    </ul>
+</nav>
+    <div class="container">
+        <h1>Vail Adapter Firmware Update</h1>
+        <p>This page guides you through the process of updating the firmware on your Vail Adapter.</p>
+
+        <section>
+        <h2>Step 1: Choose Vail Adapter version</h2>
+        <p>Select the version of your Vail Adapter:</p>
+        <form id="versionForm">
+            <div>
+                <input type="radio" id="xiao_non_pcb" name="adapter_version" value="xiao_non_pcb">
+                <label for="xiao_non_pcb">Xiao Non PCB</label>
+            </div>
+            <div>
+                <input type="radio" id="xiao_basic_pcb_v1" name="adapter_version" value="xiao_basic_pcb_v1">
+                <label for="xiao_basic_pcb_v1">Xiao Basic PCB V1</label>
+            </div>
+            <div>
+                <input type="radio" id="xiao_basic_pcb_v2" name="adapter_version" value="xiao_basic_pcb_v2">
+                <label for="xiao_basic_pcb_v2">Xiao Basic PCB V2</label>
+            </div>
+            <div>
+                <input type="radio" id="qtpy_non_pcb" name="adapter_version" value="qtpy_non_pcb">
+                <label for="qtpy_non_pcb">QT PY Non PCB</label>
+            </div>
+            <div>
+                <input type="radio" id="qtpy_basic_pcb_v1" name="adapter_version" value="qtpy_basic_pcb_v1">
+                <label for="qtpy_basic_pcb_v1">QT PY Basic PCB V1</label>
+            </div>
+            <div>
+                <input type="radio" id="qtpy_basic_pcb_v2" name="adapter_version" value="qtpy_basic_pcb_v2">
+                <label for="qtpy_basic_pcb_v2">QT PY Basic PCB V2</label>
+            </div>
+            <div>
+                <input type="radio" id="qtpy_advanced_pcb" name="adapter_version" value="qtpy_advanced_pcb">
+                <label for="qtpy_advanced_pcb">QT PY Advanced PCB</label>
+            </div>
+        </form>
+    </section>
+
+    <section>
+        <h2>Step 2: Plug in Vail Adapter</h2>
+        <p>Use a USC-C cable capable of data, and plug the adapter into your computer.</p>
+    </section>
+
+    <section>
+        <h2>Step 3: Enter Boot Mode</h2>
+        <p>Instructions on how to enter boot mode.</p>
+        <button id="bootModeButton">Press to Enter Boot Mode</button>
+        <h4>Activity Log:</h4>
+        <pre id="serialLog" style="background-color: #eee; padding: 10px; border-radius: 4px; height: 150px; overflow-y: scroll; border: 1px solid #ccc; white-space: pre-wrap; word-wrap: break-word;"></pre>
+    </section>
+
+    <section>
+        <h2>Step 4: Download UF2 File</h2>
+        <p>Select your adapter version above, then download the appropriate firmware file.</p>
+        <a href="#" id="downloadButton" class="button disabled" role="button" aria-disabled="true">Download UF2 File</a>
+    </section>
+
+    <section>
+        <h2>Step 5: Drag and Drop UF2 File</h2>
+        <p>Now that you have the firmware file, let's copy it to your Vail Adapter. Follow these steps carefully:</p>
+        <ol>
+            <li><strong>Open File Explorer:</strong> Open your computer's file explorer (Finder on a Mac, File Explorer on Windows).</li>
+            <li><strong>Find the UF2 File:</strong> Go to your "Downloads" folder, or wherever you saved the downloaded UF2 file from Step 4. You should see the file you just downloaded (e.g., "non_pcb_basic.uf2").</li>
+            <li><strong>Look for the Adapter Drive:</strong> When your Vail Adapter is in boot mode (from Step 3), it will appear as a new USB drive on your computer. This drive might be named something like "ADAPTERBOOT", "QTPYBOOT", "RPI-RP2", or similar.</li>
+            <li><strong>Drag and Drop:</strong> Click on the downloaded UF2 file, hold the mouse button down, and drag it over to the Vail Adapter drive that appeared in the previous step. Release the mouse button to drop the file onto the drive.</li>
+            <li><strong>Wait for Completion:</strong> The LED on your Vail Adapter might flash rapidly while the file is being copied. Once the copy is complete, the adapter drive may automatically disappear from your file explorer. This is normal.</li>
+        </ol>
+        <p>If the drive doesn't disappear, wait about 30 seconds after the LED stops flashing before proceeding to the next step.</p>
+    </section>
+
+        <section>
+            <h2>Step 6: Finalize Update</h2>
+            <p>You're almost done! Follow these last few steps to complete the firmware update:</p>
+            <ol>
+                <li><strong>Wait a Moment:</strong> After the UF2 file has been copied to the adapter (and the drive may have disappeared), wait about 10 seconds. This gives the adapter a little time to process the new firmware.</li>
+                <li><strong>Unplug the Adapter:</strong> Carefully unplug the Vail Adapter from your computer's USB port.</li>
+                <li><strong>Plug it Back In:</strong> Plug the Vail Adapter back into your computer's USB port.</li>
+                <li><strong>IMPORTANT - GO TO https://vail.fly.dev/ OR https://vail.woozle.org/: </strong> Go to a Vail Repeater site to set your key type, speed, and tone. This will save to the device so that it can be used in practice oscillator mode or with keyboard enabled sites like VBAND.</li>
+            </ol>
+            <p>That's it! The firmware update should now be complete, and your Vail Adapter is ready to use with the new firmware. You may see a new drive appear, or the device might enumerate differently, which is normal.</p>
+        </section>
+    </div>
+<script src="script.js" defer></script>
+</body>
+</html>
+

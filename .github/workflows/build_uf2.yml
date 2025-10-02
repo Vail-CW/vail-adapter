@@ -3,7 +3,7 @@ name: Build and Deploy Arduino UF2 Firmware
 on:
   push:
     branches:
-      - main # Or your primary development branch
+      - master # Primary development branch
   release:
     types: [published] # Triggers when you publish a new release
   workflow_dispatch: # Allows manual triggering
@@ -119,34 +119,25 @@ jobs:
           echo "Listing downloaded artifacts:"
           ls -R all_uf2_files
 
-      - name: Checkout GitHub Pages Repo
-        uses: actions/checkout@v4
-        with:
-          repository: 'Vail-CW/vail_web_updater' # Target repository
-          ssh-key: ${{ secrets.DEPLOY_KEY_PRIVATE }} # Use SSH deploy key
-          ref: 'firmware-update-website' # Use the correct default branch
-          path: 'gh_pages_repo' # Checkout to a specific directory
-
-      - name: Copy UF2 files to Pages Repo
+      - name: Copy UF2 files to docs directory
         run: |
-          echo "Copying UF2 files..."
-          # Create a target directory if it doesn't exist (e.g., 'firmware')
-          mkdir -p gh_pages_repo/firmware 
+          echo "Copying UF2 files to docs/firmware_files..."
+          # Create docs directory if it doesn't exist
+          mkdir -p docs/firmware_files
           # Copy all downloaded UF2 files (they are in subdirs named after artifacts)
-          find all_uf2_files -name "*.uf2" -exec cp {} gh_pages_repo/firmware/ \;
-          echo "Files in target directory:"
-          ls gh_pages_repo/firmware/
+          find all_uf2_files -name "*.uf2" -exec cp {} docs/firmware_files/ \;
+          echo "Files in docs/firmware_files:"
+          ls docs/firmware_files/
 
-      - name: Commit and Push to Pages Repo
+      - name: Commit and Push updated firmware files
         run: |
-          cd gh_pages_repo
           git config user.name "GitHub Action"
           git config user.email "action@github.com"
-          git add firmware/ # Add the directory (or specific files)
+          git add docs/firmware_files/ # Add the firmware files
           # Only commit & push if there are changes
           if git diff --staged --quiet; then
             echo "No changes to commit."
           else
             git commit -m "Update firmware UF2 files"
-            git push
+            git push origin master
           fi
