@@ -29,6 +29,9 @@ this->keyboardMode = true;
 this->keyer = NULL;
 this->txNote = DEFAULT_TONE_NOTE;
 this->ditDuration = DEFAULT_ADAPTER_DIT_DURATION_MS;
+this->txRelays[0] = false; // dit
+this->txRelays[1] = false; // dah
+this->lastPaddlePressed = PADDLE_DIT;
 }
 
 bool VailAdapter::KeyboardMode() {
@@ -106,6 +109,64 @@ void VailAdapter::setRadioDit(bool active) {(void)active;}
 void VailAdapter::setRadioDah(bool active) {(void)active;}
 #endif
 
+void VailAdapter::Tx(int relay, bool closed) {
+    // Update relay state
+    this->txRelays[relay] = closed;
+
+    // Check if any relay is active
+    bool anyRelayActive = this->txRelays[0] || this->txRelays[1];
+
+    if (anyRelayActive && !keyIsPressed) {
+        // Start transmission
+        keyIsPressed = true;
+        if (!this->radioModeActive) {
+            if (this->keyPressStartTime == 0) {
+                this->keyPressStartTime = millis();
+            }
+        }
+
+        if (this->buzzerEnabled && !this->radioModeActive) {
+            this->buzzer->Note(0, this->txNote);
+        }
+
+        if (!this->radioModeActive) {
+            // Send the appropriate key based on which relay is active
+            if (this->keyboardMode) {
+                if (relay == PADDLE_DIT) {
+                    this->keyboardKey(DIT_KEYBOARD_KEY, true);
+                } else if (relay == PADDLE_DAH) {
+                    this->keyboardKey(DAH_KEYBOARD_KEY, true);
+                }
+            } else {
+                if (relay == PADDLE_DIT) {
+                    this->midiKey(1, true);
+                } else if (relay == PADDLE_DAH) {
+                    this->midiKey(2, true);
+                }
+            }
+        }
+    } else if (!anyRelayActive && keyIsPressed) {
+        // End transmission
+        keyIsPressed = false;
+        if (!this->radioModeActive) {
+            this->keyPressStartTime = 0;
+        }
+
+        this->buzzer->NoTone(0);
+
+        if (!this->radioModeActive) {
+            // Release all keys
+            if (this->keyboardMode) {
+                this->keyboardKey(DIT_KEYBOARD_KEY, false);
+                this->keyboardKey(DAH_KEYBOARD_KEY, false);
+            } else {
+                this->midiKey(1, false);
+                this->midiKey(2, false);
+            }
+        }
+    }
+}
+
 void VailAdapter::BeginTx() {
 if (!keyIsPressed) {
 keyIsPressed = true;
@@ -116,15 +177,18 @@ this->keyPressStartTime = millis();
 }
 }
 
-if (this->buzzerEnabled && !this->radioModeActive) { 
+if (this->buzzerEnabled && !this->radioModeActive) {
     this->buzzer->Note(0, this->txNote);
 }
 
-if (!this->radioModeActive) { 
+if (!this->radioModeActive) {
     if (this->keyboardMode) {
+        // For keyer mode, we need to determine which key to send
+        // Since keyers don't tell us which paddle, we'll default to left ctrl
+        // This is the problem - keyers always call BeginTx() without relay info
         this->keyboardKey(KEY_LEFT_CTRL, true);
     } else {
-        this->midiKey(0, true); 
+        this->midiKey(0, true);
     }
 }
 }
@@ -137,13 +201,79 @@ this->keyPressStartTime = 0;
 }
 }
 
-this->buzzer->NoTone(0); 
+this->buzzer->NoTone(0);
 
-if (!this->radioModeActive) { 
+if (!this->radioModeActive) {
     if (this->keyboardMode) {
         this->keyboardKey(KEY_LEFT_CTRL, false);
     } else {
         this->midiKey(0, false);
+    }
+}
+}
+
+void VailAdapter::BeginTx(int relay) {
+if (!keyIsPressed) {
+keyIsPressed = true;
+if (!this->radioModeActive) {
+if (this->keyPressStartTime == 0) {
+this->keyPressStartTime = millis();
+}
+}
+}
+
+if (this->buzzerEnabled && !this->radioModeActive) {
+    this->buzzer->Note(0, this->txNote);
+}
+
+if (!this->radioModeActive) {
+    if (this->keyboardMode) {
+        if (relay == PADDLE_DIT) {
+            this->keyboardKey(DIT_KEYBOARD_KEY, true);
+        } else if (relay == PADDLE_DAH) {
+            this->keyboardKey(DAH_KEYBOARD_KEY, true);
+        } else {
+            this->keyboardKey(KEY_LEFT_CTRL, true); // fallback for straight key
+        }
+    } else {
+        if (relay == PADDLE_DIT) {
+            this->midiKey(1, true);
+        } else if (relay == PADDLE_DAH) {
+            this->midiKey(2, true);
+        } else {
+            this->midiKey(0, true); // fallback for straight key
+        }
+    }
+}
+}
+
+void VailAdapter::EndTx(int relay) {
+if (keyIsPressed) {
+keyIsPressed = false;
+if (!this->radioModeActive) {
+this->keyPressStartTime = 0;
+}
+}
+
+this->buzzer->NoTone(0);
+
+if (!this->radioModeActive) {
+    if (this->keyboardMode) {
+        if (relay == PADDLE_DIT) {
+            this->keyboardKey(DIT_KEYBOARD_KEY, false);
+        } else if (relay == PADDLE_DAH) {
+            this->keyboardKey(DAH_KEYBOARD_KEY, false);
+        } else {
+            this->keyboardKey(KEY_LEFT_CTRL, false); // fallback for straight key
+        }
+    } else {
+        if (relay == PADDLE_DIT) {
+            this->midiKey(1, false);
+        } else if (relay == PADDLE_DAH) {
+            this->midiKey(2, false);
+        } else {
+            this->midiKey(0, false); // fallback for straight key
+        }
     }
 }
 }
@@ -258,6 +388,7 @@ if (paddle == PADDLE_STRAIGHT) {
 if (pressed) BeginTx(); else EndTx();
 } else {
 if (this->keyer) {
+if (pressed) this->lastPaddlePressed = paddle; // Track last paddle pressed
 this->keyer->Key(paddle, pressed);
 } else {
 bool currentPaddleActivity = false;

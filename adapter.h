@@ -14,7 +14,7 @@ private:
     PolyBuzzer *buzzer = NULL;
 
     unsigned long keyPressStartTime = 0;
-    bool keyIsPressed = false; 
+    bool keyIsPressed = false;
 
     unsigned long ditHoldStartTime = 0;
     bool ditIsHeld = false;
@@ -26,22 +26,28 @@ private:
     bool radioDitState = false;
     bool radioDahState = false;
 
+    // Track which relays are active for proper key mapping
+    bool txRelays[2] = {false, false}; // [dit, dah]
+    int lastPaddlePressed = PADDLE_DIT; // Track last paddle for keyer transmission
 
     void midiKey(uint8_t key, bool down);
     void keyboardKey(uint8_t key, bool down);
-    
+
     void setRadioDit(bool active);
     void setRadioDah(bool active);
 
 public:
     VailAdapter(unsigned int PiezoPin);
     bool KeyboardMode();
-    
+
     void ProcessPaddleInput(Paddle paddle, bool pressed, bool isCapacitive);
     void HandleMIDI(midiEventPacket_t event);
-    
-    void BeginTx() override; 
-    void EndTx() override;   
+
+    void BeginTx() override;
+    void EndTx() override;
+    void BeginTx(int relay) override;
+    void EndTx(int relay) override;
+    void Tx(int relay, bool closed); // Add Tx method for keyer relay control
 
     void Tick(unsigned int millis);
     

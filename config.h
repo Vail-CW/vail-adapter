@@ -3,10 +3,10 @@
 
 // --- SELECT YOUR HARDWARE CONFIGURATION ---
 // Uncomment only one of the following lines based on your build:
-// #define V1_PCB 
-// #define V1_2_PCB 
-// #define V2_ADVANCED_PCB  
-// #define NO_PCB_GITHUB_SPECS
+// #define V1_PCB
+// #define V1_2_PCB
+// #define V2_ADVANCED_PCB
+#define NO_PCB_GITHUB_SPECS
 
 // --- PIN DEFINITIONS BASED ON SELECTION ---
 

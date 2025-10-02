@@ -50,6 +50,7 @@ public:
     Transmitter *output;
     unsigned int ditDuration;
     bool txRelays[2];
+    int currentTransmittingRelay = -1; // Track what we're currently transmitting
 
     StraightKeyer() {
         this->Reset();
@@ -94,9 +95,11 @@ public:
 
         if (wasClosed != nowClosed) {
             if (nowClosed) {
-                this->output->BeginTx();
+                this->currentTransmittingRelay = relay;
+                this->output->BeginTx(relay);
             } else {
-                this->output->EndTx();
+                this->currentTransmittingRelay = -1;
+                this->output->EndTx(relay);
             }
         }
     }
@@ -159,12 +162,14 @@ public:
 class ElBugKeyer: public BugKeyer {
 public:
     unsigned int nextRepeat;
+    int currentTransmittingElement = -1; // Track what element we're transmitting
 
     using BugKeyer::BugKeyer;
 
     void Reset() {
         BugKeyer::Reset();
         this->nextRepeat = -1;
+        this->currentTransmittingElement = -1;
     }
 
     // Return which key is pressed. If none, return -1.
@@ -206,15 +211,18 @@ public:
 
     virtual void pulse(unsigned int millis) {
         int nextPulse = 0;
-        if (this->TxClosed(0)) {
-            // Pause if we're currently transmitting
+        if (this->currentTransmittingElement >= 0) {
+            // Pause if we're currently transmitting - end current element
             nextPulse = this->keyDuration(PADDLE_DIT);
-            this->Tx(0, false);
+            this->Tx(this->currentTransmittingElement, false);
+            this->currentTransmittingElement = -1;
         } else {
             int next = this->nextTx();
             if (next >= 0) {
                 nextPulse = this->keyDuration(next);
-                this->Tx(0, true);
+                // Use the correct relay (next) and track it
+                this->currentTransmittingElement = next;
+                this->Tx(next, true);
             }
         }
 

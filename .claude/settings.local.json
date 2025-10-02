@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(arduino-cli core:*)",
+      "Bash(arduino-cli compile:*)",
+      "Bash(python:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
