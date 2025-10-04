@@ -21,8 +21,11 @@ private:
     bool buzzerEnabled = true;
 
     bool radioModeActive = false;
+    bool radioKeyerMode = false;
     unsigned long lastCapDahTime = 0;
     unsigned int capDahPressCount = 0;
+    unsigned long dahHoldStartTime = 0;
+    bool dahIsHeld = false;
     bool radioDitState = false;
     bool radioDahState = false;
 
@@ -57,7 +60,11 @@ public:
 
     void ToggleRadioMode();
     bool isRadioModeActive() const;
+    void ToggleRadioKeyerMode();
+    bool isRadioKeyerMode() const;
+    void SetRadioKeyerMode(bool enabled);
     void ResetDahCounter();
+    void ResetDahHoldCounter();
 
     uint8_t getCurrentKeyerType() const;
     uint16_t getDitDuration() const;
