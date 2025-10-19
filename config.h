@@ -13,11 +13,12 @@
 #ifdef V1_PCB
   #define DIT_PIN 1
   #define DAH_PIN 0
-  #define KEY_PIN 3
+  #define KEY_PIN 9
   #define QT_DIT_PIN A6
   #define QT_DAH_PIN A7
   #define QT_KEY_PIN A8
-  #define PIEZO_PIN 9
+  #define PIEZO_PIN 10
+  #define BUTTON_PIN 3  // R2R button ladder input (pin 3 on QT Py)
   #define LED_ON true
   #define LED_OFF (!LED_ON)
   #define BOARD_NAME "V1 PCB"
@@ -32,6 +33,7 @@
   #define QT_DAH_PIN A7
   #define QT_KEY_PIN A8
   #define PIEZO_PIN 10
+  #define BUTTON_PIN 3  // R2R button ladder input (pin 3 on QT Py)
   #define LED_ON true
   #define LED_OFF (!LED_ON)
   #define BOARD_NAME "V1_2 PCB"
@@ -64,6 +66,7 @@
   #define QT_DAH_PIN A7
   #define QT_KEY_PIN A8
   #define PIEZO_PIN 10
+  #define BUTTON_PIN 3  // R2R button ladder input (pin 3 on QT Py)
   #define LED_ON false // Xiao inverts this logic
   #define LED_OFF (!LED_ON)
   #define BOARD_NAME "No PCB (GitHub Specs)"
