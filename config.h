@@ -46,6 +46,7 @@
   #define QT_DAH_PIN A6
   #define QT_KEY_PIN A8
   #define PIEZO_PIN 10
+  #define BUTTON_PIN 3  // R2R button ladder input (pin 3 on QT Py)
   #define LED_ON true
   #define LED_OFF (!LED_ON)
   #define BOARD_NAME "V2 Advanced PCB"
