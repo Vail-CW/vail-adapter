@@ -72,41 +72,61 @@ void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNot
   Serial.print(", TX Note: "); Serial.println(txNote);
 }
 
+void saveRadioKeyerModeToEEPROM(bool radioKeyerMode) {
+  EEPROM.write(EEPROM_RADIO_KEYER_MODE_ADDR, radioKeyerMode ? 1 : 0);
+  EEPROM.commit();
+  Serial.print("Saved Radio Keyer Mode to EEPROM: "); Serial.println(radioKeyerMode ? "ON" : "OFF");
+}
+
+void loadRadioKeyerModeFromEEPROM() {
+#ifdef HAS_RADIO_OUTPUT
+  if (EEPROM.read(EEPROM_VALID_FLAG_ADDR) == EEPROM_VALID_VALUE) {
+    uint8_t radioKeyerModeVal = EEPROM.read(EEPROM_RADIO_KEYER_MODE_ADDR);
+    bool radioKeyerMode = (radioKeyerModeVal == 1);
+
+    adapter.SetRadioKeyerMode(radioKeyerMode);
+    Serial.print("Loaded Radio Keyer Mode from EEPROM: ");
+    Serial.println(radioKeyerMode ? "ON" : "OFF");
+  }
+#endif
+}
+
 void loadSettingsFromEEPROM() {
   if (EEPROM.read(EEPROM_VALID_FLAG_ADDR) == EEPROM_VALID_VALUE) {
     uint8_t keyerType = EEPROM.read(EEPROM_KEYER_TYPE_ADDR);
-    uint16_t ditDurationVal; 
+    uint16_t ditDurationVal;
     EEPROM.get(EEPROM_DIT_DURATION_ADDR, ditDurationVal);
-    uint8_t txNoteVal = EEPROM.read(EEPROM_TX_NOTE_ADDR); 
+    uint8_t txNoteVal = EEPROM.read(EEPROM_TX_NOTE_ADDR);
 
     Serial.print("EEPROM values - Keyer: "); Serial.print(keyerType);
     Serial.print(", Dit Duration: "); Serial.print(ditDurationVal);
     Serial.print(", TX Note: "); Serial.println(txNoteVal);
 
     midiEventPacket_t event;
-    event.header = 0x0B; event.byte1 = 0xB0; 
-    event.byte2 = 1; 
-    event.byte3 = ditDurationVal / (2 * MILLISECOND); 
+    event.header = 0x0B; event.byte1 = 0xB0;
+    event.byte2 = 1;
+    event.byte3 = ditDurationVal / (2 * MILLISECOND);
     adapter.HandleMIDI(event);
 
-    event.byte2 = 2; 
-    event.byte3 = txNoteVal; 
+    event.byte2 = 2;
+    event.byte3 = txNoteVal;
     adapter.HandleMIDI(event);
 
-    if (keyerType >= 0 && keyerType <= 9) { 
-      event.header = 0x0C; event.byte1 = 0xC0; 
+    if (keyerType >= 0 && keyerType <= 9) {
+      event.header = 0x0C; event.byte1 = 0xC0;
       event.byte2 = keyerType; event.byte3 = 0;
       adapter.HandleMIDI(event);
     }
   } else {
     Serial.println("EEPROM initializing with default values...");
-    EEPROM.write(EEPROM_KEYER_TYPE_ADDR, 1); 
+    EEPROM.write(EEPROM_KEYER_TYPE_ADDR, 1);
     EEPROM.put(EEPROM_DIT_DURATION_ADDR, (uint16_t)DEFAULT_ADAPTER_DIT_DURATION_MS);
     EEPROM.write(EEPROM_TX_NOTE_ADDR, DEFAULT_TONE_NOTE);
+    EEPROM.write(EEPROM_RADIO_KEYER_MODE_ADDR, 0); // Default: Radio Keyer Mode OFF
     EEPROM.write(EEPROM_VALID_FLAG_ADDR, EEPROM_VALID_VALUE);
     EEPROM.commit();
     Serial.println("EEPROM initialized. Loading these defaults now.");
-    loadSettingsFromEEPROM(); 
+    loadSettingsFromEEPROM();
   }
 }
 
@@ -140,13 +160,15 @@ void setup() {
   Serial.println("Playing VAIL in Morse code at 20 WPM");
   playVAIL(startupTone);
   
-  loadSettingsFromEEPROM(); 
+  loadSettingsFromEEPROM();
+  loadRadioKeyerModeFromEEPROM();
 
   Serial.print("Adapter settings loaded - Keyer: "); Serial.print(adapter.getCurrentKeyerType());
   Serial.print(", Dit Duration (ms): "); Serial.print(adapter.getDitDuration());
   Serial.print(", TX Note: "); Serial.println(adapter.getTxNote());
   Serial.print("Buzzer initially: "); Serial.println(adapter.isBuzzerEnabled() ? "ON" : "OFF");
   Serial.print("Radio Mode initially: "); Serial.println(adapter.isRadioModeActive() ? "ON" : "OFF");
+  Serial.print("Radio Keyer Mode initially: "); Serial.println(adapter.isRadioKeyerMode() ? "ON" : "OFF");
 
   Keyboard.begin();
   MidiUSB.flush(); 

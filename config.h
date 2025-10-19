@@ -5,8 +5,8 @@
 // Uncomment only one of the following lines based on your build:
 // #define V1_PCB
 // #define V1_2_PCB
-// #define V2_ADVANCED_PCB
-#define NO_PCB_GITHUB_SPECS
+#define V2_ADVANCED_PCB
+// #define NO_PCB_GITHUB_SPECS
 
 // --- PIN DEFINITIONS BASED ON SELECTION ---
 
@@ -106,12 +106,14 @@
 #define EEPROM_DIT_DURATION_ADDR 1
 #define EEPROM_TX_NOTE_ADDR 3
 #define EEPROM_VALID_FLAG_ADDR 4
+#define EEPROM_RADIO_KEYER_MODE_ADDR 5
 #define EEPROM_VALID_VALUE 0x42
 
 // Feature activation thresholds
 #define DIT_HOLD_BUZZER_DISABLE_THRESHOLD 5000   // 5 seconds
 #define DAH_SPAM_COUNT_RADIO_MODE 10
 #define DAH_SPAM_WINDOW 500
+#define DAH_HOLD_RADIO_KEYER_TOGGLE_THRESHOLD 5000  // 5 seconds in radio mode
 #define KEY_HOLD_DISABLE_THRESHOLD 6000
 
 #endif // CONFIG_H
