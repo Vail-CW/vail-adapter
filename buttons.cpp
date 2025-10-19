@@ -106,7 +106,44 @@ int readButtonAnalog() {
 }
 
 // Map analog value to button state based on calibrated thresholds
-// Calibrated values: NONE=0, B3=280, B2=335, B2+3=397, B1=414, B1+3=490, B1+2=516
+// Hardware-specific calibration values
+#ifdef V2_Basic_PCB
+// V2 Basic PCB calibration: NONE=1, B3=512, B2=614, B1=683, B2+3=769, B1+3=820, B1+2=830
+ButtonState getButtonState(int analogValue) {
+    // None: 0-100
+    if (analogValue >= 0 && analogValue <= 100) {
+        return BTN_NONE;
+    }
+    // Button 3: 490-534 (measured: 512)
+    else if (analogValue >= 490 && analogValue <= 534) {
+        return BTN_3;
+    }
+    // Button 2: 592-636 (measured: 614)
+    else if (analogValue >= 592 && analogValue <= 636) {
+        return BTN_2;
+    }
+    // Buttons 2+3: 747-791 (measured: 769)
+    else if (analogValue >= 747 && analogValue <= 791) {
+        return BTN_2_3;
+    }
+    // Button 1: 661-705 (measured: 683)
+    else if (analogValue >= 661 && analogValue <= 705) {
+        return BTN_1;
+    }
+    // Buttons 1+3: 798-842 (measured: 820)
+    else if (analogValue >= 798 && analogValue <= 842) {
+        return BTN_1_3;
+    }
+    // Buttons 1+2: 808-900 (measured: 830)
+    else if (analogValue >= 808 && analogValue <= 900) {
+        return BTN_1_2;
+    }
+
+    // If reading falls outside all ranges, return BTN_NONE as safe default
+    return BTN_NONE;
+}
+#else
+// Advanced PCB calibration: NONE=0, B3=280, B2=335, B1=414, B2+3=397, B1+3=490, B1+2=516
 ButtonState getButtonState(int analogValue) {
     // None: 0-100
     if (analogValue >= 0 && analogValue <= 100) {
@@ -140,3 +177,4 @@ ButtonState getButtonState(int analogValue) {
     // If reading falls outside all ranges, return BTN_NONE as safe default
     return BTN_NONE;
 }
+#endif

@@ -3,14 +3,14 @@
 
 // --- SELECT YOUR HARDWARE CONFIGURATION ---
 // Uncomment only one of the following lines based on your build:
-// #define V1_PCB
-// #define V1_2_PCB
-#define V2_ADVANCED_PCB
+// #define V1_Basic_PCB
+// #define V2_Basic_PCB
+#define Advanced_PCB
 // #define NO_PCB_GITHUB_SPECS
 
 // --- PIN DEFINITIONS BASED ON SELECTION ---
 
-#ifdef V1_PCB
+#ifdef V1_Basic_PCB
   #define DIT_PIN 1
   #define DAH_PIN 0
   #define KEY_PIN 9
@@ -21,11 +21,11 @@
   #define BUTTON_PIN 3  // R2R button ladder input (pin 3 on QT Py)
   #define LED_ON true
   #define LED_OFF (!LED_ON)
-  #define BOARD_NAME "V1 PCB"
+  #define BOARD_NAME "V1 Basic PCB"
   // Radio pins not defined, so HAS_RADIO_OUTPUT will not be defined
 #endif
 
-#ifdef V1_2_PCB
+#ifdef V2_Basic_PCB
   #define DIT_PIN 2
   #define DAH_PIN 1
   #define KEY_PIN 0
@@ -36,11 +36,11 @@
   #define BUTTON_PIN 3  // R2R button ladder input (pin 3 on QT Py)
   #define LED_ON true
   #define LED_OFF (!LED_ON)
-  #define BOARD_NAME "V1_2 PCB"
+  #define BOARD_NAME "V2 Basic PCB"
   // Radio pins not defined, so HAS_RADIO_OUTPUT will not be defined
 #endif
 
-#ifdef V2_ADVANCED_PCB
+#ifdef Advanced_PCB
   #define DIT_PIN 1
   #define DAH_PIN 0
   #define KEY_PIN 9
@@ -51,7 +51,7 @@
   #define BUTTON_PIN 3  // R2R button ladder input (pin 3 on QT Py)
   #define LED_ON true
   #define LED_OFF (!LED_ON)
-  #define BOARD_NAME "V2 Advanced PCB"
+  #define BOARD_NAME "Advanced PCB"
   // Radio Output Pins for Advanced PCB
   #define RADIO_DIT_PIN A3
   #define RADIO_DAH_PIN A2
