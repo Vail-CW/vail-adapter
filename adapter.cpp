@@ -365,6 +365,12 @@ radioDitState = false;
 radioDahState = false;
 keyIsPressed = false;
 
+// Restore the keyer's dit duration after releasing
+if (this->keyer) {
+    this->keyer->SetDitDuration(this->ditDuration);
+    Serial.print("Keyer dit duration restored to: "); Serial.println(this->ditDuration);
+}
+
 if (this->radioModeActive) {
     Serial.println("Radio Mode Activated (Sidetone Disabled)");
     this->buzzer->NoTone(0);
@@ -405,6 +411,12 @@ setRadioDah(false);
 radioDitState = false;
 radioDahState = false;
 keyIsPressed = false;
+
+// Restore the keyer's dit duration after releasing
+if (this->keyer) {
+    this->keyer->SetDitDuration(this->ditDuration);
+    Serial.print("Keyer dit duration restored to: "); Serial.println(this->ditDuration);
+}
 
 extern void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote);
 extern void saveRadioKeyerModeToEEPROM(bool radioKeyerMode);
