@@ -361,10 +361,11 @@ void setup() {
   dit.attach(DIT_PIN, INPUT_PULLUP);
   dah.attach(DAH_PIN, INPUT_PULLUP);
   key.attach(KEY_PIN, INPUT_PULLUP);
-  
-  qt_dit.attach(QT_DIT_PIN);
-  qt_dah.attach(QT_DAH_PIN);
-  qt_key.attach(QT_KEY_PIN);
+
+  // Attach capacitive touch with calibrated per-pad thresholds
+  qt_dit.attach(QT_DIT_PIN, QT_DIT_THRESHOLD_PRESS, QT_DIT_THRESHOLD_RELEASE);
+  qt_dah.attach(QT_DAH_PIN, QT_DAH_THRESHOLD_PRESS, QT_DAH_THRESHOLD_RELEASE);
+  qt_key.attach(QT_KEY_PIN, QT_DIT_THRESHOLD_PRESS, QT_DIT_THRESHOLD_RELEASE); // Use DIT thresholds for KEY
 
 #ifdef HAS_RADIO_OUTPUT
   pinMode(RADIO_DIT_PIN, OUTPUT);
