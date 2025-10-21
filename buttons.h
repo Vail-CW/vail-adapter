@@ -24,6 +24,12 @@ private:
     bool longPressNotified;  // Track if we've already notified about long press
     bool comboPressNotified;  // Track if we've already notified about combo press (0.5s)
 
+    // Double-click detection
+    unsigned long lastReleaseTime;    // Time of last button release
+    ButtonState lastReleasedButton;   // Which button was last released
+    bool doubleClickDetected;         // Flag to prevent multiple detections
+    #define DOUBLE_CLICK_WINDOW 400   // Max time between clicks (ms)
+
 public:
     ButtonDebouncer();
 
@@ -44,6 +50,9 @@ public:
 
     // Check if currently pressed
     bool isPressActive();
+
+    // Check if a double-click was detected (only single buttons, not combos)
+    bool isDoubleClick();
 };
 
 // Read analog pin and average samples

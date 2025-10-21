@@ -15,6 +15,9 @@ ButtonDebouncer::ButtonDebouncer() {
     lastPressDuration = 0;
     longPressNotified = false;
     comboPressNotified = false;
+    lastReleaseTime = 0;
+    lastReleasedButton = BTN_NONE;
+    doubleClickDetected = false;
 }
 
 bool ButtonDebouncer::update(ButtonState newReading, unsigned long currentTime) {
@@ -41,6 +44,20 @@ bool ButtonDebouncer::update(ButtonState newReading, unsigned long currentTime) 
             // Button released - complete gesture detected!
             // Save the duration BEFORE clearing isPressed
             lastPressDuration = currentTime - pressStartTime;
+
+            // Double-click detection (only for single buttons, not combos)
+            if (maxStateDuringPress == BTN_1 || maxStateDuringPress == BTN_2 || maxStateDuringPress == BTN_3) {
+                // Check if this is the same button released within the double-click window
+                if (maxStateDuringPress == lastReleasedButton &&
+                    (currentTime - lastReleaseTime) <= DOUBLE_CLICK_WINDOW) {
+                    doubleClickDetected = true;
+                }
+
+                // Update tracking for next potential double-click
+                lastReleasedButton = maxStateDuringPress;
+                lastReleaseTime = currentTime;
+            }
+
             isPressed = false;
             previousReading = newReading;
             return true;  // Gesture complete
@@ -94,6 +111,14 @@ unsigned long ButtonDebouncer::getLastPressDuration() {
 
 bool ButtonDebouncer::isPressActive() {
     return isPressed;
+}
+
+bool ButtonDebouncer::isDoubleClick() {
+    if (doubleClickDetected) {
+        doubleClickDetected = false;  // Clear flag after reading
+        return true;
+    }
+    return false;
 }
 
 // Read analog pin and average 10 samples
