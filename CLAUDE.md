@@ -11,24 +11,22 @@ Vail Adapter is an Arduino-based firmware for Morse code key/paddle to USB conve
 - Sidetone generation via piezo buzzer
 - Capacitive touch support
 - Optional radio output for direct keying of amateur radios
+- CW memory recording and playback (3 slots, 25 seconds each)
 
 ## Project Structure
 
 The main firmware files are in the root directory:
-- `vail-adapter.ino` - Main Arduino sketch
+- `vail-adapter.ino` - Main Arduino sketch with menu state machine
 - `adapter.cpp/h` - VailAdapter class implementation
 - `keyers.cpp/h` - Keyer mode implementations
-- `buttons.cpp/h` - Button handling
+- `memory.cpp/h` - CW memory recording and playback system
+- `buttons.cpp/h` - Button handling with double-click detection
 - `polybuzzer.cpp/h` - Audio output
 - `bounce2.cpp/h` - Debouncing for physical inputs
 - `touchbounce.cpp/h` - Debouncing for capacitive touch
 - `config.h` - Hardware configuration
 
-The `test_programs/` directory contains diagnostic/test sketches that are NOT compiled with the main firmware:
-- `cap_touch_diagnostic.ino` - Basic capacitive touch sensor testing
-- `cap_touch_test_configs.ino` - Tests different FreeTouch configurations
-
-**Important:** Arduino compiles all `.ino` files in the same directory together. Test programs must be in subdirectories to avoid conflicts with the main firmware's `setup()` and `loop()` functions.
+**Important:** Arduino compiles all `.ino` files in the same directory together. Keep only the main `vail-adapter.ino` file in the root directory to avoid conflicts with `setup()` and `loop()` functions.
 
 ## Building and Flashing
 
@@ -122,6 +120,51 @@ All keyers use the `Transmitter` interface to control output (BeginTx/EndTx), al
 - `PolyBuzzer` class (polybuzzer.cpp/h) - Manages piezo buzzer tone generation using Arduino `tone()` function
 - `equalTemperament.h` - Lookup table for MIDI note numbers to Hz frequencies
 
+**CW Memory System (memory.cpp/h)**
+The memory system provides recording and playback of CW sequences:
+- **3 independent memory slots** - Each can store up to 25 seconds of CW
+- **Run-length encoding** - Efficient storage with max 200 transitions per slot
+- **Recording** - Captures actual key-down/key-up timing (bypasses keyer processing)
+- **Playback modes**:
+  - Memory management mode: Piezo-only preview for testing
+  - Normal mode: Full output via keyboard/MIDI/radio for operation
+- **Auto-trimming** - Removes trailing silence after last key release
+- **EEPROM persistence** - All three slots saved across power cycles
+
+Key data structures (memory.h):
+- `CWMemory` - Stores transitions array and metadata for one slot
+- `RecordingState` - Tracks active recording (slot, start time, transition count)
+- `PlaybackState` - Manages playback timing and current position
+
+State machine integration (vail-adapter.ino):
+- `MODE_MEMORY_MANAGEMENT` - Entry via B1+B3 combo, exit via B1+B3 again
+- `MODE_RECORDING_MEMORY_1/2/3` - Active recording for each slot
+- `MODE_PLAYING_MEMORY` - Playback in progress
+
+### Button Control & Menu System
+
+The button system uses a resistor ladder network with ButtonDebouncer class (buttons.cpp/h) providing:
+- **Debouncing** - 2 consistent readings required
+- **Gesture detection**:
+  - Quick press - Returns on button release
+  - Long press - Fires after 2 seconds (once per press)
+  - Combo press - Fires after 0.5 seconds for multi-button (once per press)
+  - Double-click - Detects rapid press-release-press within 400ms window
+- **Max state tracking** - Records highest button combination during press
+
+Operating modes (vail-adapter.ino):
+- `MODE_NORMAL` - Default operation, quick press plays memories
+- `MODE_SPEED_SETTING` - Adjust WPM (5-40 range)
+- `MODE_TONE_SETTING` - Adjust sidetone frequency
+- `MODE_KEY_SETTING` - Cycle keyer types
+- `MODE_MEMORY_MANAGEMENT` - Record/playback/clear memory slots
+
+**State transition guards:**
+- Long press only enters settings modes from MODE_NORMAL
+- B1+B3 combo only toggles memory mode between NORMAL ↔ MEMORY_MANAGEMENT
+- Prevents cross-mode interference (e.g., can't enter speed mode from memory mode)
+- Each mode has dedicated button handlers for isolated functionality
+
 ### MIDI Integration
 
 See `MIDI_INTEGRATION_SPEC.md` for full protocol details. Key points:
@@ -145,12 +188,21 @@ Radio mode and radio keyer mode are independent concepts:
 
 ### EEPROM Storage
 
-Settings persisted across power cycles (vail-adapter.ino:64-131):
+Settings and memory slots persisted across power cycles:
+
+**Settings (vail-adapter.ino):**
 - Keyer type (address 0)
 - Dit duration (address 1-2, uint16_t)
 - TX note (address 3)
 - Radio keyer mode (address 5)
 - Valid flag (address 4, value 0x42)
+
+**CW Memory Slots (memory.h):**
+- Three independent 25-second slots with run-length encoding
+- Each slot stores: transition count + array of uint16_t durations
+- Maximum 200 transitions per slot (400 bytes per slot)
+- EEPROM addresses managed by FlashStorage_SAMD library
+- Auto-saves after recording, can be cleared individually
 
 ## Testing
 
