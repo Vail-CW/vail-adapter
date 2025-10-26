@@ -6,10 +6,17 @@ Welcome to your Vail Adapter with Button Hat! This guide will help you get start
 
 ## What Can the Buttons Do?
 
-The button hat gives you control over three important settings:
+The button hat gives you control over settings and memory functions:
+
+**Settings:**
 - **Speed** - Adjust your keyer speed (5-40 WPM)
 - **Tone** - Change your sidetone frequency (42 different pitches)
 - **Key Type** - Switch between Straight Key, Iambic A, and Iambic B modes
+
+**Memory:**
+- **Record** - Capture CW sequences up to 25 seconds in 3 memory slots
+- **Playback** - Send recorded messages via keyboard/MIDI/radio or preview via piezo
+- **Clear** - Erase individual memory slots
 
 All feedback is through Morse code and tones played on your piezo buzzer!
 
@@ -53,12 +60,19 @@ Hold for 2 seconds until you hear audio feedback
 | **Hold Button 1** (2 sec) | Enter Speed Mode - hear "SPEED" |
 | **Hold Button 2** (2 sec) | Enter Tone Mode - hear "TONE" |
 | **Hold Button 3** (2 sec) | Enter Key Type Mode - hear "KEY" |
+| **Hold Buttons 1+3** (2 sec) | Enter Memory Management Mode - hear "MEM" |
 | | |
 | **In any setting mode:** | |
 | Quick press Button 1 | Increase value |
 | Quick press Button 3 | Decrease value |
 | **Hold Button 2** (2 sec) | Save and exit - hear "RR" |
 | Wait 30 seconds | Auto-save and exit - hear descending tones |
+| | |
+| **In memory management mode:** | |
+| Single-click Button 1/2/3 | Play memory (piezo only) |
+| Double-click Button 1/2/3 | Start recording to that slot |
+| **Hold Button 1/2/3** (2 sec) | Clear that memory slot |
+| **Hold Buttons 1+3** (2 sec) | Exit memory mode |
 
 ---
 
@@ -154,6 +168,115 @@ Key type controls how your paddle input is processed.
 
 ---
 
+## CW Memory - Record and Playback
+
+Your Vail Adapter has **three memory slots** that can store CW sequences up to 25 seconds each. You can record your own CQ, contest exchanges, or any other frequently-used messages!
+
+### Memory Management Mode
+
+To work with memories, you first need to enter Memory Management Mode:
+
+1. **Hold Buttons 1+3 together** for 2 seconds
+   - When you hear "MEM" in Morse, release the buttons
+   - You're now in Memory Management Mode
+
+2. **In this mode:**
+   - **Single-click** any button (1, 2, or 3) = Play that memory via piezo only
+   - **Double-click** any button (1, 2, or 3) = Start recording to that slot
+   - **Long-press** any button (1, 2, or 3) = Clear that memory slot
+
+3. **Exit Memory Management Mode:**
+   - **Hold Buttons 1+3 together** again for 2 seconds
+   - Or wait 30 seconds for auto-exit
+
+### Recording to a Memory Slot
+
+**Step by step:**
+
+1. **Enter Memory Management Mode** (hold Buttons 1+3)
+
+2. **Double-click** the button for your desired slot:
+   - Button 1 = Memory Slot 1
+   - Button 2 = Memory Slot 2
+   - Button 3 = Memory Slot 3
+
+3. **Listen for the countdown:** "doot, doot, dah" (3 beeps)
+
+4. **Send your CW** using your paddle or straight key
+   - Recording starts immediately after the countdown
+   - You'll hear the sidetone as you key
+   - **Note:** Only the timing is recorded - NO MIDI/keyboard/radio output during recording
+   - Maximum recording time: 25 seconds
+
+5. **Stop recording:**
+   - **Single-click** the same button you used to start
+   - You'll hear two confirmation beeps
+   - Recording is automatically saved to EEPROM
+   - You're back in Memory Management Mode
+
+**Auto-stop:** If you reach 25 seconds, recording stops automatically with three beeps (low, high, high).
+
+### Playing Back a Memory
+
+There are two ways to play back a memory:
+
+#### Playback in Memory Management Mode (Piezo Only)
+
+1. **Enter Memory Management Mode** (hold Buttons 1+3)
+2. **Single-click** the button for the memory you want to hear (1, 2, or 3)
+3. Playback through the piezo buzzer only - perfect for previewing!
+
+#### Playback in Normal Mode (via Current Output)
+
+1. **Exit Memory Management Mode** (or don't enter it)
+2. **Single-click** the button for the memory you want to send (1, 2, or 3)
+3. Playback goes through your **current output mode**:
+   - Keyboard mode → Sends keystrokes to computer
+   - MIDI mode → Sends MIDI notes
+   - Radio mode → Keys your radio output pins
+   - **Plus** piezo sidetone (if buzzer enabled)
+
+This is perfect for sending CQ or contest exchanges hands-free!
+
+### Clearing a Memory Slot
+
+1. **Enter Memory Management Mode** (hold Buttons 1+3)
+2. **Long-press** the button for the slot you want to clear (2 seconds)
+3. You'll hear the memory number followed by "CLR" in Morse
+4. That memory slot is now empty
+
+### Memory Slot Quick Reference
+
+| Button | Memory Slot | What It Stores |
+|--------|-------------|----------------|
+| **Button 1** | Slot 1 | Up to 25 seconds of CW timing |
+| **Button 2** | Slot 2 | Up to 25 seconds of CW timing |
+| **Button 3** | Slot 3 | Up to 25 seconds of CW timing |
+
+### Memory Tips
+
+**Recording Quality:**
+- Your recordings capture the **exact timing** of your keying
+- All keyer features work during recording (iambic squeeze, etc.)
+- The recording is trimmed to remove trailing silence
+
+**Persistence:**
+- All three memory slots are saved to EEPROM
+- They survive power cycles
+- Each slot is independent
+
+**Testing Your Recording:**
+- After recording, single-click the same button to preview via piezo
+- If you don't like it, just double-click to record over it
+- Or long-press to clear and start fresh
+
+**Field Use:**
+- Record your CQ at home
+- In the field, just single-click to send it via radio/MIDI/keyboard
+- No computer needed!
+
+---
+
 ## Audio Feedback Guide
 
 All feedback comes through your piezo buzzer in Morse code and tones.
@@ -165,10 +288,12 @@ All feedback comes through your piezo buzzer in Morse code and tones.
 | "SPEED" | Entered speed setting mode |
 | "TONE" | Entered tone setting mode |
 | "KEY" | Entered key type mode |
+| "MEM" | Entered memory management mode |
 | "RR" | Settings saved, returning to normal mode |
 | "S" (dit dit dit) | Straight key mode |
 | "IA" (I then A) | Iambic A mode |
 | "IB" (I then B) | Iambic B mode |
+| "[1/2/3] CLR" | Memory slot cleared |
 
 ### Special Tones
 
@@ -179,6 +304,9 @@ All feedback comes through your piezo buzzer in Morse code and tones.
 | Low buzz (200 Hz) | Error - you hit the minimum or maximum limit |
 | Descending tones (7 steps) | Auto-save timeout - settings saved |
 | 100ms beep at new frequency | New tone frequency preview (in tone mode) |
+| "doot, doot, dah" (3 beeps) | Recording countdown - get ready to key! |
+| Two confirmation beeps | Recording saved successfully |
+| Three beeps (low, high, high) | Recording auto-stopped at 25 seconds |
 
 ---
 
@@ -259,13 +387,23 @@ When you first flash the firmware or reset EEPROM:
 MODE ENTRY (hold 2 seconds):
 ├─ Button 1 → Speed Mode   ("SPEED")
 ├─ Button 2 → Tone Mode    ("TONE")
-└─ Button 3 → Key Type Mode ("KEY")
+├─ Button 3 → Key Type Mode ("KEY")
+└─ Buttons 1+3 → Memory Management Mode ("MEM")
 
 IN ANY SETTING MODE:
 ├─ Button 1 (quick) → Increase
 ├─ Button 3 (quick) → Decrease
 ├─ Button 2 (hold 2s) → Save & exit ("RR")
 └─ Wait 30s → Auto-save (descending tones)
+
+IN MEMORY MANAGEMENT MODE:
+├─ Single-click 1/2/3 → Play memory (piezo only)
+├─ Double-click 1/2/3 → Record to that slot
+├─ Hold 1/2/3 (2s) → Clear that slot
+└─ Hold 1+3 (2s) → Exit memory mode
+
+IN NORMAL MODE:
+└─ Single-click 1/2/3 → Play memory via current output (keyboard/MIDI/radio)
 
 TEST WHILE ADJUSTING:
 └─ Use your CW paddle to test immediately!

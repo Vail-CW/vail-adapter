@@ -4,6 +4,7 @@
 #include "keyers.h"
 #include "polybuzzer.h"
 #include "config.h" // Include config.h
+#include "memory.h" // Include memory.h for recording state
 
 class VailAdapter: public Transmitter {
 private:
@@ -32,6 +33,9 @@ private:
     // Track which relays are active for proper key mapping
     bool txRelays[2] = {false, false}; // [dit, dah]
     int lastPaddlePressed = PADDLE_DIT; // Track last paddle for keyer transmission
+
+    // CW memory recording
+    RecordingState* recordingState = nullptr;
 
     void midiKey(uint8_t key, bool down);
     void keyboardKey(uint8_t key, bool down);
@@ -69,4 +73,7 @@ public:
     uint8_t getCurrentKeyerType() const;
     uint16_t getDitDuration() const;
     uint8_t getTxNote() const;
+
+    // CW memory recording support
+    void setRecordingState(RecordingState* state);
 };

@@ -53,6 +53,10 @@ uint8_t VailAdapter::getTxNote() const {
 return this->txNote;
 }
 
+void VailAdapter::setRecordingState(RecordingState* state) {
+    this->recordingState = state;
+}
+
 bool VailAdapter::isBuzzerEnabled() const {
 return this->buzzerEnabled;
 }
@@ -193,6 +197,16 @@ this->keyPressStartTime = millis();
 }
 }
 
+// Record key event if recording is active
+if (recordingState != nullptr && recordingState->isRecording) {
+    recordKeyEvent(*recordingState, true);  // Key down
+    // During recording: only play sidetone, don't send MIDI/keyboard/radio output
+    if (this->buzzerEnabled) {
+        this->buzzer->Note(0, this->txNote);
+    }
+    return;  // Skip normal output during recording
+}
+
 if (this->buzzerEnabled && !this->radioModeActive) {
     this->buzzer->Note(0, this->txNote);
 }
@@ -217,6 +231,14 @@ this->keyPressStartTime = 0;
 }
 }
 
+// Record key event if recording is active
+if (recordingState != nullptr && recordingState->isRecording) {
+    recordKeyEvent(*recordingState, false);  // Key up
+    // During recording: only stop sidetone, don't send MIDI/keyboard/radio output
+    this->buzzer->NoTone(0);
+    return;  // Skip normal output during recording
+}
+
 this->buzzer->NoTone(0);
 
 if (!this->radioModeActive) {
@@ -236,6 +258,16 @@ if (this->keyPressStartTime == 0) {
 this->keyPressStartTime = millis();
 }
 }
+}
+
+// Record key event if recording is active
+if (recordingState != nullptr && recordingState->isRecording) {
+    recordKeyEvent(*recordingState, true);  // Key down
+    // During recording: only play sidetone, don't send MIDI/keyboard/radio output
+    if (this->buzzerEnabled) {
+        this->buzzer->Note(0, this->txNote);
+    }
+    return;  // Skip normal output during recording
 }
 
 if (this->buzzerEnabled && !this->radioModeActive) {
@@ -293,6 +325,14 @@ keyIsPressed = false;
 if (!this->radioModeActive) {
 this->keyPressStartTime = 0;
 }
+}
+
+// Record key event if recording is active
+if (recordingState != nullptr && recordingState->isRecording) {
+    recordKeyEvent(*recordingState, false);  // Key up
+    // During recording: only stop sidetone, don't send MIDI/keyboard/radio output
+    this->buzzer->NoTone(0);
+    return;  // Skip normal output during recording
 }
 
 this->buzzer->NoTone(0);

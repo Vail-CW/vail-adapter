@@ -9,6 +9,7 @@
 #include "adapter.h"
 #include "equal_temperament.h"
 #include "buttons.h"
+#include "memory.h"
 
 bool trs = false;
 
@@ -30,7 +31,11 @@ typedef enum {
   MODE_SPEED_SETTING,
   MODE_TONE_SETTING,
   MODE_KEY_SETTING,
-  MODE_MEMORY_MANAGEMENT
+  MODE_MEMORY_MANAGEMENT,
+  MODE_RECORDING_MEMORY_1,
+  MODE_RECORDING_MEMORY_2,
+  MODE_RECORDING_MEMORY_3,
+  MODE_PLAYING_MEMORY
 } OperatingMode;
 
 OperatingMode currentMode = MODE_NORMAL;
@@ -39,6 +44,12 @@ uint8_t tempToneNote = 69;  // Temporary MIDI note while adjusting (default A4 =
 uint8_t tempKeyerType = 8;  // Temporary keyer type while adjusting (1=Straight, 7=Iambic A, 8=Iambic B)
 unsigned long lastActivityTime = 0;  // For timeout tracking
 #define SETTING_MODE_TIMEOUT 30000  // 30 seconds
+
+// CW Memory system
+CWMemory memorySlots[MAX_MEMORY_SLOTS];  // 3 memory slots
+RecordingState recordingState;           // Current recording state
+PlaybackState playbackState;             // Current playback state
+#endif
 
 // Valid keyer types for cycling
 #define KEYER_STRAIGHT 1
@@ -131,7 +142,6 @@ void playKeyerTypeCode(uint8_t keyerType) {
       break;
   }
 }
-#endif
 
 uint8_t loadToneFromEEPROM();
 
@@ -160,9 +170,12 @@ void playMorseDah() {
 void playMorseChar(char c) {
   switch(c) {
     case 'A': playMorseDit(); playMorseDah(); break;
+    case 'C': playMorseDah(); playMorseDit(); playMorseDah(); playMorseDit(); break;
     case 'D': playMorseDah(); playMorseDit(); playMorseDit(); break;
     case 'E': playMorseDit(); break;
+    case 'I': playMorseDit(); playMorseDit(); break;
     case 'K': playMorseDah(); playMorseDit(); playMorseDah(); break;
+    case 'L': playMorseDit(); playMorseDah(); playMorseDit(); playMorseDit(); break;
     case 'M': playMorseDah(); playMorseDah(); break;
     case 'N': playMorseDah(); playMorseDit(); break;
     case 'O': playMorseDah(); playMorseDah(); playMorseDah(); break;
@@ -171,6 +184,9 @@ void playMorseChar(char c) {
     case 'S': playMorseDit(); playMorseDit(); playMorseDit(); break;
     case 'T': playMorseDah(); break;
     case 'Y': playMorseDah(); playMorseDit(); playMorseDah(); playMorseDah(); break;
+    case '1': playMorseDit(); playMorseDah(); playMorseDah(); playMorseDah(); playMorseDah(); break;
+    case '2': playMorseDit(); playMorseDit(); playMorseDah(); playMorseDah(); playMorseDah(); break;
+    case '3': playMorseDit(); playMorseDit(); playMorseDit(); playMorseDah(); playMorseDah(); break;
   }
   // Inter-character space = 3 dits (we already have 1 from last element)
   delay(adapter.getDitDuration() * 2);
@@ -220,6 +236,35 @@ void playDescendingTones() {
     noTone(PIEZO_PIN);
     if (i < 6) delay(20);  // Small gap between tones
   }
+}
+
+void playRecordingCountdown() {
+  // "doot, doot, dah" countdown pattern (inspired by Mario Kart)
+  // First doot: 800 Hz, 200ms
+  tone(PIEZO_PIN, 800);
+  delay(200);
+  noTone(PIEZO_PIN);
+  delay(200);  // Pause
+
+  // Second doot: 800 Hz, 200ms
+  tone(PIEZO_PIN, 800);
+  delay(200);
+  noTone(PIEZO_PIN);
+  delay(200);  // Pause
+
+  // Dah: 600 Hz, 600ms
+  tone(PIEZO_PIN, 600);
+  delay(600);
+  noTone(PIEZO_PIN);
+  delay(200);  // Pause before recording starts
+}
+
+void playMemoryClearedAnnouncement(uint8_t slotNumber) {
+  // Play "[N] CLR" where N is the slot number (1-3)
+  char slotChar = '1' + slotNumber;  // slotNumber is 0-2, we want '1'-'3'
+  playMorseChar(slotChar);
+  delay(adapter.getDitDuration() * 2);  // Extra space between number and word
+  playMorseWord("CLR");
 }
 
 const char* buttonStateToString(ButtonState state) {
@@ -344,6 +389,107 @@ void loadSettingsFromEEPROM() {
   }
 }
 
+#ifdef BUTTON_PIN
+// ============================================================================
+// CW Memory EEPROM Functions (must be in .ino to avoid linking issues)
+// ============================================================================
+
+uint16_t getEEPROMAddressForSlot(uint8_t slotNumber) {
+  // Returns the starting EEPROM address for the given slot (0-2)
+  switch (slotNumber) {
+    case 0: return EEPROM_MEMORY_1_ADDR;
+    case 1: return EEPROM_MEMORY_2_ADDR;
+    case 2: return EEPROM_MEMORY_3_ADDR;
+    default: return EEPROM_MEMORY_1_ADDR;  // Safety fallback
+  }
+}
+
+void saveMemoryToEEPROM(uint8_t slotNumber, const CWMemory& memory) {
+  if (slotNumber >= MAX_MEMORY_SLOTS) return;  // Safety check
+
+  uint16_t baseAddr = getEEPROMAddressForSlot(slotNumber);
+
+  // Write the transition count (2 bytes)
+  EEPROM.put(baseAddr, memory.transitionCount);
+
+  // Write the transition data
+  uint16_t dataAddr = baseAddr + MEMORY_LENGTH_SIZE;
+  for (uint16_t i = 0; i < memory.transitionCount && i < MAX_TRANSITIONS_PER_MEMORY; i++) {
+    EEPROM.put(dataAddr + (i * 2), memory.transitions[i]);
+  }
+
+  EEPROM.commit();
+
+  Serial.print("Saved memory slot ");
+  Serial.print(slotNumber + 1);
+  Serial.print(" - ");
+  Serial.print(memory.transitionCount);
+  Serial.print(" transitions, ");
+  Serial.print(memory.getDurationMs());
+  Serial.println("ms duration");
+}
+
+void loadMemoryFromEEPROM(uint8_t slotNumber, CWMemory& memory) {
+  if (slotNumber >= MAX_MEMORY_SLOTS) {
+    memory.clear();
+    return;
+  }
+
+  uint16_t baseAddr = getEEPROMAddressForSlot(slotNumber);
+
+  // Read the transition count
+  uint16_t count;
+  EEPROM.get(baseAddr, count);
+
+  // Validate the count
+  if (count > MAX_TRANSITIONS_PER_MEMORY) {
+    // Invalid data, clear the memory
+    memory.clear();
+    Serial.print("Memory slot ");
+    Serial.print(slotNumber + 1);
+    Serial.println(" - invalid data, cleared");
+    return;
+  }
+
+  memory.transitionCount = count;
+
+  // Read the transition data
+  uint16_t dataAddr = baseAddr + MEMORY_LENGTH_SIZE;
+  for (uint16_t i = 0; i < count; i++) {
+    EEPROM.get(dataAddr + (i * 2), memory.transitions[i]);
+  }
+
+  Serial.print("Loaded memory slot ");
+  Serial.print(slotNumber + 1);
+  Serial.print(" - ");
+  Serial.print(memory.transitionCount);
+  Serial.print(" transitions, ");
+  Serial.print(memory.getDurationMs());
+  Serial.println("ms duration");
+}
+
+void clearMemoryInEEPROM(uint8_t slotNumber) {
+  if (slotNumber >= MAX_MEMORY_SLOTS) return;
+
+  uint16_t baseAddr = getEEPROMAddressForSlot(slotNumber);
+
+  // Write 0 for the transition count
+  uint16_t zero = 0;
+  EEPROM.put(baseAddr, zero);
+  EEPROM.commit();
+
+  Serial.print("Cleared memory slot ");
+  Serial.println(slotNumber + 1);
+}
+
+void loadMemoriesFromEEPROM() {
+  Serial.println("Loading CW memories from EEPROM...");
+  for (uint8_t i = 0; i < MAX_MEMORY_SLOTS; i++) {
+    loadMemoryFromEEPROM(i, memorySlots[i]);
+  }
+}
+#endif
+
 void setup() {
   Serial.begin(9600);
   delay(500); 
@@ -382,6 +528,12 @@ void setup() {
   
   loadSettingsFromEEPROM();
   loadRadioKeyerModeFromEEPROM();
+
+#ifdef BUTTON_PIN
+  loadMemoriesFromEEPROM();
+  // Connect recording state to adapter for key capture
+  adapter.setRecordingState(&recordingState);
+#endif
 
   Serial.print("Adapter settings loaded - Keyer: "); Serial.print(adapter.getCurrentKeyerType());
   Serial.print(", Dit Duration (ms): "); Serial.print(adapter.getDitDuration());
@@ -424,6 +576,74 @@ void loop() {
   adapter.Tick(currentTime);
 
 #ifdef BUTTON_PIN
+  // Update memory playback state machine
+  updatePlayback(playbackState);
+
+  // Control output during playback
+  static bool lastPlaybackKeyState = false;
+  static bool wasPlaying = false;
+
+  if (playbackState.isPlaying) {
+    wasPlaying = true;
+    if (playbackState.keyCurrentlyDown != lastPlaybackKeyState) {
+      if (playbackState.keyCurrentlyDown) {
+        // Key down
+        if (currentMode == MODE_PLAYING_MEMORY) {
+          // Normal mode: use adapter (outputs to radio/MIDI/keyboard based on current mode)
+          adapter.BeginTx();
+        } else {
+          // Memory management mode: piezo only
+          tone(PIEZO_PIN, equalTemperamentNote[adapter.getTxNote()]);
+        }
+      } else {
+        // Key up
+        if (currentMode == MODE_PLAYING_MEMORY) {
+          // Normal mode: use adapter
+          adapter.EndTx();
+        } else {
+          // Memory management mode: piezo only
+          noTone(PIEZO_PIN);
+        }
+      }
+      lastPlaybackKeyState = playbackState.keyCurrentlyDown;
+    }
+  } else if (wasPlaying) {
+    // Playback just finished
+    if (currentMode == MODE_PLAYING_MEMORY) {
+      adapter.EndTx();  // Make sure key is released
+    } else {
+      noTone(PIEZO_PIN);
+    }
+    lastPlaybackKeyState = false;
+    wasPlaying = false;
+
+    // Return to appropriate mode
+    if (currentMode == MODE_PLAYING_MEMORY) {
+      currentMode = MODE_NORMAL;
+      Serial.println("Playback finished - returned to normal mode");
+    }
+  }
+
+  // Check for recording timeout (25 seconds) or max transitions
+  if (recordingState.isRecording) {
+    if (recordingState.hasReachedMaxDuration() || recordingState.hasReachedMaxTransitions()) {
+      uint8_t activeSlot = recordingState.slotNumber;
+      Serial.println("Recording auto-stopped (timeout or max transitions reached)");
+      stopRecording(recordingState, memorySlots[activeSlot]);
+      saveMemoryToEEPROM(activeSlot, memorySlots[activeSlot]);
+
+      // Play completion tone
+      playAdjustmentBeep(false);
+      delay(100);
+      playAdjustmentBeep(true);
+      delay(100);
+      playAdjustmentBeep(true);
+
+      currentMode = MODE_MEMORY_MANAGEMENT;
+      Serial.println("Returned to memory management mode");
+    }
+  }
+
   // Read button state with debouncing
   int analogVal = readButtonAnalog();
   ButtonState currentButtonState = getButtonState(analogVal);
@@ -549,7 +769,106 @@ void loop() {
           Serial.print("  -> Keyer type changed to ");
           Serial.println(getKeyerTypeName(tempKeyerType));
         }
+      } else if (currentMode == MODE_NORMAL) {
+        // In normal mode: quick press plays memory via current output mode
+        uint8_t slotNumber = 0;
+        if (gestureDetected == BTN_1) slotNumber = 0;
+        else if (gestureDetected == BTN_2) slotNumber = 1;
+        else if (gestureDetected == BTN_3) slotNumber = 2;
+        else return;  // Not a single button press
+
+        if (!memorySlots[slotNumber].isEmpty()) {
+          Serial.print("  -> Playing memory slot ");
+          Serial.print(slotNumber + 1);
+          Serial.println(" via current output mode");
+          // TODO: Implement playback via MIDI/Keyboard/Radio
+          // For now, just play via piezo
+          startPlayback(playbackState, slotNumber, memorySlots[slotNumber]);
+          currentMode = MODE_PLAYING_MEMORY;
+        } else {
+          Serial.print("  -> Memory slot ");
+          Serial.print(slotNumber + 1);
+          Serial.println(" is empty");
+        }
+      } else if (currentMode == MODE_RECORDING_MEMORY_1 ||
+                 currentMode == MODE_RECORDING_MEMORY_2 ||
+                 currentMode == MODE_RECORDING_MEMORY_3) {
+        // In recording mode: single-click stops and saves recording
+        uint8_t activeSlot = (currentMode == MODE_RECORDING_MEMORY_1) ? 0 :
+                            (currentMode == MODE_RECORDING_MEMORY_2) ? 1 : 2;
+
+        // Check if user clicked the same button that started recording
+        uint8_t clickedSlot = 0;
+        if (gestureDetected == BTN_1) clickedSlot = 0;
+        else if (gestureDetected == BTN_2) clickedSlot = 1;
+        else if (gestureDetected == BTN_3) clickedSlot = 2;
+        else return;  // Not a single button press
+
+        if (clickedSlot == activeSlot) {
+          Serial.println("  -> Stopping recording (user-triggered)");
+          stopRecording(recordingState, memorySlots[activeSlot]);
+          saveMemoryToEEPROM(activeSlot, memorySlots[activeSlot]);
+
+          // Play confirmation tone
+          playAdjustmentBeep(true);
+          delay(100);
+          playAdjustmentBeep(true);
+
+          currentMode = MODE_MEMORY_MANAGEMENT;
+          Serial.println("  -> Returned to memory management mode");
+        }
+      } else if (currentMode == MODE_MEMORY_MANAGEMENT) {
+        // In memory management mode: quick press plays memory via piezo only
+        uint8_t slotNumber = 0;
+        if (gestureDetected == BTN_1) slotNumber = 0;
+        else if (gestureDetected == BTN_2) slotNumber = 1;
+        else if (gestureDetected == BTN_3) slotNumber = 2;
+        else return;  // Not a single button press
+
+        Serial.print("  -> Attempting playback of slot ");
+        Serial.print(slotNumber + 1);
+        Serial.print(" - transitions: ");
+        Serial.print(memorySlots[slotNumber].transitionCount);
+        Serial.print(", duration: ");
+        Serial.print(memorySlots[slotNumber].getDurationMs());
+        Serial.println("ms");
+
+        if (!memorySlots[slotNumber].isEmpty()) {
+          Serial.println("  -> Starting playback (piezo only)");
+          startPlayback(playbackState, slotNumber, memorySlots[slotNumber]);
+          // Note: Playback happens in the background via updatePlayback() in loop()
+        } else {
+          Serial.println("  -> ERROR: Memory slot is empty!");
+        }
       }
+    }
+
+    // Check for double-click to trigger recording
+    if (buttonDebouncer.isDoubleClick() && currentMode == MODE_MEMORY_MANAGEMENT) {
+      // Only allow double-click recording in memory management mode
+      uint8_t slotNumber = 0;
+      if (gestureDetected == BTN_1) slotNumber = 0;
+      else if (gestureDetected == BTN_2) slotNumber = 1;
+      else if (gestureDetected == BTN_3) slotNumber = 2;
+      else return;  // Not a single button double-click
+
+      Serial.print(">>> DOUBLE-CLICK DETECTED on Button ");
+      Serial.print(slotNumber + 1);
+      Serial.println(" - Starting recording...");
+
+      // Play countdown: "doot, doot, dah" (3 beeps with the last one longer)
+      playRecordingCountdown();
+
+      // Start recording
+      startRecording(recordingState, slotNumber);
+
+      // Switch to recording mode
+      if (slotNumber == 0) currentMode = MODE_RECORDING_MEMORY_1;
+      else if (slotNumber == 1) currentMode = MODE_RECORDING_MEMORY_2;
+      else if (slotNumber == 2) currentMode = MODE_RECORDING_MEMORY_3;
+
+      Serial.print("Entered recording mode for memory slot ");
+      Serial.println(slotNumber + 1);
     }
   }
 
@@ -686,6 +1005,24 @@ void loop() {
         playMorseWord("RR");
         currentMode = MODE_NORMAL;
       }
+    } else if (currentMode == MODE_MEMORY_MANAGEMENT) {
+      // In memory management mode: long press clears the memory slot
+      uint8_t slotNumber = 0;
+      if (currentState == BTN_1) slotNumber = 0;
+      else if (currentState == BTN_2) slotNumber = 1;
+      else if (currentState == BTN_3) slotNumber = 2;
+      else {
+        Serial.println();
+        return;
+      }
+
+      Serial.print(" - Clearing memory slot ");
+      Serial.println(slotNumber + 1);
+
+      memorySlots[slotNumber].clear();
+      clearMemoryInEEPROM(slotNumber);
+
+      playMemoryClearedAnnouncement(slotNumber);
     }
   }
 
@@ -695,10 +1032,17 @@ void loop() {
     Serial.print(">>> COMBO PRESS DETECTED: ");
     Serial.print(buttonStateToString(currentState));
 
-    // Play MEM for B1+B3 combo (memory management mode)
+    // B1+B3 combo toggles memory management mode
     if (currentState == BTN_1_3) {
-      Serial.println(" - Playing 'MEM'");
-      playMorseWord("MEM");
+      if (currentMode == MODE_NORMAL) {
+        Serial.println(" - Entering MEMORY MANAGEMENT mode");
+        playMorseWord("MEM");
+        currentMode = MODE_MEMORY_MANAGEMENT;
+      } else if (currentMode == MODE_MEMORY_MANAGEMENT) {
+        Serial.println(" - Exiting MEMORY MANAGEMENT mode");
+        playDescendingTones();
+        currentMode = MODE_NORMAL;
+      }
     } else {
       Serial.println();
     }
