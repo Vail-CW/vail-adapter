@@ -58,9 +58,26 @@ function goToStep(stepNumber) {
         wizardState.currentStep = stepNumber;
         updateProgressBar(stepNumber);
 
+        // Update step 2 content if navigating there
+        if (stepNumber === 2) {
+            updateStep2Content();
+        }
+
         // Update step 3 content if navigating there
         if (stepNumber === 3) {
             updateStep3Content();
+        }
+    }
+}
+
+function updateStep2Content() {
+    // Show/hide QT Py hint based on model selection
+    const qtpyHint = document.getElementById('qtpyHint');
+    if (qtpyHint) {
+        if (wizardState.model === 'non_pcb') {
+            qtpyHint.style.display = 'none';
+        } else {
+            qtpyHint.style.display = 'block';
         }
     }
 }
