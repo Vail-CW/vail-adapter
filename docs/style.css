@@ -2,165 +2,531 @@
 html, body {
     margin: 0;
     padding: 0;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
     line-height: 1.6;
-    background-color: #1e1e1e; /* Dark theme background */
-    color: #e0e0e0; /* Light text color */
+    background: linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%);
+    color: #e0e0e0;
+    min-height: 100vh;
 }
 
 /* Container/Wrapper */
 .container {
-    width: 80%;
-    max-width: 900px;
+    width: 90%;
+    max-width: 1000px;
     margin: 2rem auto;
-    padding: 2rem;
-    background-color: #2c2c2c; /* Darker container background */
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(100,100,100,0.1); /* Subtle glow shadow */
+    padding: 2.5rem;
+    background-color: #2c2c2c;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
 /* Headings */
 h1 {
     text-align: center;
-    color: #6cb2f7; /* Lighter, distinct color for h1 */
-    margin-bottom: 1.5rem;
+    color: #6cb2f7;
+    margin-bottom: 2rem;
+    font-size: 2.5rem;
+    font-weight: 600;
 }
 
 h2 {
-    color: #5cadff; /* Lighter accent for h2 */
-    margin-top: 2rem;
+    color: #5cadff;
+    margin-top: 0;
     margin-bottom: 1rem;
-    border-bottom: 2px solid #444; /* Darker border for h2 */
+    font-size: 1.8rem;
+    font-weight: 500;
+}
+
+h3 {
+    color: #e0e0e0;
+    font-size: 1.3rem;
+    font-weight: 500;
+    margin-top: 1rem;
+}
+
+h4 {
+    color: #c0c0c0;
+    font-size: 1.1rem;
+    margin-top: 0.5rem;
+}
+
+/* Progress Bar */
+.progress-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 3rem;
+    padding: 0 1rem;
+}
+
+.progress-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    position: relative;
+}
+
+.step-number {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background-color: #484848;
+    color: #888;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 1.2rem;
+    transition: all 0.3s ease;
+}
+
+.progress-step.active .step-number {
+    background-color: #0d6efd;
+    color: white;
+    box-shadow: 0 0 20px rgba(13, 110, 253, 0.5);
+}
+
+.progress-step.completed .step-number {
+    background-color: #28a745;
+    color: white;
+}
+
+.progress-step.completed .step-number::after {
+    content: '✓';
+    position: absolute;
+}
+
+.step-label {
+    font-size: 0.9rem;
+    color: #888;
+    font-weight: 500;
+}
+
+.progress-step.active .step-label,
+.progress-step.completed .step-label {
+    color: #e0e0e0;
+}
+
+.progress-line {
+    width: 100px;
+    height: 3px;
+    background-color: #484848;
+    margin: 0 1rem;
+}
+
+/* Wizard Steps */
+.wizard-step {
+    display: none;
+    animation: fadeIn 0.4s ease;
+}
+
+.wizard-step.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.step-description {
+    color: #aaa;
+    font-size: 1.1rem;
+    margin-bottom: 2rem;
+}
+
+/* Selection Cards */
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.selection-card {
+    background-color: #383838;
+    border: 2px solid #484848;
+    border-radius: 12px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.selection-card:hover {
+    border-color: #0d6efd;
+    transform: translateY(-5px);
+    box-shadow: 0 8px 24px rgba(13, 110, 253, 0.2);
+}
+
+.selection-card.selected {
+    border-color: #0d6efd;
+    background-color: #2d4a7c;
+    box-shadow: 0 8px 24px rgba(13, 110, 253, 0.3);
+}
+
+.card-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+
+.selection-card h3 {
+    margin: 0.5rem 0;
+    color: #fff;
+}
+
+.selection-card p {
+    color: #aaa;
+    font-size: 0.95rem;
+    margin-bottom: 0;
+}
+
+.hint {
+    margin-top: 1rem;
+    padding: 0.5rem;
+    background-color: rgba(255, 193, 7, 0.1);
+    border-radius: 6px;
+    color: #ffc107;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+/* Info Box */
+.info-box {
+    background: linear-gradient(135deg, #1e3a5f 0%, #2d4a7c 100%);
+    border-left: 4px solid #0d6efd;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.info-box h3 {
+    margin-top: 0;
+    color: #6cb2f7;
+}
+
+.info-box ul {
+    margin: 1rem 0;
+}
+
+.info-box li {
+    margin-bottom: 0.5rem;
+}
+
+.info-box a {
+    color: #6cb2f7;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.info-box a:hover {
+    text-decoration: underline;
+}
+
+/* Flash Steps */
+.flash-step {
+    background-color: #383838;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid #484848;
+}
+
+.step-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.step-badge {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: #0d6efd;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 1.2rem;
+}
+
+.step-header h3 {
+    margin: 0;
+}
+
+/* Boot Methods */
+.boot-methods {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+
+.boot-method {
+    background-color: #2c2c2c;
+    border-radius: 8px;
+    padding: 1.5rem;
+    border: 1px solid #484848;
+}
+
+.boot-method h4 {
+    color: #6cb2f7;
+    margin-top: 0;
+}
+
+/* Log Container */
+.log-container {
+    margin-top: 1rem;
+}
+
+.log-container h4 {
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
+
+#serialLog {
+    background-color: #1a1a1a !important;
+    color: #d0d0d0 !important;
+    border: 1px solid #444 !important;
+    padding: 1rem;
+    border-radius: 6px;
+    height: 150px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+}
+
+/* Buttons */
+.btn-primary, .btn-secondary, .btn-download {
+    display: inline-block;
+    padding: 12px 28px;
+    font-size: 1rem;
+    font-weight: 500;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-decoration: none;
+    text-align: center;
+}
+
+button.btn-primary, button.btn-secondary, button#bootModeButton {
+    width: auto;
+}
+
+.btn-primary, #bootModeButton {
+    background-color: #0d6efd;
+    color: white;
+}
+
+.btn-primary:hover, #bootModeButton:hover {
+    background-color: #0b5ed7;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.4);
+}
+
+.btn-secondary {
+    background-color: #6c757d;
+    color: white;
+    margin-right: 1rem;
+}
+
+.btn-secondary:hover {
+    background-color: #5a6268;
+}
+
+.btn-download {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    font-size: 1.1rem;
+    padding: 16px 32px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-download:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(40, 167, 69, 0.4);
+}
+
+.btn-download.disabled {
+    background: #555;
+    color: #aaa;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.download-icon {
+    font-size: 1.3rem;
+}
+
+/* Success Message */
+.success-message {
+    background-color: rgba(40, 167, 69, 0.1);
+    border: 2px solid #28a745;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 1rem;
+    color: #5edb80;
+}
+
+/* Troubleshooting */
+.troubleshooting {
+    background-color: #383838;
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-top: 2rem;
+    border: 1px solid #484848;
+}
+
+.troubleshooting h3 {
+    margin-top: 0;
+    color: #ffc107;
+}
+
+details {
+    background-color: #2c2c2c;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border: 1px solid #484848;
+}
+
+summary {
+    cursor: pointer;
+    font-weight: 500;
+    color: #6cb2f7;
+    user-select: none;
+}
+
+summary:hover {
+    color: #8ec5ff;
+}
+
+details[open] summary {
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #484848;
+}
+
+details p, details ul {
+    margin: 0.5rem 0;
+}
+
+/* What's New Section */
+.whats-new {
+    background-color: #383838;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid #484848;
+}
+
+.whats-new summary {
+    font-weight: 500;
+    font-size: 0.95rem;
+    color: #aaa;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    list-style: none; /* Remove default arrow */
+}
+
+.whats-new summary::-webkit-details-marker {
+    display: none; /* Remove default arrow in webkit browsers */
+}
+
+.whats-new summary:hover {
+    color: #e0e0e0;
+}
+
+.expand-icon {
+    font-size: 0.7rem;
+    transition: transform 0.3s ease;
+    color: #6cb2f7;
+}
+
+.whats-new[open] .expand-icon {
+    transform: rotate(90deg);
+}
+
+.click-hint {
+    font-size: 0.8rem;
+    color: #888;
+    font-weight: normal;
+    font-style: italic;
+    margin-left: auto;
+}
+
+.whats-new[open] summary {
+    color: #6cb2f7;
+    margin-bottom: 0.75rem;
     padding-bottom: 0.5rem;
 }
 
-h4 { /* For "Activity Log:" */
-    color: #c0c0c0; /* Light and readable for h4 */
+.whats-new ul {
+    margin: 0.5rem 0 0.5rem 1.5rem;
+    padding: 0;
 }
 
-/* Sections */
-section {
-    margin-bottom: 1.5rem;
-    padding: 1rem;
-    border: 1px solid #484848; /* Darker border for sections */
-    border-radius: 5px;
-    background-color: #383838; /* Darker section background */
+.whats-new li {
+    font-size: 0.9rem;
+    margin-bottom: 0.4rem;
+    color: #ccc;
 }
 
-/* Buttons (general styling for button and a.button) */
-button, a.button {
-    display: inline-block;
-    padding: 10px 20px;
-    font-size: 1rem;
-    color: #ffffff; /* Ensure button text is light */
-    background-color: #0d6efd; /* Updated button background color */
-    border: none;
-    border-radius: 5px;
-    text-decoration: none;
-    text-align: center;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
+.manual-link {
+    font-size: 0.85rem;
+    margin: 0.5rem 0 0 0;
 }
 
-button:hover, a.button:hover {
-    background-color: #3b8bf4; /* Lighter/brighter hover state */
+code {
+    background-color: #1a1a1a;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    color: #ffc107;
 }
 
-button:active, a.button:active {
-    background-color: #005cbf; /* Darker/more intense active state */
-}
-
-/* Disabled Button Styling */
-.disabled, .disabled:hover, .disabled:active {
-    background-color: #555; /* Darker gray for disabled background */
-    color: #aaa; /* Lighter gray for disabled text */
-    cursor: not-allowed;
-}
-
-/* Form Elements (Radio Buttons) */
-/* Labels will inherit body color, which is now light. Explicit styling if needed: */
-form label {
-    color: #e0e0e0; /* Ensuring label text is light if it doesn't inherit correctly */
-}
-
-form div { /* Assuming radio buttons might be in a div for spacing */
-    margin-bottom: 0.75rem;
-}
-
-input[type="radio"] + label {
-    margin-left: 0.5rem;
-}
-
-/* Ensure each radio button and its label are on a new line for clarity */
-form input[type="radio"], form label {
-    display: inline; /* Keep them inline */
-}
-form label br { /* Hide the <br> if we want them on one line */
-    /* display: none; */ /* Uncomment if you want label on same line as radio */
-}
-/* Or, for block display of each radio group: */
-form > div, /* If radios are wrapped in divs */
-form > label /* If labels are direct children and meant to group with an input */ {
-    /* display: block; */ /* This would be too general */
-    /* margin-bottom: 0.5rem; */ /* Handled by form div or specific wrapper */
-}
-/* Targeting the <br> approach used in index.html for spacing */
-form input[type="radio"] ~ br {
-    margin-bottom: 0.5rem; /* Add space after the <br> for each radio line */
-}
-
-
-/* Paragraphs & Lists */
-p {
-    margin-bottom: 1rem;
-}
-
+/* Lists */
 ol, ul {
-    padding-left: 20px; /* Default indentation */
-    margin-bottom: 1rem;
-}
-
-/* Log Area Styling */
-pre#serialLog {
-    background-color: #222 !important; /* Dark background for log area, !important to override inline */
-    color: #d0d0d0 !important; /* Light text for log area, !important to override inline */
-    border: 1px solid #444 !important; /* Darker border for log area, !important to override inline */
-    /* height, overflow-y, padding, border-radius, white-space, word-wrap are still from inline style */
+    padding-left: 1.5rem;
 }
 
 ol li, ul li {
-    margin-bottom: 0.5rem; /* Spacing between list items */
+    margin-bottom: 0.75rem;
 }
 
-/* Responsive Adjustments */
-@media (max-width: 768px) {
-    .container {
-        width: 95%;
-        padding: 1rem;
-    }
-    h1 {
-        font-size: 1.8rem;
-    }
-    h2 {
-        font-size: 1.3rem;
-    }
-    button, a.button {
-        padding: 12px 15px; /* Adjust padding for touch targets */
-        font-size: 0.95rem;
-        width: 100%; /* Make buttons full width on small screens */
-        box-sizing: border-box; /* Include padding and border in the element's total width and height */
-    }
-    form input[type="radio"] {
-      margin-bottom: 0.5rem; /* Add some space below radio buttons for touch */
-    }
+/* Links */
+a {
+    color: #6cb2f7;
+    text-decoration: none;
 }
 
-/* Navigation Bar styles */
+a:hover {
+    text-decoration: underline;
+}
+
+/* Navigation Bar */
 nav {
-    background-color: #333;
-    overflow: hidden;
-    padding: 10px 0;
+    background-color: #1a1a1a;
+    padding: 1rem 0;
     text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 nav ul {
@@ -171,28 +537,93 @@ nav ul {
 
 nav ul li {
     display: inline;
+    margin: 0 1rem;
 }
 
 nav ul li a {
     color: white;
     text-decoration: none;
-    padding: 14px 16px;
-    display: inline-block;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    transition: background-color 0.3s ease;
 }
 
 nav ul li a:hover {
-    background-color: #555;
+    background-color: #333;
+    text-decoration: none;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .container {
+        width: 95%;
+        padding: 1.5rem;
+        margin: 1rem auto;
+    }
+
+    h1 {
+        font-size: 2rem;
+    }
+
+    h2 {
+        font-size: 1.5rem;
+    }
+
+    .progress-bar {
+        padding: 0;
+    }
+
+    .progress-line {
+        width: 50px;
+        margin: 0 0.5rem;
+    }
+
+    .step-number {
+        width: 40px;
+        height: 40px;
+        font-size: 1rem;
+    }
+
+    .step-label {
+        font-size: 0.8rem;
+    }
+
+    .card-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .boot-methods {
+        grid-template-columns: 1fr;
+    }
+
+    .btn-primary, .btn-secondary, .btn-download {
+        width: 100%;
+        margin-bottom: 0.5rem;
+    }
+
+    .btn-secondary {
+        margin-right: 0;
+    }
 }
 
 @media (max-width: 480px) {
     h1 {
-        font-size: 1.5rem;
+        font-size: 1.6rem;
     }
-    h2 {
-        font-size: 1.1rem;
+
+    .step-label {
+        display: none;
     }
+
+    .progress-line {
+        width: 30px;
+    }
+
     .container {
-        margin-top: 1rem;
-        margin-bottom: 1rem;
+        padding: 1rem;
+    }
+
+    .flash-step {
+        padding: 1rem;
     }
 }

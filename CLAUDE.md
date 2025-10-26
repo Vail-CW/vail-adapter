@@ -219,6 +219,22 @@ Firmware naming convention:
 - `xiao_basic_pcb_v1.uf2`, `xiao_basic_pcb_v2.uf2`, `xiao_advanced_pcb.uf2`, `xiao_non_pcb.uf2`
 - `qtpy_basic_pcb_v1.uf2`, `qtpy_basic_pcb_v2.uf2`, `qtpy_advanced_pcb.uf2`, `qtpy_non_pcb.uf2`
 
+## GitHub Pages Maintenance
+
+The project uses GitHub Pages to host a firmware update wizard at the repository URL. The site is located in the `docs/` directory.
+
+**IMPORTANT:** When making significant commits to master (especially feature additions or bug fixes), update the "What's New in This Version" section in `docs/index.html`:
+
+1. Update the date in the format: `<em>Last Updated: Month Day, Year</em>`
+2. Add or modify bullet points describing the changes
+3. Keep the list focused on user-visible features and fixes
+4. Ensure the manual link points to `https://vailadapter.com/manual`
+5. Ensure setup instructions point to `https://vailmorse.com` (official Vail web repeater)
+
+Example update locations in `docs/index.html`:
+- Line ~95: Date stamp
+- Lines ~96-100: Feature bullet points
+
 ## Common Development Patterns
 
 ### Adding a New Keyer Mode

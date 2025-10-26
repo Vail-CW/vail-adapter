@@ -1,90 +1,110 @@
-const uf2Files = {
-    "xiao_non_pcb": { url: "firmware_files/xiao_non_pcb.uf2", filename: "xiao_non_pcb.uf2" },
-    "xiao_basic_pcb_v1": { url: "firmware_files/xiao_basic_pcb_v1.uf2", filename: "xiao_basic_pcb_v1.uf2" },
-    "xiao_basic_pcb_v2": { url: "firmware_files/xiao_basic_pcb_v2.uf2", filename: "xiao_basic_pcb_v2.uf2" },
-    "qtpy_non_pcb": { url: "firmware_files/qtpy_non_pcb.uf2", filename: "qtpy_non_pcb.uf2" },
-    "qtpy_basic_pcb_v1": { url: "firmware_files/qtpy_basic_pcb_v1.uf2", filename: "qtpy_basic_pcb_v1.uf2" },
-    "qtpy_basic_pcb_v2": { url: "firmware_files/qtpy_basic_pcb_v2.uf2", filename: "qtpy_basic_pcb_v2.uf2" },
-    "qtpy_advanced_pcb": { url: "firmware_files/qtpy_advanced_pcb.uf2", filename: "qtpy_advanced_pcb.uf2" }
+// Wizard state management
+const wizardState = {
+    currentStep: 1,
+    model: null,      // 'basic_pcb', 'advanced_pcb', or 'non_pcb'
+    board: null,      // 'qtpy' or 'xiao'
 };
 
-// Ensure download button is disabled on page load if no version is pre-selected
-document.addEventListener('DOMContentLoaded', () => {
-    const bootModeButton = document.getElementById('bootModeButton');
-    const downloadButton = document.getElementById('downloadButton');
-    const adapterVersionRadios = document.querySelectorAll('input[name="adapter_version"]');
+// Firmware file mapping
+function getFirmwareFile() {
+    if (!wizardState.model || !wizardState.board) return null;
 
-    // Setup event listener for bootModeButton
-    if (bootModeButton) {
-        // The old enterBootMode function and its listener should have been removed.
-        // This specifically targets the WebSerial function.
-        bootModeButton.addEventListener('click', triggerBootloaderViaWebSerial);
+    // Build firmware filename based on selections
+    // For Basic PCB, use v2 as default (latest version)
+    let filename;
+    if (wizardState.model === 'basic_pcb') {
+        filename = `${wizardState.board}_basic_pcb_v2.uf2`;
+    } else if (wizardState.model === 'advanced_pcb') {
+        filename = `${wizardState.board}_advanced_pcb.uf2`;
     } else {
-        console.error("bootModeButton not found during event listener setup.");
+        filename = `${wizardState.board}_non_pcb.uf2`;
     }
 
-    // Setup event listeners for radio buttons
-    if (adapterVersionRadios && downloadButton) { // Ensure buttons exist
-        adapterVersionRadios.forEach(radio => {
-            radio.addEventListener('change', function() {
-                const selectedVersion = this.value;
-                if (uf2Files[selectedVersion]) {
-                    const fileInfo = uf2Files[selectedVersion];
-                    downloadButton.href = fileInfo.url;
-                    downloadButton.download = fileInfo.filename;
-                    downloadButton.textContent = `Download ${fileInfo.filename}`;
-                    downloadButton.classList.remove('disabled');
-                    downloadButton.removeAttribute('aria-disabled');
-                } else {
-                    downloadButton.href = "#";
-                    downloadButton.removeAttribute('download');
-                    downloadButton.textContent = 'Download UF2 File';
-                    downloadButton.classList.add('disabled');
-                    downloadButton.setAttribute('aria-disabled', 'true');
-                }
-            });
-        });
+    return {
+        url: `firmware_files/${filename}`,
+        filename: filename
+    };
+}
 
-        // Initial check for download button state
-        let isVersionSelected = false;
-        adapterVersionRadios.forEach(radio => {
-            if (radio.checked) {
-                isVersionSelected = true;
-                radio.dispatchEvent(new Event('change')); // Trigger change to update download button
-            }
-        });
+// Get friendly names for display
+function getModelName(model) {
+    const names = {
+        'basic_pcb': 'Basic PCB',
+        'advanced_pcb': 'Advanced PCB',
+        'non_pcb': 'DIY No PCB'
+    };
+    return names[model] || model;
+}
 
-        if (!isVersionSelected) { // Redundant check if downloadButton doesn't exist, but safe
-            downloadButton.classList.add('disabled');
-            downloadButton.setAttribute('aria-disabled', 'true');
-            downloadButton.href = "#";
-            downloadButton.addEventListener('click', function(event) {
-                if (this.classList.contains('disabled')) {
-                    event.preventDefault();
-                    alert("Please select an adapter version first.");
-                }
-            });
-        } else { // If a version is selected, ensure the click handler for enabled state is also correct
-            downloadButton.addEventListener('click', function(event) {
-                if (this.classList.contains('disabled')) { // Should not be the case if version selected
-                    event.preventDefault();
-                    alert("Please select an adapter version first.");
-                }
-            });
+function getBoardName(board) {
+    const names = {
+        'qtpy': 'Adafruit QT Py SAMD21',
+        'xiao': 'Seeeduino XIAO SAMD21'
+    };
+    return names[board] || board;
+}
+
+// Step navigation functions
+function goToStep(stepNumber) {
+    // Hide all steps
+    document.querySelectorAll('.wizard-step').forEach(step => {
+        step.classList.remove('active');
+    });
+
+    // Show target step
+    const targetStep = document.getElementById(`step${stepNumber}`);
+    if (targetStep) {
+        targetStep.classList.add('active');
+        wizardState.currentStep = stepNumber;
+        updateProgressBar(stepNumber);
+
+        // Update step 3 content if navigating there
+        if (stepNumber === 3) {
+            updateStep3Content();
         }
-    } else {
-        if (!adapterVersionRadios) console.error("adapterVersionRadios not found.");
-        if (!downloadButton) console.error("downloadButton not found.");
     }
-});
+}
 
-let port; // To store the serial port object
+function updateProgressBar(stepNumber) {
+    document.querySelectorAll('.progress-step').forEach(step => {
+        const stepNum = parseInt(step.dataset.step);
+        if (stepNum < stepNumber) {
+            step.classList.add('completed');
+            step.classList.remove('active');
+        } else if (stepNum === stepNumber) {
+            step.classList.add('active');
+            step.classList.remove('completed');
+        } else {
+            step.classList.remove('active', 'completed');
+        }
+    });
+}
 
-// Add a log function similar to the example, targetting a new log area in HTML
-// We'll add the HTML element in the next plan step. For now, just console.log.
+function updateStep3Content() {
+    // Update selected configuration display
+    const configText = `${getModelName(wizardState.model)} + ${getBoardName(wizardState.board)}`;
+    document.getElementById('selectedConfig').textContent = configText;
+
+    // Update download button
+    const downloadButton = document.getElementById('downloadButton');
+    const downloadText = document.getElementById('downloadText');
+    const firmwareFile = getFirmwareFile();
+
+    if (firmwareFile) {
+        downloadButton.href = firmwareFile.url;
+        downloadButton.download = firmwareFile.filename;
+        downloadText.textContent = `Download ${firmwareFile.filename}`;
+        downloadButton.classList.remove('disabled');
+        downloadButton.removeAttribute('aria-disabled');
+    }
+}
+
+// WebSerial boot mode functionality
+let port;
+
 function logToPage(message) {
-    console.log(message); // Placeholder for actual page logging
-    const logArea = document.getElementById('serialLog'); // Assume this ID will exist
+    console.log(message);
+    const logArea = document.getElementById('serialLog');
     if (logArea) {
         logArea.textContent += message + '\n';
         logArea.scrollTop = logArea.scrollHeight;
@@ -95,21 +115,17 @@ async function triggerBootloaderViaWebSerial() {
     logToPage("Attempting to trigger bootloader via WebSerial...");
 
     if (!("serial" in navigator)) {
-        logToPage("Error: WebSerial API not supported by this browser. Please use a compatible browser like Chrome or Edge.");
-        alert("WebSerial API not supported. Please use Chrome or Edge.");
+        logToPage("Error: WebSerial API not supported by this browser. Please use Chrome, Edge, or Opera.");
+        alert("WebSerial API not supported. Please use Chrome, Edge, or Opera browser, or try the manual reset method.");
         return;
     }
 
     try {
-        // If a port is already open from a previous attempt, try to close it first.
-        // This is tricky because the user might have selected a different physical device.
-        // For simplicity in this step, we'll assume 'port' is the one we want to reuse or re-request.
-        if (port && port.readable) { // Check if port is defined and seems open
-            logToPage("Closing previously opened port (if any)...");
+        // Close previous port if open
+        if (port && port.readable) {
+            logToPage("Closing previously opened port...");
             try {
-                // Await readable and writable to be closed if they exist
                 if (port.readable) {
-                     // Best effort to cancel any pending reads if a reader was active
                     const reader = port.readable.getReader();
                     reader.cancel();
                     reader.releaseLock();
@@ -117,12 +133,12 @@ async function triggerBootloaderViaWebSerial() {
                 await port.close();
                 logToPage("Previously opened port closed.");
             } catch (closeErr) {
-                logToPage(`Note: Error closing previous port, this might be okay: ${closeErr.message}`);
+                logToPage(`Note: Error closing previous port: ${closeErr.message}`);
             }
-            port = null; // Reset port variable
+            port = null;
         }
 
-        logToPage("Linux users: If multiple ports are listed, please select the one that typically represents your Arduino device (e.g., /dev/ttyACM0 or /dev/ttyUSB0).");
+        logToPage("Linux users: Select the port that represents your Arduino (e.g., /dev/ttyACM0 or /dev/ttyUSB0).");
         logToPage("Requesting serial port selection...");
         port = await navigator.serial.requestPort();
         logToPage("Port selected.");
@@ -133,26 +149,22 @@ async function triggerBootloaderViaWebSerial() {
 
         await port.close();
         logToPage("Port closed after 1200bps touch.");
-        logToPage("SUCCESS: Bootloader mode command sent! Your device should have disconnected and shortly reappear as a storage drive (e.g., ADAPTERBOOT, QTPYBOOT). Check your computer now.");
-        alert("Bootloader mode command sent! Check your device. It should now appear as a storage drive.");
-        
-        // Update button states (assuming bootModeButton is the trigger)
-        const bootModeButton = document.getElementById('bootModeButton');
-        if (bootModeButton) {
-            // bootModeButton.disabled = true; // Or re-enable to try again
-        }
-        port = null; // Release the port
+        logToPage("✅ SUCCESS: Bootloader mode command sent!");
+        logToPage("Your device should now appear as a storage drive (QTPYBOOT, XIAOBOOT, or ADAPTERBOOT).");
+        alert("Bootloader mode activated! Your device should now appear as a USB storage drive. Proceed to download the firmware.");
+
+        port = null;
 
     } catch (err) {
-        logToPage(`Error: ${err.message}`);
+        logToPage(`❌ Error: ${err.message}`);
         if (err.name === 'NotFoundError') {
             alert("Serial port selection cancelled or no compatible device found.");
-        } else if (err.name === 'InvalidStateError' && port && !port.readable) {
-             alert("Serial port is already closed. Please try again.");
+        } else if (err.name === 'InvalidStateError') {
+            alert("Serial port is already closed. Please try again.");
         } else {
             alert(`An error occurred: ${err.message}`);
         }
-        // Reset port if an error occurred and it's defined
+
         if (port) {
             try { await port.close(); } catch (e) { /* ignore */ }
             port = null;
@@ -160,6 +172,73 @@ async function triggerBootloaderViaWebSerial() {
     }
 }
 
-// Assuming this runs after DOM is loaded, or bootModeButton is already in the DOM
-// The event listener setup for bootModeButton is now inside DOMContentLoaded.
-// This section is removed to avoid re-declaration and ensure DOM readiness.
+// Initialize wizard on page load
+document.addEventListener('DOMContentLoaded', () => {
+    // Step 1: Model selection
+    document.querySelectorAll('#step1 .selection-card').forEach(card => {
+        card.addEventListener('click', () => {
+            // Remove selected state from all cards
+            document.querySelectorAll('#step1 .selection-card').forEach(c => {
+                c.classList.remove('selected');
+            });
+
+            // Mark this card as selected
+            card.classList.add('selected');
+            wizardState.model = card.dataset.model;
+
+            // Advance to step 2 after a short delay
+            setTimeout(() => {
+                goToStep(2);
+            }, 300);
+        });
+    });
+
+    // Step 2: Board selection
+    document.querySelectorAll('#step2 .selection-card').forEach(card => {
+        card.addEventListener('click', () => {
+            // Remove selected state from all cards
+            document.querySelectorAll('#step2 .selection-card').forEach(c => {
+                c.classList.remove('selected');
+            });
+
+            // Mark this card as selected
+            card.classList.add('selected');
+            wizardState.board = card.dataset.board;
+
+            // Advance to step 3 after a short delay
+            setTimeout(() => {
+                goToStep(3);
+            }, 300);
+        });
+    });
+
+    // Back buttons
+    document.getElementById('backToStep1')?.addEventListener('click', () => {
+        goToStep(1);
+    });
+
+    document.getElementById('backToStep2')?.addEventListener('click', () => {
+        goToStep(2);
+    });
+
+    // Start over button
+    document.getElementById('startOver')?.addEventListener('click', () => {
+        wizardState.model = null;
+        wizardState.board = null;
+        document.querySelectorAll('.selection-card').forEach(card => {
+            card.classList.remove('selected');
+        });
+        goToStep(1);
+    });
+
+    // Boot mode button
+    document.getElementById('bootModeButton')?.addEventListener('click', triggerBootloaderViaWebSerial);
+
+    // Download button click handler (for disabled state)
+    document.getElementById('downloadButton')?.addEventListener('click', function(event) {
+        if (this.classList.contains('disabled')) {
+            event.preventDefault();
+            alert("Please complete the previous steps first.");
+        }
+    });
+});

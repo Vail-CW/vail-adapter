@@ -10,93 +10,211 @@
 <nav>
     <ul>
         <li><a href="index.html">Home</a></li>
-        <li><a href="assembly.html">Assembly Instructions</a></li>
+        <li><a href="https://vailadapter.com/assembly" target="_blank">Assembly Instructions</a></li>
     </ul>
 </nav>
-    <div class="container">
-        <h1>Vail Adapter Firmware Update</h1>
-        <p>This page guides you through the process of updating the firmware on your Vail Adapter.</p>
 
-        <section>
-        <h2>Step 1: Choose Vail Adapter version</h2>
-        <p>Select the version of your Vail Adapter:</p>
-        <form id="versionForm">
-            <div>
-                <input type="radio" id="xiao_non_pcb" name="adapter_version" value="xiao_non_pcb">
-                <label for="xiao_non_pcb">Xiao Non PCB</label>
-            </div>
-            <div>
-                <input type="radio" id="xiao_basic_pcb_v1" name="adapter_version" value="xiao_basic_pcb_v1">
-                <label for="xiao_basic_pcb_v1">Xiao Basic PCB V1</label>
-            </div>
-            <div>
-                <input type="radio" id="xiao_basic_pcb_v2" name="adapter_version" value="xiao_basic_pcb_v2">
-                <label for="xiao_basic_pcb_v2">Xiao Basic PCB V2</label>
-            </div>
-            <div>
-                <input type="radio" id="qtpy_non_pcb" name="adapter_version" value="qtpy_non_pcb">
-                <label for="qtpy_non_pcb">QT PY Non PCB</label>
-            </div>
-            <div>
-                <input type="radio" id="qtpy_basic_pcb_v1" name="adapter_version" value="qtpy_basic_pcb_v1">
-                <label for="qtpy_basic_pcb_v1">QT PY Basic PCB V1</label>
-            </div>
-            <div>
-                <input type="radio" id="qtpy_basic_pcb_v2" name="adapter_version" value="qtpy_basic_pcb_v2">
-                <label for="qtpy_basic_pcb_v2">QT PY Basic PCB V2</label>
-            </div>
-            <div>
-                <input type="radio" id="qtpy_advanced_pcb" name="adapter_version" value="qtpy_advanced_pcb">
-                <label for="qtpy_advanced_pcb">QT PY Advanced PCB</label>
-            </div>
-        </form>
-    </section>
+<div class="container">
+    <h1>Vail Adapter Firmware Update</h1>
 
-    <section>
-        <h2>Step 2: Plug in Vail Adapter</h2>
-        <p>Use a USC-C cable capable of data, and plug the adapter into your computer.</p>
-    </section>
+    <!-- What's New Section -->
+    <details class="whats-new">
+        <summary>
+            <span class="expand-icon">▶</span>
+            <strong>Last Update:</strong> Oct 26, 2025
+            <span class="click-hint">— Click to see what's new</span>
+        </summary>
+        <ul>
+            <li><strong>CW Memory Recording:</strong> Record and playback CW sequences (3 slots, 25 seconds each)</li>
+            <li><strong>Double-click Detection:</strong> Start recording with a double-click gesture</li>
+            <li><strong>Improved Button Controls:</strong> Enhanced menu navigation and state management</li>
+            <li><strong>Bug Fixes:</strong> Resolved state transition issues in memory management mode</li>
+        </ul>
+        <p class="manual-link">📖 <a href="https://vailadapter.com/manual" target="_blank">View User Manual</a></p>
+    </details>
 
-    <section>
-        <h2>Step 3: Enter Boot Mode</h2>
-        <p>Instructions on how to enter boot mode.</p>
-        <button id="bootModeButton">Press to Enter Boot Mode</button>
-        <h4>Activity Log:</h4>
-        <pre id="serialLog" style="background-color: #eee; padding: 10px; border-radius: 4px; height: 150px; overflow-y: scroll; border: 1px solid #ccc; white-space: pre-wrap; word-wrap: break-word;"></pre>
-    </section>
-
-    <section>
-        <h2>Step 4: Download UF2 File</h2>
-        <p>Select your adapter version above, then download the appropriate firmware file.</p>
-        <a href="#" id="downloadButton" class="button disabled" role="button" aria-disabled="true">Download UF2 File</a>
-    </section>
-
-    <section>
-        <h2>Step 5: Drag and Drop UF2 File</h2>
-        <p>Now that you have the firmware file, let's copy it to your Vail Adapter. Follow these steps carefully:</p>
-        <ol>
-            <li><strong>Open File Explorer:</strong> Open your computer's file explorer (Finder on a Mac, File Explorer on Windows).</li>
-            <li><strong>Find the UF2 File:</strong> Go to your "Downloads" folder, or wherever you saved the downloaded UF2 file from Step 4. You should see the file you just downloaded (e.g., "non_pcb_basic.uf2").</li>
-            <li><strong>Look for the Adapter Drive:</strong> When your Vail Adapter is in boot mode (from Step 3), it will appear as a new USB drive on your computer. This drive might be named something like "ADAPTERBOOT", "QTPYBOOT", "RPI-RP2", or similar.</li>
-            <li><strong>Drag and Drop:</strong> Click on the downloaded UF2 file, hold the mouse button down, and drag it over to the Vail Adapter drive that appeared in the previous step. Release the mouse button to drop the file onto the drive.</li>
-            <li><strong>Wait for Completion:</strong> The LED on your Vail Adapter might flash rapidly while the file is being copied. Once the copy is complete, the adapter drive may automatically disappear from your file explorer. This is normal.</li>
-        </ol>
-        <p>If the drive doesn't disappear, wait about 30 seconds after the LED stops flashing before proceeding to the next step.</p>
-    </section>
-
-        <section>
-            <h2>Step 6: Finalize Update</h2>
-            <p>You're almost done! Follow these last few steps to complete the firmware update:</p>
-            <ol>
-                <li><strong>Wait a Moment:</strong> After the UF2 file has been copied to the adapter (and the drive may have disappeared), wait about 10 seconds. This gives the adapter a little time to process the new firmware.</li>
-                <li><strong>Unplug the Adapter:</strong> Carefully unplug the Vail Adapter from your computer's USB port.</li>
-                <li><strong>Plug it Back In:</strong> Plug the Vail Adapter back into your computer's USB port.</li>
-                <li><strong>IMPORTANT - GO TO https://vail.fly.dev/ OR https://vail.woozle.org/: </strong> Go to a Vail Repeater site to set your key type, speed, and tone. This will save to the device so that it can be used in practice oscillator mode or with keyboard enabled sites like VBAND.</li>
-            </ol>
-            <p>That's it! The firmware update should now be complete, and your Vail Adapter is ready to use with the new firmware. You may see a new drive appear, or the device might enumerate differently, which is normal.</p>
-        </section>
+    <!-- Progress Indicator -->
+    <div class="progress-bar">
+        <div class="progress-step active" data-step="1">
+            <div class="step-number">1</div>
+            <div class="step-label">Model</div>
+        </div>
+        <div class="progress-line"></div>
+        <div class="progress-step" data-step="2">
+            <div class="step-number">2</div>
+            <div class="step-label">Board</div>
+        </div>
+        <div class="progress-line"></div>
+        <div class="progress-step" data-step="3">
+            <div class="step-number">3</div>
+            <div class="step-label">Update</div>
+        </div>
     </div>
+
+    <!-- Step 1: Model Selection -->
+    <section id="step1" class="wizard-step active">
+        <h2>What model of Vail Adapter do you have?</h2>
+        <p class="step-description">Choose the PCB version that matches your adapter.</p>
+
+        <div class="card-grid">
+            <div class="selection-card" data-model="basic_pcb">
+                <div class="card-icon">📦</div>
+                <h3>Basic PCB</h3>
+                <p>Standard Vail Adapter PCB with paddle inputs and sidetone</p>
+            </div>
+
+            <div class="selection-card" data-model="advanced_pcb">
+                <div class="card-icon">⚡</div>
+                <h3>Advanced PCB</h3>
+                <p>Includes radio output port and built-in capacitive touch points</p>
+            </div>
+
+            <div class="selection-card" data-model="non_pcb">
+                <div class="card-icon">🔧</div>
+                <h3>DIY No PCB</h3>
+                <p>Hand-wired or breadboard build following GitHub specs</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Step 2: Board Selection -->
+    <section id="step2" class="wizard-step">
+        <h2>Which Arduino board are you using?</h2>
+        <p class="step-description">Select the microcontroller on your adapter.</p>
+
+        <div class="card-grid">
+            <div class="selection-card" data-board="qtpy">
+                <div class="card-icon">🔷</div>
+                <h3>Adafruit QT Py SAMD21</h3>
+                <p>Look for "QT Py" labeling on the board</p>
+                <div class="hint">💡 Most purchased boards from vailadapter.com will likely be a QT Py when in doubt</div>
+            </div>
+
+            <div class="selection-card" data-board="xiao">
+                <div class="card-icon">🔶</div>
+                <h3>Seeeduino XIAO SAMD21</h3>
+                <p>Look for "XIAO" labeling on the board</p>
+            </div>
+        </div>
+
+        <button class="btn-secondary" id="backToStep1">← Back</button>
+    </section>
+
+    <!-- Step 3: Flash Firmware -->
+    <section id="step3" class="wizard-step">
+        <h2>Flash Your Firmware</h2>
+        <p class="step-description">You've selected: <strong id="selectedConfig"></strong></p>
+
+        <!-- Sub-step 1: Plug In -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">1</span>
+                <h3>Plug In Your Adapter</h3>
+            </div>
+            <p>Use a USB-C cable (must support data transfer) and connect your Vail Adapter to your computer.</p>
+        </div>
+
+        <!-- Sub-step 2: Enter Boot Mode -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">2</span>
+                <h3>Enter Boot Mode</h3>
+            </div>
+            <p>Choose one of these methods to put your adapter into bootloader mode:</p>
+
+            <div class="boot-methods">
+                <div class="boot-method">
+                    <h4>Method 1: WebSerial (Recommended)</h4>
+                    <p>Click the button below to automatically trigger boot mode. Works in Chrome, Edge, and Opera browsers.</p>
+                    <button id="bootModeButton" class="btn-primary">🔌 Enter Boot Mode via WebSerial</button>
+                    <div class="log-container">
+                        <h4>Activity Log:</h4>
+                        <pre id="serialLog"></pre>
+                    </div>
+                </div>
+
+                <div class="boot-method">
+                    <h4>Method 2: Manual Reset (Double-tap)</h4>
+                    <p>Quickly double-tap the reset button on your adapter. The board should appear as a USB storage device (e.g., "QTPYBOOT" or "XIAOBOOT").</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sub-step 3: Download Firmware -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">3</span>
+                <h3>Download Firmware</h3>
+            </div>
+            <p>Download the firmware file for your configuration:</p>
+            <a href="#" id="downloadButton" class="btn-download disabled" role="button" aria-disabled="true">
+                <span class="download-icon">⬇️</span>
+                <span id="downloadText">Download UF2 File</span>
+            </a>
+        </div>
+
+        <!-- Sub-step 4: Copy to Device -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">4</span>
+                <h3>Copy Firmware to Device</h3>
+            </div>
+            <ol>
+                <li>Open your file explorer (Finder on Mac, File Explorer on Windows)</li>
+                <li>Find your Downloads folder and locate the downloaded .uf2 file</li>
+                <li>Look for the adapter drive (named "QTPYBOOT", "XIAOBOOT", "ADAPTERBOOT", or similar)</li>
+                <li>Drag and drop the .uf2 file onto the adapter drive</li>
+                <li>Wait for the LED to stop flashing - the drive will automatically disconnect when complete</li>
+            </ol>
+        </div>
+
+        <!-- Sub-step 5: Finalize -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">5</span>
+                <h3>Finalize Setup</h3>
+            </div>
+            <ol>
+                <li>Wait 10 seconds after the firmware copies</li>
+                <li>Unplug and reconnect your Vail Adapter</li>
+                <li><strong>Important:</strong> Visit <a href="https://vailmorse.com" target="_blank">vailmorse.com</a> (the official Vail web repeater) to configure your keyer type, speed, and tone settings</li>
+                <li>Your settings will be saved to the device and can be used with any compatible CW application</li>
+            </ol>
+            <div class="success-message">
+                <strong>✅ You're all set!</strong> Your Vail Adapter is now running the latest firmware.
+            </div>
+        </div>
+
+        <!-- Troubleshooting -->
+        <div class="troubleshooting">
+            <h3>❓ Troubleshooting</h3>
+            <details>
+                <summary>Device doesn't appear as storage drive</summary>
+                <p>Try these steps:</p>
+                <ul>
+                    <li>Try the double-tap reset method instead of WebSerial</li>
+                    <li>Use a different USB-C cable (some cables are charge-only)</li>
+                    <li>Try a different USB port on your computer</li>
+                    <li>Wait 5 seconds between taps when double-tapping the reset button</li>
+                </ul>
+            </details>
+
+            <details>
+                <summary>WebSerial button doesn't work</summary>
+                <p>WebSerial requires Chrome, Edge, or Opera browser. If you're using Firefox or Safari, please switch browsers or use the manual reset method.</p>
+            </details>
+
+            <details>
+                <summary>Linux: Permission denied</summary>
+                <p>Add your user to the dialout group: <code>sudo usermod -a -G dialout $USER</code> then log out and back in.</p>
+            </details>
+        </div>
+
+        <button class="btn-secondary" id="backToStep2">← Back</button>
+        <button class="btn-primary" id="startOver">Start Over</button>
+    </section>
+</div>
+
 <script src="script.js" defer></script>
 </body>
 </html>
-
