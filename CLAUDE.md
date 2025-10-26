@@ -12,6 +12,24 @@ Vail Adapter is an Arduino-based firmware for Morse code key/paddle to USB conve
 - Capacitive touch support
 - Optional radio output for direct keying of amateur radios
 
+## Project Structure
+
+The main firmware files are in the root directory:
+- `vail-adapter.ino` - Main Arduino sketch
+- `adapter.cpp/h` - VailAdapter class implementation
+- `keyers.cpp/h` - Keyer mode implementations
+- `buttons.cpp/h` - Button handling
+- `polybuzzer.cpp/h` - Audio output
+- `bounce2.cpp/h` - Debouncing for physical inputs
+- `touchbounce.cpp/h` - Debouncing for capacitive touch
+- `config.h` - Hardware configuration
+
+The `test_programs/` directory contains diagnostic/test sketches that are NOT compiled with the main firmware:
+- `cap_touch_diagnostic.ino` - Basic capacitive touch sensor testing
+- `cap_touch_test_configs.ino` - Tests different FreeTouch configurations
+
+**Important:** Arduino compiles all `.ino` files in the same directory together. Test programs must be in subdirectories to avoid conflicts with the main firmware's `setup()` and `loop()` functions.
+
 ## Building and Flashing
 
 ### Arduino CLI Commands
