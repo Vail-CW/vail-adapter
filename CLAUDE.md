@@ -4,257 +4,701 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Vail Adapter is an Arduino-based firmware for Morse code key/paddle to USB conversion. It runs on SAMD21-based microcontrollers (Seeeduino XIAO SAMD21 and Adafruit QT Py SAMD21) and provides:
-- USB HID keyboard output (Ctrl keys for dit/dah)
-- USB MIDI control and output for DAW integration
-- Multiple keyer modes (straight key, bug, iambic A/B, ultimatic, etc.)
-- Sidetone generation via piezo buzzer
-- Capacitive touch support
-- Optional radio output for direct keying of amateur radios
-- CW memory recording and playback (3 slots, 25 seconds each)
+VAIL SUMMIT is a portable morse code training device built on the ESP32-S3 Feather platform with an LCD display and modern UI. It's designed for ham radio operators to practice receiving and sending morse code. Input comes from a CardKB I2C keyboard, iambic paddle, and capacitive touch pads. The device includes training modes, settings management, WiFi connectivity to the Vail internet morse repeater, and extensive hardware integration (battery monitoring, I2S audio).
 
-## Project Structure
+## Building and Development
 
-The main firmware files are in the root directory:
-- `vail-adapter.ino` - Main Arduino sketch with menu state machine
-- `adapter.cpp/h` - VailAdapter class implementation
-- `keyers.cpp/h` - Keyer mode implementations
-- `memory.cpp/h` - CW memory recording and playback system
-- `buttons.cpp/h` - Button handling with double-click detection
-- `polybuzzer.cpp/h` - Audio output
-- `bounce2.cpp/h` - Debouncing for physical inputs
-- `touchbounce.cpp/h` - Debouncing for capacitive touch
-- `config.h` - Hardware configuration
+### Arduino IDE Setup
+- Board: **ESP32S3 Dev Module** or **Adafruit Feather ESP32-S3**
+- USB CDC On Boot: **Enabled**
+- Flash Size: **4MB**
+- PSRAM: **OPI PSRAM**
+- Upload Speed: **921600**
 
-**Important:** Arduino compiles all `.ino` files in the same directory together. Keep only the main `vail-adapter.ino` file in the root directory to avoid conflicts with `setup()` and `loop()` functions.
+### Required Libraries
+Install via Arduino Library Manager:
+1. Adafruit GFX Library
+2. Adafruit ST7735 and ST7789 Library
+3. Adafruit MAX1704X (battery monitoring)
+4. Adafruit LC709203F (backup battery monitor support)
+5. WebSockets by Markus Sattler
+6. ArduinoJson by Benoit Blanchon
 
-## Building and Flashing
-
-### Arduino CLI Commands
-
-The project uses arduino-cli for building. Required libraries:
-- MIDIUSB
-- Adafruit FreeTouch Library
-- FlashStorage_SAMD
-- Keyboard
-
-**Setup arduino-cli (first time only):**
+### Compilation and Upload
 ```bash
-arduino-cli config init
-arduino-cli config add board_manager.additional_urls https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json https://adafruit.github.io/arduino-board-index/package_adafruit_index.json
-arduino-cli core update-index
-arduino-cli core install Seeeduino:samd
-arduino-cli core install adafruit:samd
-arduino-cli lib install MIDIUSB "Adafruit FreeTouch Library" FlashStorage_SAMD Keyboard
+# Open the main sketch in Arduino IDE
+arduino morse_trainer/morse_trainer_menu.ino
+
+# Or use arduino-cli
+arduino-cli compile --fqbn esp32:esp32:adafruit_feather_esp32s3 morse_trainer/
+arduino-cli upload -p COM<X> --fqbn esp32:esp32:adafruit_feather_esp32s3 morse_trainer/
 ```
 
-**Build for XIAO SAMD21:**
+### Serial Monitor
 ```bash
-arduino-cli compile --fqbn Seeeduino:samd:seeed_XIAO_m0 --output-dir build_output --export-binaries .
+# Connect at 115200 baud for debug output
+arduino-cli monitor -p COM<X> --config baudrate=115200
 ```
-
-**Build for QT Py SAMD21:**
-```bash
-arduino-cli compile --fqbn adafruit:samd:adafruit_qtpy_m0 --output-dir build_output --export-binaries .
-```
-
-**Convert .bin to .uf2 (for drag-and-drop flashing):**
-```bash
-python3 uf2conv.py -c -f 0x68ED2B88 -b 0x2000 build_output/*.bin -o firmware.uf2
-```
-
-### Hardware Configuration
-
-Before building, you MUST edit `config.h` and uncomment exactly ONE hardware configuration:
-- `V1_PCB` - Original PCB version
-- `V1_2_PCB` - Revised PCB with updated pin mappings
-- `V2_ADVANCED_PCB` - Advanced PCB with radio output pins (A2/A3)
-- `NO_PCB_GITHUB_SPECS` - Breadboard/hand-wired setup
-
-Each configuration sets different pin mappings for dit/dah/key inputs, piezo, and optional radio outputs.
-
-For V2_ADVANCED_PCB builds, also configure `RADIO_KEYING_ACTIVE_LOW` in config.h based on your radio's keying polarity.
 
 ## Architecture
 
-### Core Components
+### Mode-Based State Machine
+The system operates as a state machine with different modes (`MenuMode` enum in morse_trainer_menu.ino:32-44). Each mode has its own input handler and UI renderer. The main loop delegates to the appropriate mode handler based on `currentMode`.
 
-**Main Loop (vail-adapter.ino:199-245)**
-- Polls MIDI input and dispatches to VailAdapter
-- Updates bounce debouncers for physical inputs (dit, dah, key)
-- Updates capacitive touch inputs (qt_dit, qt_dah, qt_key)
-- Handles special LED states for radio mode and buzzer disable
-- Manages TRS detection for straight key auto-configuration
+**Key modes:**
+- `MODE_MAIN_MENU` / `MODE_TRAINING_MENU` / `MODE_SETTINGS_MENU` / `MODE_GAMES_MENU`: Menu navigation
+- `MODE_HEAR_IT_TYPE_IT`: Receive training (type what you hear)
+- `MODE_PRACTICE`: Practice oscillator with paddle keying
+- `MODE_CW_ACADEMY_TRACK_SELECT` / `MODE_CW_ACADEMY_SESSION_SELECT` / `MODE_CW_ACADEMY_PRACTICE_TYPE_SELECT` / `MODE_CW_ACADEMY_MESSAGE_TYPE_SELECT`: CW Academy curriculum navigation
+- `MODE_CW_ACADEMY_COPY_PRACTICE`: CW Academy copy practice (listen and type)
+- `MODE_MORSE_SHOOTER`: Arcade-style game where you shoot falling letters by sending their morse code
+- `MODE_VAIL_REPEATER`: Internet morse repeater via WebSocket
+- `MODE_WIFI_SETTINGS` / `MODE_CW_SETTINGS` / `MODE_VOLUME_SETTINGS` / `MODE_CALLSIGN_SETTINGS`: Configuration screens
 
-**VailAdapter Class (adapter.cpp/h)**
-The central state machine that:
-- Manages keyboard vs. MIDI output modes
-- Handles MIDI control messages (CC0=mode, CC1=speed, CC2=tone, PC=keyer type)
-- Implements radio mode toggling (10 DAH presses within 500ms)
-- Implements radio keyer mode toggling (5-second DAH hold in radio mode)
-- Implements buzzer disable (5-second DIT hold)
-- Routes paddle inputs to active keyer
-- Controls radio output pins when HAS_RADIO_OUTPUT is defined
-- Persists settings to EEPROM
+### Modular Header Files
+Each major feature is isolated in its own header file with state, UI drawing, input handling, and update logic:
 
-**Keyer System (keyers.cpp/h)**
-Nine keyer algorithms are implemented as separate classes inheriting from base `Keyer`:
-1. **Passthrough** (0) - Manual control, no automation
-2. **StraightKeyer** (1) - For straight keys
-3. **BugKeyer** (2) - Semi-automatic (auto-dit)
-4. **ElBugKeyer** (3) - Electric bug variant
-5. **SingleDotKeyer** (4) - Single dit mode
-6. **UltimaticKeyer** (5) - Ultimatic priority logic
-7. **PlainKeyer** (6) - Basic iambic without squeeze
-8. **IambicAKeyer** (7) - Iambic mode A
-9. **IambicBKeyer** (8) - Iambic mode B (most popular)
-10. **KeyaheadKeyer** (9) - Key-ahead buffering
+- **`config.h`**: Central hardware configuration, pin assignments, timing constants, color scheme
+- **`morse_code.h`**: Morse lookup table and timing calculations (PARIS method)
+- **`i2s_audio.h`**: I2S audio driver for MAX98357A amplifier with software volume control
+- **`training_hear_it_type_it.h`**: Random callsign generator and receive training
+- **`training_practice.h`**: Practice oscillator with iambic keyer logic
+- **`training_cwa.h`**: CW Academy curriculum with 16-session progression (Session 1-10: character introduction, Session 11-13: QSO practice, Session 14-16: on-air prep)
+- **`game_morse_shooter.h`**: Arcade game with falling letters, iambic keyer input, laser shooting, and score tracking
+- **`settings_wifi.h`**: WiFi scanning, connection, credential storage
+- **`settings_cw.h`**: CW speed, tone frequency, key type settings
+- **`settings_volume.h`**: Volume adjustment and persistence
+- **`settings_general.h`**: User callsign configuration
+- **`vail_repeater.h`**: WebSocket client for vail.woozle.org morse repeater
 
-All keyers use the `Transmitter` interface to control output (BeginTx/EndTx), allowing the same keyer logic to work for keyboard, MIDI, and radio outputs.
+### Main Loop Responsibilities
+The `loop()` function (morse_trainer_menu.ino:210-258):
+1. Updates status icons every 5 seconds (except during practice/training to avoid audio interference)
+2. Calls mode-specific update functions (`updatePracticeOscillator()`, `updateVailRepeater()`)
+3. Polls CardKB keyboard via I2C at 10ms intervals (50ms during practice for audio priority)
+4. Handles triple-ESC sleep timeout tracking
 
-**Input Debouncing**
-- `Bounce` class (bounce2.cpp/h) - Software debouncing for physical switches
-- `TouchBounce` class (touchbounce.cpp/h) - Debouncing for Adafruit FreeTouch capacitive sensors
+### Audio System Architecture
+The audio system uses I2S DMA for high-quality, glitch-free output through the MAX98357A amplifier. This replaces the legacy PWM buzzer.
 
-**Audio Output**
-- `PolyBuzzer` class (polybuzzer.cpp/h) - Manages piezo buzzer tone generation using Arduino `tone()` function
-- `equalTemperament.h` - Lookup table for MIDI note numbers to Hz frequencies
+**Critical timing requirements:**
+- I2S DMA has highest interrupt priority (`ESP_INTR_FLAG_LEVEL3`) to beat SPI display DMA
+- I2S must be initialized **before** the display to establish DMA priority
+- Audio buffers are filled in interrupt context, so tone generation must be fast
+- During practice mode, display updates are **completely disabled** to avoid audio glitches
+- The `continueTone()` function maintains phase continuity for smooth audio transitions
 
-**CW Memory System (memory.cpp/h)**
-The memory system provides recording and playback of CW sequences:
-- **3 independent memory slots** - Each can store up to 25 seconds of CW
-- **Run-length encoding** - Efficient storage with max 200 transitions per slot
-- **Recording** - Captures actual key-down/key-up timing (bypasses keyer processing)
-- **Playback modes**:
-  - Memory management mode: Piezo-only preview for testing
-  - Normal mode: Full output via keyboard/MIDI/radio for operation
-- **Auto-trimming** - Removes trailing silence after last key release
-- **EEPROM persistence** - All three slots saved across power cycles
+**Volume control:**
+- Software attenuation (0-100%) applied during sample generation in `i2s_audio.h`
+- Settings persisted in Preferences namespace "audio"
+- Hardware gain on MAX98357A is fixed (GAIN pin configuration)
 
-Key data structures (memory.h):
-- `CWMemory` - Stores transitions array and metadata for one slot
-- `RecordingState` - Tracks active recording (slot, start time, transition count)
-- `PlaybackState` - Manages playback timing and current position
+### Morse Code Timing
+All timing uses the **PARIS standard** (50 dit units per word):
+- Dit duration: `1200 / WPM` milliseconds
+- Dah duration: `3 × dit`
+- Inter-element gap: `1 × dit`
+- Letter gap: `3 × dit`
+- Word gap: `7 × dit`
 
-State machine integration (vail-adapter.ino):
-- `MODE_MEMORY_MANAGEMENT` - Entry via B1+B3 combo, exit via B1+B3 again
-- `MODE_RECORDING_MEMORY_1/2/3` - Active recording for each slot
-- `MODE_PLAYING_MEMORY` - Playback in progress
+WPM range: 5-40 WPM (configurable per mode, stored in Preferences)
 
-### Button Control & Menu System
+### Input Handling Pattern
+Each mode implements three key functions:
+1. **`start<Mode>(tft)`**: Initialize mode state and draw initial UI
+2. **`handle<Mode>Input(key, tft)`**: Process keyboard input, return -1 to exit mode
+3. **`update<Mode>()`** (optional): Called every loop iteration for real-time updates
 
-The button system uses a resistor ladder network with ButtonDebouncer class (buttons.cpp/h) providing:
-- **Debouncing** - 2 consistent readings required
-- **Gesture detection**:
-  - Quick press - Returns on button release
-  - Long press - Fires after 2 seconds (once per press)
-  - Combo press - Fires after 0.5 seconds for multi-button (once per press)
-  - Double-click - Detects rapid press-release-press within 400ms window
-- **Max state tracking** - Records highest button combination during press
+Input handlers return:
+- `-1`: Exit mode (return to parent menu)
+- `0` or `1`: Normal input processed
+- `2`: Full UI redraw requested
+- `3`: Partial UI update (e.g., input box only)
 
-Operating modes (vail-adapter.ino):
-- `MODE_NORMAL` - Default operation, quick press plays memories
-- `MODE_SPEED_SETTING` - Adjust WPM (5-40 range)
-- `MODE_TONE_SETTING` - Adjust sidetone frequency
-- `MODE_KEY_SETTING` - Cycle keyer types
-- `MODE_MEMORY_MANAGEMENT` - Record/playback/clear memory slots
+### Vail Repeater Protocol
+The Vail repeater (vail_repeater.h) uses a WebSocket connection with JSON messages:
 
-**State transition guards:**
-- Long press only enters settings modes from MODE_NORMAL
-- B1+B3 combo only toggles memory mode between NORMAL ↔ MEMORY_MANAGEMENT
-- Prevents cross-mode interference (e.g., can't enter speed mode from memory mode)
-- Each mode has dedicated button handlers for isolated functionality
+**Transmission format:**
+```json
+{"Timestamp":1759710473428,"Clients":0,"Duration":[198]}
+```
+- Each tone sent immediately as separate message
+- Timestamp: Unix epoch milliseconds (when tone started)
+- Duration array contains single tone duration in milliseconds
+- Silences are implicit (gaps between tones)
 
-### MIDI Integration
+**Reception format:**
+```json
+{"Timestamp":1759710473428,"Clients":2,"Duration":[100,50,100,150]}
+```
+- Even indices (0,2,4...): tone durations
+- Odd indices (1,3,5...): silence durations
+- Clock skew calculated from initial handshake for synchronization
+- 500ms playback delay buffer for network jitter
+- Echo filtering: messages with our own timestamp are ignored
 
-See `MIDI_INTEGRATION_SPEC.md` for full protocol details. Key points:
-- **CC0** switches between keyboard and MIDI modes
-- **CC1** sets dit duration (value × 2 milliseconds)
-- **CC2** sets sidetone MIDI note number
-- **PC** selects keyer mode (0-9)
-- In MIDI mode with passthrough keyer (mode 0), outputs Note On/Off for C (straight), C# (dit), D (dah)
+### Battery Monitoring
+Two battery monitor chips are supported (I2C auto-detection on startup):
+- **MAX17048** at address `0x36` (primary, used on Adafruit ESP32-S3 Feather V2)
+- **LC709203F** at address `0x0B` (backup/alternative)
 
-### Special Feature Activation Sequences
+The fuel gauge chips provide voltage and state-of-charge percentage. Calibration improves over several charge/discharge cycles.
 
-These are "Easter egg" features activated by specific input patterns:
+**USB charging detection is disabled** because GPIO 15 (A3) is used by I2S for the LRC clock signal. Using `analogRead(A3)` reconfigures the pin and completely breaks I2S audio output.
 
-1. **Buzzer Disable**: Hold DIT for 5 seconds → toggles buzzer on/off (LED blinks slowly when disabled)
-2. **Radio Mode**: Press DAH 10 times within 500ms → toggles radio mode (LED blinks rapidly when active)
-3. **Radio Keyer Mode**: While in radio mode, hold DAH for 5 seconds → toggles radio keyer mode (direct radio keying vs. pass-through)
+### Pin Repurposing Notes
+**GPIO 5** (originally `BUZZER_PIN`): Now used for capacitive touch dit pad (`TOUCH_DIT_PIN`). PWM buzzer replaced by I2S audio system.
 
-Radio mode and radio keyer mode are independent concepts:
-- Radio mode enables radio output pins
-- Radio keyer mode determines whether the keyer logic directly drives the radio pins (true) or just passes through paddle states (false)
+**GPIO 13** (originally `TFT_BL` backlight PWM): Now used for capacitive touch dah pad (`TOUCH_DAH_PIN`). Display backlight is hardwired to 3.3V for always-on operation.
 
-### EEPROM Storage
+**GPIO 15** (A3, `USB_DETECT_PIN`): Cannot be used for analog input because it's the I2S LRC clock signal. Any `analogRead(A3)` call will break audio.
 
-Settings and memory slots persisted across power cycles:
+## Configuration Management
 
-**Settings (vail-adapter.ino):**
-- Keyer type (address 0)
-- Dit duration (address 1-2, uint16_t)
-- TX note (address 3)
-- Radio keyer mode (address 5)
-- Valid flag (address 4, value 0x42)
+All user settings are stored in ESP32 Preferences (non-volatile flash storage):
 
-**CW Memory Slots (memory.h):**
-- Three independent 25-second slots with run-length encoding
-- Each slot stores: transition count + array of uint16_t durations
-- Maximum 200 transitions per slot (400 bytes per slot)
-- EEPROM addresses managed by FlashStorage_SAMD library
-- Auto-saves after recording, can be cleared individually
+- **"wifi"** namespace: SSID and password
+- **"cwsettings"** namespace: WPM speed, tone frequency (Hz), key type
+- **"audio"** namespace: volume percentage
+- **"callsign"** namespace: user callsign for Vail repeater
+- **"cwa"** namespace: CW Academy progress (track, session, practice type, message type)
 
-## Testing
+Settings are loaded on startup and saved immediately when changed.
 
-No automated test suite exists. Manual testing procedures are documented in `docs/TESTING_GUIDE.md`.
+## Hardware Interfaces
 
-## CI/CD
+### Display (ST7789V via SPI)
+- 240×320 pixels rotated to 320×240 landscape (`SCREEN_ROTATION = 1`)
+- Chip select, data/command, and reset pins on GPIOs 10-12
+- Hardware SPI on GPIOs 35 (MOSI) and 36 (SCK)
+- Backlight hardwired to 3.3V (always on)
 
-GitHub Actions workflow (`.github/workflows/build_uf2.yml`) automatically:
-1. Builds firmware for all 8 hardware configurations (4 configs × 2 boards)
-2. Converts .bin files to .uf2 format
-3. Commits resulting firmware files to `docs/firmware_files/` on every push to master
+### Keyboard (CardKB via I2C)
+- I2C address `0x5F` on GPIOs 3 (SDA) and 4 (SCL)
+- Special key codes: `0xB5`=UP, `0xB6`=DOWN, `0xB4`=LEFT, `0xB7`=RIGHT, `0x0D`=ENTER, `0x1B`=ESC
+- Polled at 10ms intervals (50ms during practice mode)
 
-Firmware naming convention:
-- `xiao_basic_pcb_v1.uf2`, `xiao_basic_pcb_v2.uf2`, `xiao_advanced_pcb.uf2`, `xiao_non_pcb.uf2`
-- `qtpy_basic_pcb_v1.uf2`, `qtpy_basic_pcb_v2.uf2`, `qtpy_advanced_pcb.uf2`, `qtpy_non_pcb.uf2`
+### Paddle Input
+- DIT on GPIO 6, DAH on GPIO 9 (active LOW with internal pullups)
+- Supports straight key, Iambic A, and Iambic B modes
+- Iambic logic in `training_practice.h` implements memory modes and squeeze keying
 
-## GitHub Pages Maintenance
+### Capacitive Touch
+- DIT on GPIO 5 (T5), DAH on GPIO 13 (T13)
+- Threshold configured in `config.h` (`TOUCH_THRESHOLD = 40`)
+- Uses ESP32-S3 internal capacitive sensing (no external components required)
 
-The project uses GitHub Pages to host a firmware update wizard at the repository URL. The site is located in the `docs/` directory.
+### Radio Keying Output
+- DIT output on GPIO 18 (A0), DAH output on GPIO 17 (A1)
+- Digital outputs for keying external ham radios via 3.5mm TRS jack
+- Requires external transistor/relay driver circuit for radio compatibility
 
-**IMPORTANT:** When making significant commits to master (especially feature additions or bug fixes), update the "What's New in This Version" section in `docs/index.html`:
+### I2S Audio (MAX98357A)
+- BCK on GPIO 14, LRC on GPIO 15, DIN on GPIO 16
+- 44.1kHz sample rate, 16-bit stereo
+- Software volume control (0-100%)
+- Hardware gain set by GAIN pin (float=9dB, GND=12dB, VIN=6dB)
 
-1. Update the date in the format: `<em>Last Updated: Month Day, Year</em>`
-2. Add or modify bullet points describing the changes
-3. Keep the list focused on user-visible features and fixes
-4. Ensure the manual link points to `https://vailadapter.com/manual`
-5. Ensure setup instructions point to `https://vailmorse.com` (official Vail web repeater)
+## Firmware Updates
 
-Example update locations in `docs/index.html`:
-- Line ~95: Date stamp
-- Lines ~96-100: Feature bullet points
+VAIL SUMMIT firmware can be updated via:
+1. **Web-based flasher** at `https://vailadapter.com` (recommended for users)
+2. **Arduino IDE** (for developers)
+
+### Repository Integration
+
+**Important:** This code is maintained in two locations:
+- **Development**: `C:\Users\brett\Documents\Coding Projects\Project Jupiter` (this repo)
+- **Distribution**: `github.com/Vail-CW/vail-adapter` on `vail-summit` branch
+
+When firmware changes are ready for distribution:
+1. Code is copied from Project Jupiter to the `vail-summit` branch of vail-adapter repo
+2. Firmware is compiled using Arduino CLI for ESP32-S3 Feather
+3. Binary files (`bootloader.bin`, `partitions.bin`, `vail-summit.bin`) are committed to `master` branch at `docs/firmware_files/summit/`
+4. Users can flash firmware via web updater at `https://vailadapter.com`
+
+### Building Firmware for Distribution
+
+**Arduino CLI Build Process:**
+```bash
+# Navigate to morse_trainer directory
+cd morse_trainer
+
+# Rename main sketch to match folder name (Arduino requirement)
+mv morse_trainer.ino vail-summit.ino
+
+# Compile for ESP32-S3 Feather
+arduino-cli compile --fqbn esp32:esp32:adafruit_feather_esp32s3 --output-dir build vail-summit.ino
+
+# Generated files in build/:
+# - vail-summit.ino.bootloader.bin (bootloader at 0x0)
+# - vail-summit.ino.partitions.bin (partition table at 0x8000)
+# - vail-summit.ino.bin (application at 0x10000)
+```
+
+**Firmware Stats:**
+- Bootloader: ~23KB
+- Partitions: ~3KB
+- Application: ~1.3MB
+- Total flash time: ~30 seconds
+
+### Web-Based Flasher Details
+
+The web updater at `https://vailadapter.com` uses **esptool-js** for browser-based flashing:
+
+**Two-Step Process:**
+1. **Step 1: Enter Bootloader Mode**
+   - User selects device in normal mode (e.g., COM31)
+   - Tool triggers 1200 baud reset to enter bootloader
+   - Device reconnects with new COM port (e.g., COM32)
+
+2. **Step 2: Connect and Flash**
+   - User selects device in bootloader mode
+   - Tool flashes all three binary files with progress indicators
+   - User unplugs/replugs device after flashing completes
+
+**Technical Implementation:**
+- Uses Web Serial API (Chrome/Edge/Opera only)
+- Converts firmware to binary strings for esptool-js compatibility
+- MD5 verification disabled to avoid format issues
+- Real-time progress indicators for each file
+- Dark mode UI matching site theme
+
+See `SUMMIT_INTEGRATION.md` in vail-adapter repo for complete technical details.
+
+## Deep Sleep Power Management
+
+**Entering sleep:** Triple-tap ESC in main menu within 2 seconds
+
+**Wake source:** DIT paddle press (GPIO 6)
+
+**Power consumption:**
+- Active (WiFi on): ~200mA
+- Active (WiFi off): ~100mA
+- Deep sleep: ~20µA
+
+Device performs full restart from `setup()` after wake.
+
+## CW Academy Training Mode
+
+### Overview
+The CW Academy mode implements the official CW Academy curriculum across **four training tracks** (documented in `cw-academy-training-mode.md`). Each track is a comprehensive 16-session program with progressive difficulty.
+
+### Training Tracks
+1. **Beginner**: Learn CW from zero (4 → 44 characters over Sessions 1-10)
+2. **Fundamental**: Build solid foundation (assumes basic CW knowledge)
+3. **Intermediate**: Increase speed & skill (higher WPM targets)
+4. **Advanced**: Master advanced CW techniques
+
+### Module Architecture: `training_cwa.h`
+
+**Track Structure:**
+```cpp
+enum CWATrack {
+  TRACK_BEGINNER = 0,
+  TRACK_FUNDAMENTAL = 1,
+  TRACK_INTERMEDIATE = 2,
+  TRACK_ADVANCED = 3
+};
+```
+
+**Session Data Structure:**
+```cpp
+struct CWASession {
+  int sessionNum;           // Session number (1-16)
+  int charCount;            // Total characters learned by this session
+  const char* newChars;     // New characters introduced
+  const char* description;  // Session description
+};
+```
+
+**Beginner Track Session Progression:**
+- **Sessions 1-10**: Progressive character introduction (4 chars → 44 chars)
+  - Session 1: A, E, N, T (4 chars) - Foundation
+  - Session 2: + S, I, O, 1, 4 (9 chars) - Numbers Begin
+  - Session 10: + X, Z, ., <BK>, <SK> (44 chars) - Complete!
+- **Sessions 11-13**: QSO (conversation) practice with all 44 characters
+- **Sessions 14-16**: On-air preparation and encouragement
+
+**Practice Types:**
+```cpp
+enum CWAPracticeType {
+  PRACTICE_COPY = 0,           // Listen and type what you hear
+  PRACTICE_SENDING = 1,        // Send with physical key
+  PRACTICE_DAILY_DRILL = 2     // Warm-up drills
+};
+```
+- **Sessions 1-10**: Only Copy Practice available (advanced types locked)
+- **Sessions 11+**: All practice types unlocked
+
+**Message Types:**
+```cpp
+enum CWAMessageType {
+  MESSAGE_CHARACTERS = 0,      // Random character practice
+  MESSAGE_WORDS = 1,           // Common words
+  MESSAGE_ABBREVIATIONS = 2,   // CW abbreviations (73, QSL, etc.)
+  MESSAGE_NUMBERS = 3,         // Number sequences
+  MESSAGE_CALLSIGNS = 4,       // Random callsigns
+  MESSAGE_PHRASES = 5          // Full sentences
+};
+```
+
+**State Management:**
+- Progress saved to ESP32 Preferences namespace "cwa"
+- Current track, session, practice type, and message type persisted across reboots
+- Functions: `loadCWAProgress()`, `saveCWAProgress()`
+- Variables: `cwaSelectedTrack`, `cwaSelectedSession`, `cwaSelectedPracticeType`, `cwaSelectedMessageType`
+
+**Navigation Flow:**
+1. Training Menu → CW Academy
+2. **Track Selection** (MODE_CW_ACADEMY_TRACK_SELECT)
+3. **Session Selection** (MODE_CW_ACADEMY_SESSION_SELECT)
+4. **Practice Type Selection** (MODE_CW_ACADEMY_PRACTICE_TYPE_SELECT)
+5. **Message Type Selection** (MODE_CW_ACADEMY_MESSAGE_TYPE_SELECT)
+6. **Copy Practice** (MODE_CW_ACADEMY_COPY_PRACTICE) - Fully implemented
+
+**UI Screens:**
+- `drawCWATrackSelectUI()`: Renders track selection with 4 tracks
+  - Shows track name, description, and position (e.g., "2 of 4")
+  - Up/down navigation with visual cyan arrows
+  - Modern dark blue card design (0x1082 fill, 0x34BF outline)
+- `drawCWASessionSelectUI()`: Renders session selection with 16 sessions
+  - Shows session number, character count, description, and new characters
+  - Up/down navigation with visual cyan arrows
+  - Displays context: track name and session position
+- `drawCWAPracticeTypeSelectUI()`: Renders practice type selection with 3 types
+  - Shows practice type name, description, and position
+  - **Locking feature**: Sessions 1-10 show "LOCKED" for Sending/Daily Drill
+  - Locked types display "Unlocks at Session 11" hint
+  - Displays session context at top
+  - Arrows disabled when types are locked
+- `drawCWAMessageTypeSelectUI()`: Renders message type selection with 6 types
+  - Shows message type name and position
+  - Displays practice type context at top
+  - Up/down navigation with visual arrows
+- `drawCWACopyPracticeUI()`: Renders copy practice mode interface
+  - Shows round number (X/10) and current score
+  - Displays character count setting ("Chars: X")
+  - Three display states:
+    - **Listening state**: Shows "Listening..." before morse plays
+    - **Input state**: Shows input box with typed characters, "Type what you heard:" prompt
+    - **Feedback state**: Shows correct/incorrect with visual color coding (green/red)
+  - Context-aware footer with appropriate controls for each state
+  - Final score screen after 10 rounds with percentage
+
+**Input Handlers:**
+- `handleCWATrackSelectInput()`: Processes track selection input
+  - Returns: -1 to exit to training menu, 0 for normal input, 1 to navigate to session selection, 2 for redraw
+  - UP/DOWN: Navigate tracks, ENTER: Continue to session selection, ESC: Back to training menu
+- `handleCWASessionSelectInput()`: Processes session selection input
+  - Returns: -1 to exit to track selection, 0 for normal input, 1 to navigate to practice type selection, 2 for redraw
+  - UP/DOWN: Navigate sessions, ENTER: Continue to practice type selection, ESC: Back to track selection
+- `handleCWAPracticeTypeSelectInput()`: Processes practice type selection input
+  - Returns: -1 to exit to session selection, 0 for normal input, 1 to navigate to message type selection, 2 for redraw
+  - UP/DOWN: Navigate practice types (disabled if session <= 10), ENTER: Continue to message type, ESC: Back to session selection
+  - Plays error beep (600 Hz, 100ms) when attempting to navigate to locked types
+  - Automatically forces selection to PRACTICE_COPY if session <= 10
+- `handleCWAMessageTypeSelectInput()`: Processes message type selection input
+  - Returns: -1 to exit to practice type selection, 0 for normal input, 1 to start copy practice, 2 for redraw
+  - UP/DOWN: Navigate message types, ENTER: Start copy practice mode, ESC: Back to practice type selection
+- `handleCWACopyPracticeInput()`: Processes copy practice input
+  - Returns: -1 to exit to message type selection, 0 for normal input, 2 for full UI redraw
+  - **Character count adjustment** (works in all states):
+    - UP arrow: Increase character count (max 10)
+    - DOWN arrow: Decrease character count (min 1)
+  - **During input state**:
+    - SPACE: Replay current morse code
+    - ENTER: Submit answer and show feedback
+    - Printable characters: Add to input (uppercase, max 20 chars)
+  - **During feedback state**:
+    - Any key: Continue to next round (or exit if round 10)
+  - ESC: Exit to message type selection at any time
+
+**Entry Points:**
+- `startCWAcademy()`: Called when user selects "CW Academy" from Training menu
+  - Loads saved progress and displays track selection screen
+- `startCWACopyPractice()`: Called when user selects message type and presses ENTER
+  - Initializes copy practice session (resets round counter and score)
+  - Draws initial UI
+- `startCWACopyRound()`: Called to begin each of the 10 practice rounds
+  - Generates random content using `generateCWAContent()`
+  - Displays UI in listening state
+  - Plays morse code using `playMorseString()`
+  - Transitions to input state
+
+### Implementation Status (Chunks 1.1 + 1.2 + 1.3 Complete)
+**Chunk 1.1 - Track and Session Selection:**
+- ✅ Menu integration: "CW Academy" added to Training menu
+- ✅ Track selection screen with 4 tracks (Beginner/Fundamental/Intermediate/Advanced)
+- ✅ Session selection screen with 16 sessions (Beginner track defined)
+- ✅ Session data structures with character counts
+- ✅ Two-level navigation: Track → Session (ESC goes back)
+- ✅ Progress persistence (saved track and session selection)
+
+**Chunk 1.2 - Practice and Message Type Selection:**
+- ✅ Practice type selection screen with 3 types (Copy/Sending/Daily Drill)
+- ✅ Message type selection screen with 6 types (Characters/Words/Abbreviations/Numbers/Callsigns/Phrases)
+- ✅ Complete navigation flow: Track → Session → Practice Type → Message Type
+- ✅ Practice type locking: Sessions 1-10 only allow Copy Practice
+- ✅ Visual lock indicators with "Unlocks at Session 11" hint
+- ✅ Error beep feedback when attempting to access locked content
+- ✅ Progress persistence expanded (practice type and message type saved)
+
+**Chunk 1.3 - Copy Practice Mode:**
+- ✅ MODE_CW_ACADEMY_COPY_PRACTICE mode added to menu system
+- ✅ Complete character sets for all 16 Beginner sessions
+  - Session 1: "AENT" (4 characters)
+  - Session 2: "AENT SI O14" (9 characters)
+  - Session 3-10: Progressive addition up to 44 characters
+  - Sessions 11-16: Full character set including prosigns
+- ✅ Copy practice implementation with 10-round sessions
+  - Clear UI flow: Display input box → Play morse code → Accept user input → Show feedback → Next round
+  - Score tracking with correct/total count and percentage
+  - Visual feedback (green for correct, red for incorrect)
+  - Final score display after 10 rounds
+- ✅ Content generation respects session character sets
+  - `generateCWAContent()`: Generates random content using only characters available in current session
+  - Character mode: Random individual characters
+  - Word mode: Simple 2-5 letter word sequences from session characters
+  - Other types: Placeholder using session characters
+- ✅ Adjustable character count (1-10)
+  - UP/DOWN arrow keys to adjust
+  - Real-time display of current setting ("Chars: X")
+  - Setting applies to all message types
+- ✅ Replay functionality
+  - SPACE bar replays current round's morse code
+  - No conflict with letter input (space excluded from typed characters)
+- ✅ Context-aware help text in footer
+  - Different instructions for each state (listening, typing, feedback)
+  - Shows arrow symbols for character count adjustment
+- ✅ State machine with three states
+  - Listening: Shows "Listening..." before morse plays
+  - Waiting for input: Shows input box and typed characters
+  - Showing feedback: Displays correct/incorrect with answer comparison
+
+**Future Chunks:**
+- ⏳ Session content for Fundamental/Intermediate/Advanced tracks
+- ⏳ Proper word lists for word practice (currently uses random letter sequences)
+- ⏳ Abbreviations content (73, QSL, QTH, etc.)
+- ⏳ Number sequences and formatted numbers
+- ⏳ Realistic callsign generation (W1ABC, K6XYZ patterns)
+- ⏳ Common phrases and QSO exchanges
+- ⏳ Sending practice mode implementation (send with key)
+- ⏳ Daily Drill mode implementation
+- ⏳ ICR (Instant Character Recognition) mode for Session 11+
+- ⏳ QSO practice mode for Sessions 11-13
+
+### Adding New Practice Content
+When adding content for each session (future chunks):
+1. Define content arrays in `training_cwa.h` for each message type
+2. Organize by session (1-16) and type (characters, words, abbreviations, numbers, callsigns, phrases)
+3. Use progressive difficulty within each session
+4. Reference `cw-academy-training-mode.md` for official content
+
+## Morse Shooter Game
+
+### Overview
+The Morse Shooter is an arcade-style game where falling letters descend from the top of the screen. The player uses an iambic keyer (paddle or touch pads) to send morse code patterns that shoot matching letters. It combines entertainment with morse code practice.
+
+### Game Architecture: `game_morse_shooter.h`
+
+**Game Constants:**
+```cpp
+#define MAX_FALLING_LETTERS 5           // Maximum simultaneous letters
+#define LETTER_FALL_SPEED 1             // Pixels per update (slow and steady)
+#define LETTER_SPAWN_INTERVAL 3000      // ms between new letter spawns
+#define GROUND_Y 225                    // Y position of ground (near bottom)
+#define MAX_LIVES 5                     // Lives before game over
+#define GAME_UPDATE_INTERVAL 1000       // ms between game physics updates
+#define GAME_LETTER_TIMEOUT 1200        // ms before pattern is submitted
+```
+
+**Character Set:**
+- 36 characters: E, T, I, A, N, M, S, U, R, W, D, K, G, O, H, V, F, L, P, J, B, X, C, Y, Z, Q, 0-9
+- Ordered by common morse patterns (easier letters first)
+
+### Iambic Keyer Integration
+
+The game uses the **exact same iambic keyer logic** as practice mode for consistent feel:
+
+**State Machine:** IDLE → SENDING → SPACING → IDLE
+- `keyerActive`: Currently sending an element (dit or dah)
+- `inSpacing`: In the inter-element gap
+- `sendingDit` / `sendingDah`: Which element is being sent
+- `ditMemory` / `dahMemory`: Memory paddles for squeeze keying
+
+**Key Features:**
+- Non-blocking state machine (checked every loop iteration)
+- Proper iambic A/B behavior with memory paddles
+- Accurate WPM timing from device settings (`cwSpeed`)
+- Uses `startTone()` / `continueTone()` / `stopTone()` for glitch-free audio
+- Screen completely freezes during keying to prevent audio interference
+
+### Game Loop Architecture
+
+**Dual Update System:**
+1. **`updateMorseShooterInput(tft)`** - Called every main loop iteration
+   - Runs iambic keyer state machine
+   - Handles pattern timeout detection
+   - Screen freezes if any keying activity detected
+
+2. **`updateMorseShooterVisuals(tft)`** - Called every main loop iteration
+   - Checks if keying is active (paddles, tone, gap, or pattern exists)
+   - If keying: returns immediately (screen frozen)
+   - If idle: updates game physics once per second (GAME_UPDATE_INTERVAL)
+   - Updates falling letters, spawns new letters, redraws HUD
+
+**Critical Design Decision:** Screen updates are **completely blocked** during any keying activity to ensure smooth, glitch-free audio at the configured WPM speed.
+
+### Pattern Matching and Shooting
+
+**Pattern Completion:**
+- Pattern builds as user keys morse code (e.g., ".-" for A)
+- After last element, user releases paddles
+- System waits GAME_LETTER_TIMEOUT (1200ms) for inactivity
+- Pattern is matched against morse code table
+- If match found, searches for falling letter with that character
+- If found: shoots letter, plays laser/explosion, updates score
+- If no match or wrong code: error beep, pattern cleared
+
+**Collision Avoidance:**
+When spawning new letters, the system checks existing letters and avoids placing new letters within 30 pixels horizontally and 40 pixels vertically of existing letters (up to 20 attempts).
+
+### Visual Effects
+
+**Ground Scenery (GROUND_Y = 225):**
+- Houses with roofs (simple rectangles and triangles)
+- Trees (triangles for foliage, rectangles for trunks)
+- Turret at center bottom (tank-like shape with barrel)
+- All drawn with retro arcade color palette
+
+**Shooting Animations:**
+1. Laser shot: Lines from turret to target (cyan/white)
+2. Beep 1200 Hz for 50ms
+3. Explosion: Concentric circles with radiating rays (yellow/red/white)
+4. Beep 1000 Hz for 100ms
+5. Clear play area and redraw all elements
+
+**Cleanup Sequence (Critical for No Ghosting):**
+```cpp
+fallingLetters[j].active = false;  // Mark inactive FIRST
+drawLaserShot();                    // Visual effects
+drawExplosion();
+tft.fillRect(0, 42, SCREEN_WIDTH, GROUND_Y - 42, COLOR_BACKGROUND);  // Clear
+drawGroundScenery(tft);            // Redraw ground
+drawFallingLetters(tft);           // Redraw active letters only
+```
+
+**Why order matters:** Letter must be marked inactive BEFORE redraw, or it will briefly reappear as a "ghost" after being shot.
+
+### HUD Display
+
+**Top Left Corner:**
+- Score: Current points (10 points per letter)
+- Lives: Remaining lives (red if ≤2, green otherwise)
+
+**Bottom (Above Ground):**
+- Current morse pattern being entered (cyan text, size 2)
+- Cleared when pattern is empty
+
+### Game Over and Restart
+
+**Game Over Triggers:**
+- Lives reach 0 (letters hit ground)
+
+**Game Over Screen:**
+- Large "GAME OVER" text (red)
+- Final score
+- High score (persisted across sessions)
+- Instructions: ENTER to play again, ESC to exit
+
+### Main Loop Integration
+
+The game mode is integrated into the main loop with special handling:
+
+```cpp
+if (currentMode == MODE_MORSE_SHOOTER) {
+  updateMorseShooterInput(tft);   // Every loop - keyer logic
+  updateMorseShooterVisuals(tft); // Every loop - but internally rate-limited
+}
+```
+
+Keyboard polling is slowed to 50ms during game mode (same as practice) to prioritize audio quality over keyboard responsiveness.
+
+### Important Implementation Notes
+
+1. **Audio Priority:** Screen updates are completely disabled during keying. Game visuals pause while user sends morse code, then resume smoothly.
+
+2. **Timing Accuracy:** Uses `MorseTiming` class with device's `cwSpeed` setting for precise dit/dah/gap durations matching practice mode.
+
+3. **Phase Continuity:** Uses `continueTone()` during element sending to maintain audio phase and prevent clicks.
+
+4. **State Tracking:** Uses static variable `wasKeyingLastTime` to detect transition from keying to idle, ensuring pattern timeout is measured from when paddles are released (not constantly reset).
+
+5. **Memory Paddles:** Full iambic keyer support - squeeze both paddles for alternating dits/dahs, or press opposite paddle during element for queued sending.
+
+### Future Enhancements
+
+Potential improvements documented in `MORSE_SHOOTER_README.md`:
+- Difficulty levels (faster falling, more letters)
+- Power-ups and bonuses
+- Multiple letter types (different colors/values)
+- Boss battles (send longer phrases)
+- Leaderboard persistence
 
 ## Common Development Patterns
 
-### Adding a New Keyer Mode
+### Adding a New Menu Mode
+1. Add enum value to `MenuMode` in morse_trainer_menu.ino
+2. Create header file (e.g., `training_newmode.h`) with state variables, UI functions, and input handler
+3. Add mode to menu arrays (options and icons)
+4. Update `selectMenuItem()` to handle selection
+5. Update `handleKeyPress()` to route input to your handler
+6. Update `drawMenu()` to call your UI renderer
+7. Add any Preferences namespaces for persistent settings
 
-1. Create new class inheriting from `Keyer` in `keyers.cpp`
-2. Implement required methods: `Key()`, `Tick()`, `Reset()`, `SetDitDuration()`, `SetOutput()`, `Release()`
-3. Add instance to `allKeyers[]` array at bottom of `keyers.cpp`
-4. Update `GetKeyerByNumber()` function
-5. Update MIDI_INTEGRATION_SPEC.md with new program change number
+### Creating Audio Feedback
+```cpp
+beep(frequency_hz, duration_ms);  // For short beeps/tones
+startTone(frequency_hz);          // For continuous tone (manual stop)
+stopTone();                       // Stop continuous tone
+```
 
-### Adding Hardware Configuration
+Always use these functions instead of direct I2S manipulation. They handle volume scaling and phase continuity.
 
-1. Add new `#ifdef` block in `config.h` with pin definitions
-2. Set `BOARD_NAME` string for serial output identification
-3. If radio output is needed, define `RADIO_DIT_PIN`, `RADIO_DAH_PIN`, and `HAS_RADIO_OUTPUT`
-4. Add new matrix entry to `.github/workflows/build_uf2.yml`
+### Display Optimization
+- Only redraw what changes (use return codes from input handlers)
+- Disable all display updates during audio-critical operations (practice mode, morse playback)
+- Use `fillRect()` to clear regions before redrawing text
+- Cache text bounds with `getTextBounds()` for centering
 
-### Modifying MIDI Protocol
+### Morse Code Generation
+```cpp
+#include "morse_code.h"
+const char* pattern = getMorseCode('A');  // Returns ".-"
+MorseTiming timing(20);  // 20 WPM timing calculator
+// timing.ditDuration, timing.dahDuration, timing.elementGap, etc.
+```
 
-Changes to MIDI handling should:
-1. Update `VailAdapter::HandleMIDI()` in adapter.cpp
-2. Update MIDI_INTEGRATION_SPEC.md documentation
-3. Consider EEPROM storage if the setting should persist
+Use `playMorseString()` in morse_code.h for automatic playback of strings with proper spacing.
+
+## Critical Constraints
+
+1. **Never use `analogRead(A3)` or `analogRead(15)`** - it breaks I2S audio completely
+2. **Initialize I2S before display** - I2S needs higher DMA priority
+3. **No display updates during audio playback** in practice/training modes - causes glitches
+4. **Always use `beep()` or I2S functions for audio** - never manipulate GPIO 5 directly (repurposed pin)
+5. **Load Preferences at startup, save immediately on change** - don't batch writes
+6. **WebSocket handling must be non-blocking** - use state machine pattern in update loop
+
+## Troubleshooting Common Issues
+
+**Audio distortion/clicking:** Check that I2S is initialized before display. Verify no display updates during audio playback. Ensure volume isn't clipping (keep ≤90%).
+
+**WiFi connection fails:** Use Settings → WiFi Setup to scan and save credentials. Check serial monitor for SSID/password echo and connection status.
+
+**Battery percentage inaccurate:** MAX17048 requires calibration over several charge cycles. Initial readings may be lower than actual charge.
+
+**Keys not responding:** Check serial monitor for I2C scan results. Verify CardKB at 0x5F, battery monitor at 0x36.
+
+**Display freezes:** Usually caused by blocking code in main loop. Move long operations to separate update functions or use state machines.
