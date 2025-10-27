@@ -1,0 +1,344 @@
+name: Create Release Testing Issues
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v2.1.0)'
+        required: true
+        type: string
+      build_date:
+        description: 'Firmware build date (YYYY-MM-DD)'
+        required: true
+        type: string
+      target_date:
+        description: 'Target release date (YYYY-MM-DD)'
+        required: true
+        type: string
+      whats_new:
+        description: 'What is new in this release (brief, one line per feature)'
+        required: false
+        type: string
+        default: '- [Add new features here]'
+
+jobs:
+  create-issues:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create Parent Overview Issue
+        id: create-parent
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ inputs.version }}';
+            const buildDate = '${{ inputs.build_date }}';
+            const targetDate = '${{ inputs.target_date }}';
+            const whatsNew = `${{ inputs.whats_new }}`.trim();
+
+            const parentBody = `# Release Testing Overview - ${version}
+
+            **Firmware Build Date:** ${buildDate}
+            **Target Release Date:** ${targetDate}
+            **Firmware Files Location:** \`docs/firmware_files/\` or attach below
+
+            ---
+
+            ## 📋 What's New in This Version
+
+            **New Features:**
+            ${whatsNew}
+
+            **Bug Fixes:**
+            - [Add bullet points of bug fixes]
+
+            **Known Issues:**
+            - [List any known issues that won't block release]
+
+            ---
+
+            ## 🎯 Hardware Configuration Testing Status
+
+            Create individual testing issues for each hardware configuration below. Check off when testing is complete and passing.
+
+            ### XIAO SAMD21 Configurations
+
+            - [ ] **[XIAO Non-PCB]** - Issue #___ - Tester: ___________
+            - [ ] **[XIAO Basic PCB V1]** - Issue #___ - Tester: ___________
+            - [ ] **[XIAO Basic PCB V2]** - Issue #___ - Tester: ___________
+            - [ ] **[XIAO Advanced PCB]** - Issue #___ - Tester: ___________
+
+            ### QT Py SAMD21 Configurations
+
+            - [ ] **[QT Py Non-PCB]** - Issue #___ - Tester: ___________
+            - [ ] **[QT Py Basic PCB V1]** - Issue #___ - Tester: ___________
+            - [ ] **[QT Py Basic PCB V2]** - Issue #___ - Tester: ___________
+            - [ ] **[QT Py Advanced PCB]** - Issue #___ - Tester: ___________
+
+            **Instructions:**
+            Hardware-specific testing issues will be automatically created and linked below.
+
+            ---
+
+            ## 📊 Testing Progress Summary
+
+            **Configs Tested:** 0 / 8
+            **Configs Passing:** 0 / 8
+            **Configs Failing:** 0 / 8
+            **Critical Issues Found:** 0
+
+            **Update this section as testing progresses**
+
+            ---
+
+            ## 🐛 Critical Issues Blocking Release
+
+            List any critical bugs found during testing that must be fixed before release:
+
+            - [ ] No critical issues found
+
+            **Critical Issue Format:**
+            \`\`\`
+            - [ ] [Brief description] - Found in: [Hardware Config] - Reported in: Issue #___
+            \`\`\`
+
+            ---
+
+            ## ✅ Pre-Release Checklist (Maintainer)
+
+            ### Build & CI
+            - [ ] Merge test branch to master
+            - [ ] All 8 hardware configs built successfully in CI
+            - [ ] UF2 files committed to \`docs/firmware_files/\`
+            - [ ] All 8 UF2 files verified (correct size, not corrupted)
+
+            ### Testing Requirements
+            - [ ] **Minimum:** At least 2 different hardware configurations tested and passing
+            - [ ] **Ideal:** At least 4 different hardware configurations tested and passing
+            - [ ] At least 2 different testers have signed off
+            - [ ] No critical bugs blocking release
+
+            ### Documentation Updates
+            - [ ] \`docs/index.html\` "What's New" section updated with release date and features
+            - [ ] Release notes prepared with changelog
+            - [ ] Known issues documented (if any)
+
+            ### Release Process
+            - [ ] GitHub release created with all 8 firmware files attached
+            - [ ] Release tagged with version number (e.g., ${version})
+            - [ ] Release announcement prepared for users
+            - [ ] Close all related testing issues
+
+            ---
+
+            ## 🚀 Release Approval
+
+            **Minimum Requirements Met:**
+            - [ ] At least **2 hardware configurations** tested and passing
+            - [ ] At least **2 different testers** signed off
+            - [ ] **No critical failures** reported
+            - [ ] **All CI builds** successful
+
+            **Final Approval By:** [Maintainer Name]
+            **Approval Date:** YYYY-MM-DD
+
+            **Status:**
+            - [ ] ✅ Ready for Release
+            - [ ] ⚠️ Needs More Testing
+            - [ ] ❌ Blocked (see critical issues above)
+
+            ---
+
+            ## 📝 Notes & Discussion
+
+            Use comments below for:
+            - General discussion about the release
+            - Cross-hardware issues
+            - Testing coordination
+            - Release timeline updates
+            `;
+
+            const parentIssue = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Release Testing: ${version} - Overview`,
+              body: parentBody,
+              labels: ['testing', 'release', 'tracking']
+            });
+
+            console.log(`Created parent issue #${parentIssue.data.number}`);
+            core.setOutput('parent_number', parentIssue.data.number);
+            return parentIssue.data.number;
+
+      - name: Create Hardware-Specific Issues
+        id: create-hardware-issues
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = '${{ inputs.version }}';
+            const buildDate = '${{ inputs.build_date }}';
+            const parentNumber = '${{ steps.create-parent.outputs.parent_number }}';
+
+            // Read the hardware template from the repo
+            const fs = require('fs');
+            const templatePath = '.github/ISSUE_TEMPLATE/release-testing-hardware.md';
+            let template = fs.readFileSync(templatePath, 'utf8');
+
+            // Remove frontmatter (YAML between --- markers)
+            template = template.replace(/^---[\s\S]*?---\n/m, '');
+
+            const configs = [
+              { board: 'XIAO SAMD21', pcb: 'Non-PCB', file: 'xiao_non_pcb.uf2' },
+              { board: 'XIAO SAMD21', pcb: 'Basic V1', file: 'xiao_basic_pcb_v1.uf2' },
+              { board: 'XIAO SAMD21', pcb: 'Basic V2', file: 'xiao_basic_pcb_v2.uf2' },
+              { board: 'XIAO SAMD21', pcb: 'Advanced', file: 'xiao_advanced_pcb.uf2' },
+              { board: 'QT Py SAMD21', pcb: 'Non-PCB', file: 'qtpy_non_pcb.uf2' },
+              { board: 'QT Py SAMD21', pcb: 'Basic V1', file: 'qtpy_basic_pcb_v1.uf2' },
+              { board: 'QT Py SAMD21', pcb: 'Basic V2', file: 'qtpy_basic_pcb_v2.uf2' },
+              { board: 'QT Py SAMD21', pcb: 'Advanced', file: 'qtpy_advanced_pcb.uf2' }
+            ];
+
+            const issueNumbers = [];
+
+            for (const config of configs) {
+              // Customize template for this hardware config
+              let body = template
+                .replace(/\[VERSION\]/g, version)
+                .replace(/\[BOARD\]/g, config.board)
+                .replace(/\[PCB_VERSION\]/g, config.pcb)
+                .replace(/\[board\]_\[pcb_version\]\.uf2/g, config.file)
+                .replace(/#___/g, `#${parentNumber}`);
+
+              // Check appropriate board checkbox
+              if (config.board.includes('XIAO')) {
+                body = body.replace('[ ] XIAO SAMD21', '[x] XIAO SAMD21');
+              } else {
+                body = body.replace('[ ] QT Py SAMD21', '[x] QT Py SAMD21');
+              }
+
+              // Check appropriate PCB version checkbox
+              if (config.pcb === 'Non-PCB') {
+                body = body.replace('[ ] Non-PCB', '[x] Non-PCB');
+              } else if (config.pcb === 'Basic V1') {
+                body = body.replace('[ ] Basic V1', '[x] Basic V1');
+              } else if (config.pcb === 'Basic V2') {
+                body = body.replace('[ ] Basic V2', '[x] Basic V2');
+              } else if (config.pcb === 'Advanced') {
+                body = body.replace('[ ] Advanced', '[x] Advanced');
+              }
+
+              const issue = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: `Release Testing ${version} - ${config.board} ${config.pcb}`,
+                body: body,
+                labels: ['testing', 'release']
+              });
+
+              console.log(`Created issue #${issue.data.number} for ${config.board} ${config.pcb}`);
+              issueNumbers.push({ number: issue.data.number, config: `${config.board} ${config.pcb}` });
+            }
+
+            core.setOutput('issue_numbers', JSON.stringify(issueNumbers));
+
+      - name: Update Parent Issue with Links
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const parentNumber = parseInt('${{ steps.create-parent.outputs.parent_number }}');
+            const issueNumbers = JSON.parse('${{ steps.create-hardware-issues.outputs.issue_numbers }}');
+
+            // Get current parent issue body
+            const parentIssue = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parentNumber
+            });
+
+            let body = parentIssue.data.body;
+
+            // Replace placeholder issue numbers with actual numbers
+            const configMap = {
+              'XIAO Non-PCB': 0,
+              'XIAO SAMD21 Non-PCB': 0,
+              'XIAO Basic PCB V1': 1,
+              'XIAO SAMD21 Basic V1': 1,
+              'XIAO Basic PCB V2': 2,
+              'XIAO SAMD21 Basic V2': 2,
+              'XIAO Advanced PCB': 3,
+              'XIAO SAMD21 Advanced': 3,
+              'QT Py Non-PCB': 4,
+              'QT Py SAMD21 Non-PCB': 4,
+              'QT Py Basic PCB V1': 5,
+              'QT Py SAMD21 Basic V1': 5,
+              'QT Py Basic PCB V2': 6,
+              'QT Py SAMD21 Basic V2': 6,
+              'QT Py Advanced PCB': 7,
+              'QT Py SAMD21 Advanced': 7
+            };
+
+            for (const item of issueNumbers) {
+              const idx = configMap[item.config];
+              if (idx !== undefined) {
+                // Find and replace the first occurrence of Issue #___ in the appropriate section
+                const searchStr = 'Issue #___';
+                const replaceStr = `Issue #${item.number}`;
+                const index = body.indexOf(searchStr);
+                if (index !== -1) {
+                  body = body.substring(0, index) + replaceStr + body.substring(index + searchStr.length);
+                }
+              }
+            }
+
+            // Update parent issue
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parentNumber,
+              body: body
+            });
+
+            console.log(`Updated parent issue #${parentNumber} with hardware issue links`);
+
+      - name: Post Summary Comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const parentNumber = '${{ steps.create-parent.outputs.parent_number }}';
+            const issueNumbers = JSON.parse('${{ steps.create-hardware-issues.outputs.issue_numbers }}');
+
+            let comment = `## 🎉 Release Testing Issues Created!\n\n`;
+            comment += `Parent overview issue: #${parentNumber}\n\n`;
+            comment += `### Hardware-Specific Issues:\n`;
+            for (const item of issueNumbers) {
+              comment += `- #${item.number} - ${item.config}\n`;
+            }
+            comment += `\n---\n\n`;
+            comment += `**Next Steps:**\n`;
+            comment += `1. Review the parent issue and fill in any missing details\n`;
+            comment += `2. Assign testers to specific hardware configuration issues\n`;
+            comment += `3. Ensure firmware files are available in \`docs/firmware_files/\`\n`;
+            comment += `4. Begin testing!\n\n`;
+            comment += `*This issue creation was automated via GitHub Actions.*`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt(parentNumber),
+              body: comment
+            });
+
+            // Also create a workflow summary
+            core.summary
+              .addHeading('Release Testing Issues Created')
+              .addLink(`Parent Issue #${parentNumber}`, `https://github.com/${context.repo.owner}/${context.repo.repo}/issues/${parentNumber}`)
+              .addTable([
+                [{data: 'Issue', header: true}, {data: 'Hardware Config', header: true}],
+                ...issueNumbers.map(item => [`#${item.number}`, item.config])
+              ])
+              .write();

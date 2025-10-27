@@ -15,6 +15,23 @@ This ensures quality testing across all hardware variants and catches configurat
 
 ### Creating Release Testing Issues
 
+**🚀 Automated (Recommended):**
+
+Use the GitHub Actions workflow to create all 9 issues automatically:
+
+1. Go to **Actions** tab → **"Create Release Testing Issues"** → **"Run workflow"**
+2. Fill in: version, build date, target date, and what's new
+3. Click **"Run workflow"** - wait 10-30 seconds
+4. Done! All 9 issues created and linked together
+
+See [AUTOMATED_ISSUE_CREATION.md](AUTOMATED_ISSUE_CREATION.md) for detailed instructions.
+
+---
+
+**📝 Manual (Alternative):**
+
+If you prefer to create issues manually or the workflow is unavailable:
+
 **Step 1: Create the Parent Overview Issue**
 
 1. Go to your GitHub repository's Issues tab
@@ -262,9 +279,11 @@ A: Not really! Most edits are quick (checking a box). If someone's editing, wait
 
 ## Related Documents
 
+- [AUTOMATED_ISSUE_CREATION.md](AUTOMATED_ISSUE_CREATION.md) - **Automated issue creation workflow (recommended)**
 - [TESTING_GUIDE.md](TESTING_GUIDE.md) - Detailed manual testing procedures for the firmware update website
 - [.github/ISSUE_TEMPLATE/release-testing-overview.md](../.github/ISSUE_TEMPLATE/release-testing-overview.md) - Parent issue template
 - [.github/ISSUE_TEMPLATE/release-testing-hardware.md](../.github/ISSUE_TEMPLATE/release-testing-hardware.md) - Hardware-specific issue template
+- [.github/workflows/create-release-testing-issues.yml](../.github/workflows/create-release-testing-issues.yml) - The workflow file
 - [CLAUDE.md](../CLAUDE.md) - Project architecture and development guide
 
 ## Quick Reference
