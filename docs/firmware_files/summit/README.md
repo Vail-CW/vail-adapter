@@ -10,7 +10,7 @@ This directory contains the firmware binaries for the Vail Summit device (ESP32-
 
 ## Flashing
 
-These files are automatically flashed via the web updater at https://vailadapter.com using esptool-js.
+These files are automatically flashed via the web updater at https://update.vailadapter.com using esptool-js.
 
 ## Build Process
 
