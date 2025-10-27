@@ -407,8 +407,8 @@ bool checkMorseShoot(Adafruit_ST7789& tft) {
  * Proper iambic keyer implementation (same as practice mode)
  */
 void updateMorseInputFast(Adafruit_ST7789& tft) {
-  morseInput.ditPressed = (digitalRead(DIT_PIN) == LOW) || (touchRead(TOUCH_DIT_PIN) < TOUCH_THRESHOLD);
-  morseInput.dahPressed = (digitalRead(DAH_PIN) == LOW) || (touchRead(TOUCH_DAH_PIN) < TOUCH_THRESHOLD);
+  morseInput.ditPressed = (digitalRead(DIT_PIN) == LOW) || (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
+  morseInput.dahPressed = (digitalRead(DAH_PIN) == LOW) || (touchRead(TOUCH_DAH_PIN) > TOUCH_THRESHOLD);
 
   unsigned long now = millis();
   MorseTiming timing(cwSpeed);

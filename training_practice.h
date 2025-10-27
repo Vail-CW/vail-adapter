@@ -196,9 +196,10 @@ int handlePracticeInput(char key, Adafruit_ST7789 &display) {
 void updatePracticeOscillator() {
   if (!practiceActive) return;
 
-  // Read paddle/key inputs
-  ditPressed = (digitalRead(DIT_PIN) == PADDLE_ACTIVE);
-  dahPressed = (digitalRead(DAH_PIN) == PADDLE_ACTIVE);
+  // Read paddle/key inputs (physical + capacitive touch)
+  // ESP32-S3: Use GPIO numbers directly, check > threshold (values rise when touched)
+  ditPressed = (digitalRead(DIT_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
+  dahPressed = (digitalRead(DAH_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DAH_PIN) > TOUCH_THRESHOLD);
 
   // Handle based on key type
   if (cwKeyType == KEY_STRAIGHT) {

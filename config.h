@@ -86,9 +86,11 @@
 // ============================================
 // Capacitive Touch Pads - Built-in Key
 // ============================================
-#define TOUCH_DIT_PIN   5     // T5 - Capacitive touch dit pad
-#define TOUCH_DAH_PIN   13    // T13 - Capacitive touch dah pad
-#define TOUCH_THRESHOLD 40    // Touch sensitivity threshold (adjust as needed, typical range: 20-80)
+// IMPORTANT: ESP32-S3 touchRead() requires GPIO numbers (not T-constants!)
+// GPIO 8 and 5 work together; GPIO 13 conflicts with I2S/touch shield
+#define TOUCH_DIT_PIN   8     // GPIO 8 (T8) - Capacitive touch dit pad
+#define TOUCH_DAH_PIN   5     // GPIO 5 (T5) - Capacitive touch dah pad
+#define TOUCH_THRESHOLD 40000 // Touch threshold (values rise when touched on ESP32-S3)
 
 // ============================================
 // Radio Keying Output - 3.5mm Jack

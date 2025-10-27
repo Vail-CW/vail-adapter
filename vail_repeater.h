@@ -540,7 +540,7 @@ void updateVailRepeater(Adafruit_ST7789 &display) {
 
 // Straight key handler for Vail
 void vailStraightKeyHandler() {
-  bool ditPressed = (digitalRead(DIT_PIN) == PADDLE_ACTIVE);
+  bool ditPressed = (digitalRead(DIT_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
 
   if (!vailIsTransmitting && ditPressed) {
     // Start transmission
@@ -704,8 +704,8 @@ void vailIambicKeyerHandler() {
 
 // Handle paddle input for transmission
 void updateVailPaddles() {
-  vailDitPressed = (digitalRead(DIT_PIN) == PADDLE_ACTIVE);
-  vailDahPressed = (digitalRead(DAH_PIN) == PADDLE_ACTIVE);
+  vailDitPressed = (digitalRead(DIT_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
+  vailDahPressed = (digitalRead(DAH_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DAH_PIN) > TOUCH_THRESHOLD);
 
   // Use keyer based on settings
   if (cwKeyType == KEY_STRAIGHT) {
