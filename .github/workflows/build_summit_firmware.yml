@@ -41,33 +41,30 @@ jobs:
 
       - name: Build firmware
         run: |
-          cd morse_trainer
-          # Arduino requires sketch name to match folder name
-          if [ ! -f "morse_trainer.ino" ]; then
-            # If vail-summit.ino exists, rename it
-            if [ -f "vail-summit.ino" ]; then
-              mv vail-summit.ino morse_trainer.ino
-            fi
-          fi
+          # The .ino file is in the root directory on vail-summit branch
+          # Arduino CLI requires the sketch to be in a folder with matching name
+          mkdir -p vail-summit
+          cp *.h vail-summit/
+          cp vail-summit.ino vail-summit/
 
           # Build for ESP32-S3 Feather
           arduino-cli compile \
             --fqbn esp32:esp32:adafruit_feather_esp32s3 \
-            --output-dir ../build \
+            --output-dir build \
             --export-binaries \
-            morse_trainer.ino
+            vail-summit/vail-summit.ino
 
           # List generated files
           echo "Generated files:"
-          ls -lh ../build/
+          ls -lh build/
 
       - name: Rename binary files
         run: |
           cd build
           # Rename files to standard names
-          mv morse_trainer.ino.bootloader.bin bootloader.bin || true
-          mv morse_trainer.ino.partitions.bin partitions.bin || true
-          mv morse_trainer.ino.bin vail-summit.bin || true
+          mv vail-summit.ino.bootloader.bin bootloader.bin || true
+          mv vail-summit.ino.partitions.bin partitions.bin || true
+          mv vail-summit.ino.bin vail-summit.bin || true
 
           echo "Renamed files:"
           ls -lh
