@@ -4,6 +4,13 @@ on:
   push:
     branches:
       - master # Primary development branch
+    paths:
+      # Only trigger when source code or config changes
+      - '**.ino'           # Arduino sketch files
+      - '**.cpp'           # C++ source files
+      - '**.h'             # Header files
+      - 'config.h'         # Hardware configuration
+      - '.github/workflows/build_uf2.yml'  # This workflow itself
   release:
     types: [published] # Triggers when you publish a new release
   workflow_dispatch: # Allows manual triggering
