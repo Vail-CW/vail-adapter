@@ -34,10 +34,13 @@ ESP32-S3 Feather based standalone morse code trainer with:
 ## Project Structure (Vail Adapter - Master Branch)
 
 The main firmware files are in the root directory:
-- `vail-adapter.ino` - Main Arduino sketch with menu state machine
+- `vail-adapter.ino` - Main Arduino sketch (setup and loop coordination)
 - `adapter.cpp/h` - VailAdapter class implementation
 - `keyers.cpp/h` - Keyer mode implementations
 - `memory.cpp/h` - CW memory recording and playback system
+- `menu_handler.cpp/h` - Button menu state machine and operating modes
+- `morse_audio.cpp/h` - Morse code playback and audio feedback
+- `settings_eeprom.cpp/h` - EEPROM persistence for settings and memories
 - `buttons.cpp/h` - Button handling with double-click detection
 - `polybuzzer.cpp/h` - Audio output
 - `bounce2.cpp/h` - Debouncing for physical inputs
@@ -84,24 +87,28 @@ python3 uf2conv.py -c -f 0x68ED2B88 -b 0x2000 build_output/*.bin -o firmware.uf2
 ### Hardware Configuration
 
 Before building, you MUST edit `config.h` and uncomment exactly ONE hardware configuration:
-- `V1_PCB` - Original PCB version
-- `V1_2_PCB` - Revised PCB with updated pin mappings
-- `V2_ADVANCED_PCB` - Advanced PCB with radio output pins (A2/A3)
+- `V1_Basic_PCB` - Original PCB version
+- `V2_Basic_PCB` - Revised PCB with updated pin mappings
+- `Advanced_PCB` - Advanced PCB with radio output pins (A2/A3)
 - `NO_PCB_GITHUB_SPECS` - Breadboard/hand-wired setup
 
 Each configuration sets different pin mappings for dit/dah/key inputs, piezo, and optional radio outputs.
 
-For V2_ADVANCED_PCB builds, also configure `RADIO_KEYING_ACTIVE_LOW` in config.h based on your radio's keying polarity.
+For Advanced_PCB builds, also configure `RADIO_KEYING_ACTIVE_LOW` in config.h based on your radio's keying polarity.
 
 ## Architecture
 
 ### Core Components
 
-**Main Loop (vail-adapter.ino:199-245)**
+**Main Loop (vail-adapter.ino)**
+The main sketch has been refactored into a clean 270-line file that:
+- Initializes all modules in `setup()` (morse audio, menu handler, EEPROM)
 - Polls MIDI input and dispatches to VailAdapter
 - Updates bounce debouncers for physical inputs (dit, dah, key)
 - Updates capacitive touch inputs (qt_dit, qt_dah, qt_key)
-- Handles special LED states for radio mode and buzzer disable
+- Delegates to `updateMenuHandler()` for all button logic
+- Handles memory playback state machine
+- Manages special LED states for radio mode and buzzer disable
 - Manages TRS detection for straight key auto-configuration
 
 **VailAdapter Class (adapter.cpp/h)**
@@ -137,6 +144,11 @@ All keyers use the `Transmitter` interface to control output (BeginTx/EndTx), al
 **Audio Output**
 - `PolyBuzzer` class (polybuzzer.cpp/h) - Manages piezo buzzer tone generation using Arduino `tone()` function
 - `equalTemperament.h` - Lookup table for MIDI note numbers to Hz frequencies
+- `morse_audio.cpp/h` - Morse code playback and audio feedback module
+  - Morse code functions: `playMorseDit()`, `playMorseDah()`, `playMorseChar()`, `playMorseWord()`
+  - Audio feedback: `playAdjustmentBeep()`, `playErrorTone()`, `playDescendingTones()`, `playRecordingCountdown()`
+  - Keyer announcements: `playKeyerTypeCode()` plays S/IA/IB identifiers
+  - Initialized via `initMorseAudio(&adapter, PIEZO_PIN)`
 
 **CW Memory System (memory.cpp/h)**
 The memory system provides recording and playback of CW sequences:
@@ -154,14 +166,15 @@ Key data structures (memory.h):
 - `RecordingState` - Tracks active recording (slot, start time, transition count)
 - `PlaybackState` - Manages playback timing and current position
 
-State machine integration (vail-adapter.ino):
+State machine integration (menu_handler.cpp):
 - `MODE_MEMORY_MANAGEMENT` - Entry via B1+B3 combo, exit via B1+B3 again
 - `MODE_RECORDING_MEMORY_1/2/3` - Active recording for each slot
 - `MODE_PLAYING_MEMORY` - Playback in progress
 
 ### Button Control & Menu System
 
-The button system uses a resistor ladder network with ButtonDebouncer class (buttons.cpp/h) providing:
+**Button Debouncing (buttons.cpp/h)**
+The button system uses a resistor ladder network with ButtonDebouncer class providing:
 - **Debouncing** - 2 consistent readings required
 - **Gesture detection**:
   - Quick press - Returns on button release
@@ -170,11 +183,19 @@ The button system uses a resistor ladder network with ButtonDebouncer class (but
   - Double-click - Detects rapid press-release-press within 400ms window
 - **Max state tracking** - Records highest button combination during press
 
-Operating modes (vail-adapter.ino):
+**Menu Handler Module (menu_handler.cpp/h)**
+All button logic and menu state management has been extracted into a dedicated module:
+- Operating modes: `MODE_NORMAL`, `MODE_SPEED_SETTING`, `MODE_TONE_SETTING`, `MODE_KEY_SETTING`, `MODE_MEMORY_MANAGEMENT`, `MODE_RECORDING_MEMORY_1/2/3`, `MODE_PLAYING_MEMORY`
+- Helper functions: `ditDurationToWPM()`, `wpmToDitDuration()`, `applyTemporarySpeed()`, `applyTemporaryTone()`, `applyTemporaryKeyerType()`
+- Main update function: `updateMenuHandler(currentTime, buttonDebouncer)` - called from main loop
+- Initialized via `initMenuHandler(&adapter, memorySlots, &recordingState, &playbackState)`
+- State access: `getMenuState()` returns `MenuHandlerState` struct with current mode and temp settings
+
+**Operating Modes:**
 - `MODE_NORMAL` - Default operation, quick press plays memories
-- `MODE_SPEED_SETTING` - Adjust WPM (5-40 range)
-- `MODE_TONE_SETTING` - Adjust sidetone frequency
-- `MODE_KEY_SETTING` - Cycle keyer types
+- `MODE_SPEED_SETTING` - Adjust WPM (5-40 range), B1=faster, B3=slower, B2 long press to save
+- `MODE_TONE_SETTING` - Adjust sidetone frequency (MIDI 43-85), B1=higher, B3=lower, B2 long press to save
+- `MODE_KEY_SETTING` - Cycle keyer types (Straight/Iambic A/Iambic B), B1=next, B3=prev, B2 long press to save
 - `MODE_MEMORY_MANAGEMENT` - Record/playback/clear memory slots
 
 **State transition guards:**
@@ -182,6 +203,7 @@ Operating modes (vail-adapter.ino):
 - B1+B3 combo only toggles memory mode between NORMAL ↔ MEMORY_MANAGEMENT
 - Prevents cross-mode interference (e.g., can't enter speed mode from memory mode)
 - Each mode has dedicated button handlers for isolated functionality
+- 30-second timeout auto-saves and exits setting modes
 
 ### MIDI Integration
 
@@ -206,21 +228,35 @@ Radio mode and radio keyer mode are independent concepts:
 
 ### EEPROM Storage
 
-Settings and memory slots persisted across power cycles:
+**Settings and Memory Module (settings_eeprom.cpp/h)**
+All EEPROM operations have been consolidated into a dedicated module:
 
-**Settings (vail-adapter.ino):**
+**Adapter Settings Functions:**
+- `loadSettingsFromEEPROM(adapter)` - Loads keyer type, dit duration, TX note
+- `saveSettingsToEEPROM(keyerType, ditDuration, txNote)` - Persists settings
+- `loadRadioKeyerModeFromEEPROM(adapter)` - Loads radio keyer mode
+- `saveRadioKeyerModeToEEPROM(radioKeyerMode)` - Persists radio mode
+- `loadToneFromEEPROM()` - Returns startup tone for VAIL announcement
+
+**CW Memory Functions:**
+- `loadMemoriesFromEEPROM(memorySlots)` - Loads all 3 memory slots
+- `saveMemoryToEEPROM(slotNumber, memory)` - Saves one slot
+- `clearMemoryInEEPROM(slotNumber)` - Clears one slot
+- `getEEPROMAddressForSlot(slotNumber)` - Returns base address
+
+**EEPROM Memory Map:**
 - Keyer type (address 0)
 - Dit duration (address 1-2, uint16_t)
 - TX note (address 3)
-- Radio keyer mode (address 5)
 - Valid flag (address 4, value 0x42)
+- Radio keyer mode (address 5)
+- CW Memory Slot 1 (EEPROM_MEMORY_1_ADDR): 400 bytes
+- CW Memory Slot 2 (EEPROM_MEMORY_2_ADDR): 400 bytes
+- CW Memory Slot 3 (EEPROM_MEMORY_3_ADDR): 400 bytes
 
-**CW Memory Slots (memory.h):**
-- Three independent 25-second slots with run-length encoding
-- Each slot stores: transition count + array of uint16_t durations
-- Maximum 200 transitions per slot (400 bytes per slot)
-- EEPROM addresses managed by FlashStorage_SAMD library
-- Auto-saves after recording, can be cleared individually
+Each memory slot stores:
+- Transition count (2 bytes)
+- Transition durations array (up to 200 × 2 bytes = 400 bytes max)
 
 ## Testing
 
@@ -291,3 +327,49 @@ Changes to MIDI handling should:
 1. Update `VailAdapter::HandleMIDI()` in adapter.cpp
 2. Update MIDI_INTEGRATION_SPEC.md documentation
 3. Consider EEPROM storage if the setting should persist
+
+## Code Organization & Refactoring
+
+The firmware has been refactored into a modular architecture for improved maintainability:
+
+### Module Architecture
+
+**Main Sketch (vail-adapter.ino - 270 lines)**
+- Focused on setup and loop coordination
+- Initializes all modules with proper dependencies
+- Delegates to specialized modules rather than implementing logic directly
+
+**Morse Audio Module (morse_audio.cpp/h - 263 lines)**
+- All Morse code playback functions
+- Audio feedback tones (beeps, errors, countdowns)
+- Keyer type announcements in Morse
+- Initialized via `initMorseAudio(&adapter, PIEZO_PIN)`
+
+**Settings/EEPROM Module (settings_eeprom.cpp/h - 208 lines)**
+- All EEPROM read/write operations
+- Adapter settings persistence
+- CW memory slot storage
+- Centralized memory address management
+
+**Menu Handler Module (menu_handler.cpp/h - 752 lines)**
+- Complete button menu state machine
+- All operating mode handlers
+- Quick press, long press, combo, and double-click logic
+- Timeout management for setting modes
+- Initialized via `initMenuHandler(&adapter, memorySlots, &recordingState, &playbackState)`
+
+### Benefits of This Structure
+
+1. **Improved Maintainability** - Each module has a clear, focused responsibility
+2. **Easier Testing** - Modules can be tested independently
+3. **Better Readability** - 77% reduction in main sketch size (1,180 → 270 lines)
+4. **Cleaner Dependencies** - Modules are initialized with only what they need
+5. **Easier Debugging** - Logic is organized by function, not scattered through one large file
+
+### When Adding New Features
+
+- **Audio feedback?** → Add to `morse_audio.cpp`
+- **New setting to persist?** → Add EEPROM functions to `settings_eeprom.cpp`
+- **New menu mode or button behavior?** → Add handlers to `menu_handler.cpp`
+- **Core keyer/adapter logic?** → Modify `adapter.cpp` or `keyers.cpp`
+- **Main loop coordination?** → Modify `vail-adapter.ino` (but keep it minimal!)
