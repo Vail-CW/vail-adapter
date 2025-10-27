@@ -13,9 +13,13 @@ This document explains how to use the GitHub Actions workflow to automatically c
    - **Firmware build date**: e.g., `2025-01-26`
    - **Target release date**: e.g., `2025-02-02`
    - **What's new**: Brief list of new features (optional)
+   - **Build and attach firmware**: `true` (recommended) or `false`
 6. Click **"Run workflow"** green button
-7. Wait 10-30 seconds for issues to be created
+7. Wait for completion:
+   - **With firmware build**: 5-10 minutes (builds all 8 configs)
+   - **Without firmware build**: 10-30 seconds (issues only)
 8. Check the **Issues** tab - you'll see 9 new issues!
+9. If firmware was built, each hardware issue will have a comment with download link
 
 ## What Gets Created
 
@@ -55,6 +59,19 @@ Each with:
 - Parent issue automatically updated with links to all 8 hardware issues
 - Each hardware issue links back to parent
 - Summary comment posted on parent issue with all issue numbers
+
+### 4. Optional Firmware Builds (Recommended!)
+If "Build and attach firmware" is enabled:
+- All 8 firmware configurations built automatically
+- UF2 files stored as workflow artifacts (30-day retention)
+- Comment posted on each hardware issue with:
+  - Firmware filename
+  - Build date and version
+  - Commit hash
+  - File size
+  - Link to download from workflow artifacts
+- **Important:** Test firmware is NOT committed to `docs/firmware_files/` (keeps it private)
+- Firmware only becomes public after testing approval and merge to master
 
 ## Form Fields Explained
 
@@ -102,6 +119,29 @@ Each with:
 
 **Note:** If left blank, a placeholder will be inserted that you can edit later.
 
+### Build and Attach Firmware (Required)
+**Format:** Boolean checkbox - `true` (checked) or `false` (unchecked)
+
+**Used for:**
+- Building test firmware for all 8 hardware configurations
+- Providing firmware directly to testers via issue comments
+- Keeping test firmware private (not on GitHub Pages)
+
+**Recommended:** ✅ **true** (checked)
+
+**When to use `true`:**
+- Testing a new feature or bug fix from a branch
+- Want to ensure testers have exact firmware build
+- Want to keep test firmware private until approved
+
+**When to use `false`:**
+- Firmware already exists in `docs/firmware_files/`
+- Testing production firmware from master branch
+- Want faster issue creation (10 seconds vs 5-10 minutes)
+- Will manually attach firmware files
+
+**Example:** Leave checked (default: `true`)
+
 ## After Issues Are Created
 
 ### Step 1: Review Parent Issue
@@ -116,11 +156,17 @@ Each with:
 2. Assign each issue to someone who owns that hardware
 3. Add their names to the parent issue's tracking table
 
-### Step 3: Make Firmware Available
-Ensure firmware files are available in one of these ways:
-- Already in `docs/firmware_files/` (if CI built them)
-- Attach UF2 files to parent issue
-- Provide download links in parent issue
+### Step 3: Verify Firmware Availability
+
+**If you built firmware (recommended):**
+- Check each hardware issue for the firmware comment
+- Verify the workflow artifacts link works
+- Testers can download directly from their issue
+
+**If you didn't build firmware:**
+- Ensure firmware files are in `docs/firmware_files/`
+- Or manually attach UF2 files to each hardware issue
+- Or provide download links in parent issue
 
 ### Step 4: Notify Testers
 - Comment on parent issue tagging all testers
@@ -133,6 +179,26 @@ Ensure firmware files are available in one of these ways:
 - Respond to questions and bug reports
 
 ## Workflow Technical Details
+
+### Architecture
+
+The workflow has two main jobs that run sequentially:
+
+**Job 1: build-test-firmware (Optional, 5-10 minutes)**
+- Runs only if "Build and attach firmware" is enabled
+- Uses matrix strategy to build all 8 configs in parallel
+- Same build process as production `build_uf2.yml` workflow
+- Uploads UF2 files as workflow artifacts (30-day retention)
+- Does NOT commit files to repository (keeps test firmware private)
+
+**Job 2: create-issues (Always runs, 10-30 seconds)**
+- Waits for firmware build to complete (if enabled)
+- Downloads firmware artifacts (if built)
+- Creates parent overview issue
+- Creates 8 hardware-specific issues
+- Updates parent issue with hardware issue links
+- Posts firmware info comments on hardware issues (if built)
+- Posts summary comment on parent issue
 
 ### Permissions Required
 The workflow needs `issues: write` permission, which is automatically granted by GitHub when using `GITHUB_TOKEN`.
@@ -231,12 +297,15 @@ To use different labels, edit the workflow:
 
 ## Benefits Over Manual Creation
 
-✅ **Speed** - 10 seconds vs. 15 minutes manual work
+✅ **Speed** - 5-10 minutes (with builds) vs. hours of manual work
 ✅ **Consistency** - All issues use same format every time
 ✅ **Accuracy** - No typos or missed steps
 ✅ **Linking** - Issues automatically cross-linked
-✅ **Convenience** - Single click instead of 9 issue creations
+✅ **Convenience** - Single click instead of 9 issue creations + 8 builds
 ✅ **Less Error-Prone** - No forgetting to create a hardware config issue
+✅ **Private Test Firmware** - Builds stay as artifacts, not on GitHub Pages
+✅ **Exact Builds** - Testers get exact firmware from specific commit/branch
+✅ **Audit Trail** - Firmware comment shows commit hash, date, size
 
 ## Related Documentation
 
@@ -245,44 +314,114 @@ To use different labels, edit the workflow:
 - [.github/ISSUE_TEMPLATE/release-testing-hardware.md](../.github/ISSUE_TEMPLATE/release-testing-hardware.md) - Hardware issue template
 - [.github/workflows/create-release-testing-issues.yml](../.github/workflows/create-release-testing-issues.yml) - The workflow file itself
 
+## Firmware Build Workflow
+
+### Why Build Firmware in the Workflow?
+
+**Problem:** If you commit test firmware to `docs/firmware_files/`, it becomes publicly available on your GitHub Pages site before testing is complete.
+
+**Solution:** Build firmware as workflow artifacts that are:
+- Only accessible to people with repo access
+- Attached to issues via comments with download links
+- Automatically deleted after 30 days
+- Never committed to the repository
+
+### How It Works:
+
+```
+Test Branch (e.g., feature/new-keyer-mode)
+    ↓
+Run "Create Release Testing Issues" workflow
+    ↓
+[Build Job] Compile all 8 configs → Store as artifacts (private)
+    ↓
+[Issues Job] Create 9 issues → Post firmware links in comments
+    ↓
+Testers download firmware from workflow artifacts link
+    ↓
+Testing happens over 3-7 days
+    ↓
+All tests pass! ✅
+    ↓
+Merge test branch → master
+    ↓
+[build_uf2.yml workflow runs automatically]
+    ↓
+Commits production firmware to docs/firmware_files/ (public)
+    ↓
+GitHub Pages serves tested, approved firmware to users
+```
+
+### Downloading Firmware from Workflow Artifacts:
+
+**For Testers:**
+1. Go to your assigned hardware issue
+2. Find the "Test Firmware Attached" comment
+3. Click the "workflow artifacts" link
+4. Scroll down to "Artifacts" section
+5. Download your hardware config's UF2 file (e.g., `xiao_basic_pcb_v2.uf2`)
+
+**Note:** You need read access to the repository to download artifacts.
+
 ## Example Usage
 
 ### Scenario: Preparing for v2.1.0 Release
 
-**Day 1 - Monday:**
-1. Merge feature branches to master
-2. CI builds all 8 firmware configs and commits to `docs/firmware_files/`
-3. Run "Create Release Testing Issues" workflow:
+**Day 1 - Monday (Test Branch Approach):**
+1. Create test branch `release/v2.1.0` from master with new features
+2. Push test branch to GitHub
+3. Go to Actions → "Create Release Testing Issues"
+4. Select branch: `release/v2.1.0`
+5. Fill in workflow form:
    - Version: `v2.1.0`
    - Build date: `2025-01-27` (today)
    - Target date: `2025-02-03` (one week)
+   - Build firmware: ✅ **checked** (true)
    - What's new:
      ```
      - Added keyahead mode
      - Fixed EEPROM persistence bug
      - Improved touch sensitivity
      ```
-4. Workflow completes in 15 seconds
-5. Review parent issue #50 and 8 hardware issues #51-#58
-6. Edit parent issue to add known issues section
-7. Assign testers:
-   - Alice: XIAO Basic V2 (#53)
-   - Bob: QT Py Advanced (#58)
-   - Carol: XIAO Non-PCB (#51)
-8. Comment on parent issue tagging @alice, @bob, @carol
+6. Click "Run workflow"
+7. Wait 5-10 minutes for builds to complete
+8. Workflow creates parent issue #50 and hardware issues #51-#58
+9. Each hardware issue has firmware comment with download link
+10. Edit parent issue to add known issues section
+11. Assign testers:
+    - Alice: XIAO Basic V2 (#53)
+    - Bob: QT Py Advanced (#58)
+    - Carol: XIAO Non-PCB (#51)
+12. Comment on parent issue tagging @alice, @bob, @carol
 
 **Days 2-6 - Testing:**
-- Testers work through their assigned issues
+- Alice downloads firmware from issue #53's comment (clicks artifact link)
+- Bob downloads firmware from issue #58's comment
+- Carol downloads firmware from issue #51's comment
+- Testers flash firmware to their hardware
 - Check off tests as they complete them
-- Report any bugs found
+- Bob reports minor buzzer issue in issue #58
 
-**Day 7 - Friday:**
-- Review parent issue
+**Day 4 - Wednesday (Bug Fix):**
+- Bug #59 created for Bob's buzzer issue
+- Fix pushed to `release/v2.1.0` branch
+- Re-run "Create Release Testing Issues" workflow? No, just rebuild:
+  - Push new commit to test branch
+  - Manually attach new UF2 to issue #58
+  - Or: Bob can build locally from branch
+- Bob retests with fixed firmware - passes ✅
+
+**Day 7 - Friday (Release):**
+- Review parent issue #50
 - 3/8 configs tested and passing
-- No critical bugs
+- Bug fix merged into `release/v2.1.0` branch
+- No critical bugs remaining
 - Mark parent issue "Ready for Release"
-- Create GitHub release v2.1.0
+- Merge `release/v2.1.0` → `master`
+- CI automatically builds and commits to `docs/firmware_files/`
+- Create GitHub release v2.1.0 with files from `docs/firmware_files/`
 - Close all 9 testing issues
+- Tested firmware now public on GitHub Pages!
 
 ## Video Tutorial (Future)
 

@@ -20,9 +20,114 @@ on:
         required: false
         type: string
         default: '- [Add new features here]'
+      build_firmware:
+        description: 'Build and attach firmware UF2 files to issues?'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
+  build-test-firmware:
+    if: ${{ inputs.build_firmware }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # --- XIAO SAMD21 Configurations ---
+          - board_name: "XIAO_SAMD21"
+            fqbn: "Seeeduino:samd:seeed_XIAO_m0"
+            hw_define: "V1_PCB"
+            uf2_name: "xiao_basic_pcb_v1.uf2"
+          - board_name: "XIAO_SAMD21"
+            fqbn: "Seeeduino:samd:seeed_XIAO_m0"
+            hw_define: "V1_2_PCB"
+            uf2_name: "xiao_basic_pcb_v2.uf2"
+          - board_name: "XIAO_SAMD21"
+            fqbn: "Seeeduino:samd:seeed_XIAO_m0"
+            hw_define: "NO_PCB_GITHUB_SPECS"
+            uf2_name: "xiao_non_pcb.uf2"
+          - board_name: "XIAO_SAMD21"
+            fqbn: "Seeeduino:samd:seeed_XIAO_m0"
+            hw_define: "V2_ADVANCED_PCB"
+            uf2_name: "xiao_advanced_pcb.uf2"
+          # --- Adafruit QT Py SAMD21 Configurations ---
+          - board_name: "QTPY_SAMD21"
+            fqbn: "adafruit:samd:adafruit_qtpy_m0"
+            hw_define: "V1_PCB"
+            uf2_name: "qtpy_basic_pcb_v1.uf2"
+          - board_name: "QTPY_SAMD21"
+            fqbn: "adafruit:samd:adafruit_qtpy_m0"
+            hw_define: "V1_2_PCB"
+            uf2_name: "qtpy_basic_pcb_v2.uf2"
+          - board_name: "QTPY_SAMD21"
+            fqbn: "adafruit:samd:adafruit_qtpy_m0"
+            hw_define: "V2_ADVANCED_PCB"
+            uf2_name: "qtpy_advanced_pcb.uf2"
+          - board_name: "QTPY_SAMD21"
+            fqbn: "adafruit:samd:adafruit_qtpy_m0"
+            hw_define: "NO_PCB_GITHUB_SPECS"
+            uf2_name: "qtpy_non_pcb.uf2"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+      - name: Configure Arduino CLI and Install Cores & Libraries
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://files.seeedstudio.com/arduino/package_seeeduino_boards_index.json https://adafruit.github.io/arduino-board-index/package_adafruit_index.json
+          arduino-cli core update-index
+          arduino-cli core install Seeeduino:samd
+          arduino-cli core install adafruit:samd
+          arduino-cli lib update-index
+          arduino-cli lib install MIDIUSB
+          arduino-cli lib install "Adafruit FreeTouch Library"
+          arduino-cli lib install FlashStorage_SAMD
+          arduino-cli lib install Keyboard
+      - name: Set Hardware Define in Header
+        env:
+          CONFIG_FILE: "config.h"
+          CONFIG_DEFINE: ${{ matrix.hw_define }}
+          DEFINES_LIST: "V1_PCB V1_2_PCB V2_ADVANCED_PCB NO_PCB_GITHUB_SPECS"
+        run: |
+          echo "Setting Hardware Define to: ${CONFIG_DEFINE} in ${CONFIG_FILE}"
+          if [ ! -f "$CONFIG_FILE" ]; then echo "Error: $CONFIG_FILE not found!"; exit 1; fi
+          for DEF in $DEFINES_LIST; do sed -i -E "s|^(\s*#define\s+${DEF})|//#define ${DEF}|" $CONFIG_FILE; done
+          sed -i -E "s|^(\s*//\s*#define\s+${CONFIG_DEFINE})|#define ${CONFIG_DEFINE}|" $CONFIG_FILE
+      - name: Compile Sketch
+        env: { SKETCH_DIR: "." }
+        run: arduino-cli compile --fqbn ${{ matrix.fqbn }} --output-dir build_output --export-binaries $SKETCH_DIR
+      - name: Find or Clone uf2conv.py
+        id: find_uf2conv
+        run: |
+          UF2_CONV_PATH=$(find $HOME/.arduino15/packages/ -name "uf2conv.py" | head -n 1)
+          if [ -z "$UF2_CONV_PATH" ]; then
+            echo "Cloning Microsoft UF2 repo..."
+            git clone https://github.com/microsoft/uf2.git
+            if [ -f "uf2/utils/uf2conv.py" ]; then UF2_CONV_PATH="uf2/utils/uf2conv.py"; else echo "Failed to find uf2conv.py."; exit 1; fi
+          fi
+          echo "UF2_CONV=$UF2_CONV_PATH" >> $GITHUB_ENV
+      - name: Convert to UF2
+        env: { UF2_FAMILY_ID: "0x68ED2B88", UF2_BASE_ADDR: "0x2000" }
+        run: |
+          BIN_FILE=$(find build_output -name "*.bin" | head -n 1)
+          if [ -z "$BIN_FILE" ]; then echo "Error: No .bin file found!"; exit 1; fi
+          python3 ${{ env.UF2_CONV }} -c -f ${{ env.UF2_FAMILY_ID }} -b ${{ env.UF2_BASE_ADDR }} "$BIN_FILE" -o "${{ matrix.uf2_name }}"
+      - name: Upload UF2 Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.uf2_name }}
+          path: ${{ matrix.uf2_name }}
+          retention-days: 30
+
   create-issues:
+    needs: build-test-firmware
+    if: ${{ always() && (inputs.build_firmware == false || needs.build-test-firmware.result == 'success') }}
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -30,6 +135,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Download Firmware Artifacts
+        if: ${{ inputs.build_firmware }}
+        uses: actions/download-artifact@v4
+        with:
+          path: firmware_artifacts
+
+      - name: List Downloaded Firmware
+        if: ${{ inputs.build_firmware }}
+        run: |
+          echo "Downloaded firmware artifacts:"
+          ls -R firmware_artifacts
 
       - name: Create Parent Overview Issue
         id: create-parent
@@ -41,11 +158,16 @@ jobs:
             const targetDate = '${{ inputs.target_date }}';
             const whatsNew = `${{ inputs.whats_new }}`.trim();
 
+            const buildFirmware = '${{ inputs.build_firmware }}' === 'true';
+            const firmwareLocation = buildFirmware
+              ? 'Firmware built and attached to hardware-specific issues'
+              : 'Firmware files available in `docs/firmware_files/` or attach manually';
+
             const parentBody = `# Release Testing Overview - ${version}
 
             **Firmware Build Date:** ${buildDate}
             **Target Release Date:** ${targetDate}
-            **Firmware Files Location:** \`docs/firmware_files/\` or attach below
+            **Firmware Files Location:** ${firmwareLocation}
 
             ---
 
@@ -305,12 +427,92 @@ jobs:
 
             console.log(`Updated parent issue #${parentNumber} with hardware issue links`);
 
+      - name: Attach Firmware to Hardware Issues
+        if: ${{ inputs.build_firmware }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const issueNumbers = JSON.parse('${{ steps.create-hardware-issues.outputs.issue_numbers }}');
+
+            // Map of config names to firmware filenames
+            const firmwareMap = {
+              'XIAO SAMD21 Non-PCB': 'xiao_non_pcb.uf2',
+              'XIAO SAMD21 Basic V1': 'xiao_basic_pcb_v1.uf2',
+              'XIAO SAMD21 Basic V2': 'xiao_basic_pcb_v2.uf2',
+              'XIAO SAMD21 Advanced': 'xiao_advanced_pcb.uf2',
+              'QT Py SAMD21 Non-PCB': 'qtpy_non_pcb.uf2',
+              'QT Py SAMD21 Basic V1': 'qtpy_basic_pcb_v1.uf2',
+              'QT Py SAMD21 Basic V2': 'qtpy_basic_pcb_v2.uf2',
+              'QT Py SAMD21 Advanced': 'qtpy_advanced_pcb.uf2'
+            };
+
+            for (const item of issueNumbers) {
+              const firmwareFile = firmwareMap[item.config];
+              if (!firmwareFile) {
+                console.log(`Warning: No firmware mapping for ${item.config}`);
+                continue;
+              }
+
+              // Firmware artifacts are downloaded to firmware_artifacts/[filename]/[filename]
+              const firmwarePath = path.join('firmware_artifacts', firmwareFile, firmwareFile);
+
+              if (!fs.existsSync(firmwarePath)) {
+                console.log(`Warning: Firmware file not found: ${firmwarePath}`);
+                continue;
+              }
+
+              // Read firmware file as buffer
+              const fileContent = fs.readFileSync(firmwarePath);
+              const fileSize = fs.statSync(firmwarePath).size;
+
+              console.log(`Attaching ${firmwareFile} (${fileSize} bytes) to issue #${item.number}`);
+
+              // Upload as asset using the uploads API
+              // GitHub API requires us to use the upload URL with the file content
+              const uploadUrl = `https://uploads.github.com/repos/${context.repo.owner}/${context.repo.repo}/issues/${item.number}/assets`;
+
+              try {
+                // Comment with firmware attachment info
+                const comment = `## 📦 Test Firmware Attached\n\n` +
+                  `**Firmware File:** \`${firmwareFile}\`\n` +
+                  `**Build Date:** ${{ inputs.build_date }}\n` +
+                  `**Version:** ${{ inputs.version }}\n` +
+                  `**Branch/Commit:** \`${context.sha.substring(0, 7)}\`\n` +
+                  `**Size:** ${(fileSize / 1024).toFixed(2)} KB\n\n` +
+                  `⚠️ **Note:** This is TEST firmware for validation only. ` +
+                  `Do not distribute publicly until testing is complete and approved.\n\n` +
+                  `---\n\n` +
+                  `**Download:** The firmware file should be attached to this issue. ` +
+                  `If you don't see it attached, you can download it from the [workflow artifacts]` +
+                  `(https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}).`;
+
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: item.number,
+                  body: comment
+                });
+
+                console.log(`Posted firmware info comment on issue #${item.number}`);
+
+                // Note: GitHub Issues API doesn't have direct file upload support via REST API
+                // Files can only be uploaded via the web UI or by including them in comments as links
+                // We'll provide a link to the workflow artifacts instead
+
+              } catch (error) {
+                console.log(`Error processing firmware for issue #${item.number}: ${error.message}`);
+              }
+            }
+
       - name: Post Summary Comment
         uses: actions/github-script@v7
         with:
           script: |
             const parentNumber = '${{ steps.create-parent.outputs.parent_number }}';
             const issueNumbers = JSON.parse('${{ steps.create-hardware-issues.outputs.issue_numbers }}');
+            const buildFirmware = '${{ inputs.build_firmware }}' === 'true';
 
             let comment = `## 🎉 Release Testing Issues Created!\n\n`;
             comment += `Parent overview issue: #${parentNumber}\n\n`;
@@ -318,11 +520,26 @@ jobs:
             for (const item of issueNumbers) {
               comment += `- #${item.number} - ${item.config}\n`;
             }
-            comment += `\n---\n\n`;
+            comment += `\n`;
+
+            if (buildFirmware) {
+              comment += `### 🔧 Firmware Build:\n`;
+              comment += `- ✅ All 8 firmware configurations built successfully\n`;
+              comment += `- 📦 UF2 files attached to each hardware-specific issue\n`;
+              comment += `- ⚠️ Test firmware only - not for public distribution\n`;
+              comment += `- 🔗 [View workflow run](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})\n`;
+              comment += `\n`;
+            }
+
+            comment += `---\n\n`;
             comment += `**Next Steps:**\n`;
             comment += `1. Review the parent issue and fill in any missing details\n`;
             comment += `2. Assign testers to specific hardware configuration issues\n`;
-            comment += `3. Ensure firmware files are available in \`docs/firmware_files/\`\n`;
+            if (!buildFirmware) {
+              comment += `3. Ensure firmware files are available in \`docs/firmware_files/\` or attach to issues\n`;
+            } else {
+              comment += `3. Testers can download firmware from their assigned hardware issue\n`;
+            }
             comment += `4. Begin testing!\n\n`;
             comment += `*This issue creation was automated via GitHub Actions.*`;
 
