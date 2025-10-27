@@ -202,20 +202,22 @@ Settings are loaded on startup and saved immediately when changed.
 ## Firmware Updates
 
 VAIL SUMMIT firmware can be updated via:
-1. **Web-based flasher** at `https://vailadapter.com` (recommended for users)
+1. **Web-based flasher** at `https://update.vailadapter.com` (recommended for users)
 2. **Arduino IDE** (for developers)
 
 ### Repository Integration
 
-**Important:** This code is maintained in two locations:
-- **Development**: `C:\Users\brett\Documents\Coding Projects\Project Jupiter` (this repo)
-- **Distribution**: `github.com/Vail-CW/vail-adapter` on `vail-summit` branch
+**Important:** This is the Vail Summit source code on the `vail-summit` branch of the vail-adapter repository.
+
+**Branch Structure:**
+- **`vail-summit` branch** (this branch): Summit ESP32-S3 firmware source code
+- **`master` branch**: Web updater tool + compiled firmware binaries
 
 When firmware changes are ready for distribution:
-1. Code is copied from Project Jupiter to the `vail-summit` branch of vail-adapter repo
+1. Code is developed and tested on this `vail-summit` branch
 2. Firmware is compiled using Arduino CLI for ESP32-S3 Feather
 3. Binary files (`bootloader.bin`, `partitions.bin`, `vail-summit.bin`) are committed to `master` branch at `docs/firmware_files/summit/`
-4. Users can flash firmware via web updater at `https://vailadapter.com`
+4. Users can flash firmware via web updater at `https://update.vailadapter.com`
 
 ### Building Firmware for Distribution
 
@@ -244,7 +246,7 @@ arduino-cli compile --fqbn esp32:esp32:adafruit_feather_esp32s3 --output-dir bui
 
 ### Web-Based Flasher Details
 
-The web updater at `https://vailadapter.com` uses **esptool-js** for browser-based flashing:
+The web updater at `https://update.vailadapter.com` uses **esptool-js** for browser-based flashing:
 
 **Two-Step Process:**
 1. **Step 1: Enter Bootloader Mode**
