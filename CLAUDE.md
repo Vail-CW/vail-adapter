@@ -4,7 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Vail Adapter is an Arduino-based firmware for Morse code key/paddle to USB conversion. It runs on SAMD21-based microcontrollers (Seeeduino XIAO SAMD21 and Adafruit QT Py SAMD21) and provides:
+This repository contains firmware and tooling for two devices in the Vail ecosystem:
+
+### Vail Adapter (Master Branch)
+Arduino-based firmware for Morse code key/paddle to USB conversion. It runs on SAMD21-based microcontrollers (Seeeduino XIAO SAMD21 and Adafruit QT Py SAMD21) and provides:
 - USB HID keyboard output (Ctrl keys for dit/dah)
 - USB MIDI control and output for DAW integration
 - Multiple keyer modes (straight key, bug, iambic A/B, ultimatic, etc.)
@@ -13,7 +16,22 @@ Vail Adapter is an Arduino-based firmware for Morse code key/paddle to USB conve
 - Optional radio output for direct keying of amateur radios
 - CW memory recording and playback (3 slots, 25 seconds each)
 
-## Project Structure
+### Vail Summit (Vail-Summit Branch)
+ESP32-S3 Feather based standalone morse code trainer with:
+- Built-in display (ST7789 320x240)
+- CardKB keyboard integration
+- I2S audio output (MAX98357A amplifier)
+- Multiple training modes (practice, hear-it-type-it, CW Academy)
+- Morse Shooter game
+- Vail repeater integration
+- WiFi connectivity
+- Battery monitoring
+
+**Branch Structure:**
+- `master` - Vail Adapter firmware + GitHub Pages updater site
+- `vail-summit` - Vail Summit ESP32-S3 source code
+
+## Project Structure (Vail Adapter - Master Branch)
 
 The main firmware files are in the root directory:
 - `vail-adapter.ino` - Main Arduino sketch with menu state machine
@@ -221,19 +239,34 @@ Firmware naming convention:
 
 ## GitHub Pages Maintenance
 
-The project uses GitHub Pages to host a firmware update wizard at the repository URL. The site is located in the `docs/` directory.
+The project uses GitHub Pages to host a unified firmware update wizard at `https://vailadapter.com`. The site is located in the `docs/` directory and supports both devices:
+
+### Vail Adapter Updates
 
 **IMPORTANT:** When making significant commits to master (especially feature additions or bug fixes), update the "What's New in This Version" section in `docs/index.html`:
 
-1. Update the date in the format: `<em>Last Updated: Month Day, Year</em>`
+1. Update the date in the format: `<strong>Last Update:</strong> Month Day, Year`
 2. Add or modify bullet points describing the changes
 3. Keep the list focused on user-visible features and fixes
 4. Ensure the manual link points to `https://vailadapter.com/manual`
 5. Ensure setup instructions point to `https://vailmorse.com` (official Vail web repeater)
 
 Example update locations in `docs/index.html`:
-- Line ~95: Date stamp
-- Lines ~96-100: Feature bullet points
+- Line ~24: Date stamp in "What's New" section
+- Lines ~27-32: Feature bullet points
+
+### Vail Summit Updates
+
+The Summit updater uses a two-step ESP32 web flasher:
+- **Device Icons**: 📡 for Adapter, ⛰️ for Summit
+- **Firmware Location**: `docs/firmware_files/summit/` (bootloader.bin, partitions.bin, vail-summit.bin)
+- **Flash Process**: See [SUMMIT_INTEGRATION.md](SUMMIT_INTEGRATION.md) for technical details
+
+When updating Summit firmware:
+1. Build firmware on `vail-summit` branch
+2. Copy `.bin` files to `docs/firmware_files/summit/` on `master` branch
+3. Update SUMMIT_INTEGRATION.md if needed
+4. Consider adding firmware version display in future
 
 ## Common Development Patterns
 
