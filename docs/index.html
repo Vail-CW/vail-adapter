@@ -51,8 +51,28 @@
         </div>
     </div>
 
-    <!-- Step 1: Model Selection -->
+    <!-- Step 1: Device Selection -->
     <section id="step1" class="wizard-step active">
+        <h2>Which Vail device do you have?</h2>
+        <p class="step-description">Choose your device type.</p>
+
+        <div class="card-grid">
+            <div class="selection-card" data-device="adapter">
+                <div class="card-icon">🔌</div>
+                <h3>Vail Adapter</h3>
+                <p>USB adapter that connects paddles to your computer for web-based CW</p>
+            </div>
+
+            <div class="selection-card" data-device="summit">
+                <div class="card-icon">⛰️</div>
+                <h3>Vail Summit</h3>
+                <p>Standalone morse code trainer with built-in screen and keyboard</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Step 1.5: Adapter Model Selection (only shown for Adapter) -->
+    <section id="step1_5" class="wizard-step">
         <h2>What model of Vail Adapter do you have?</h2>
         <p class="step-description">Choose the PCB version that matches your adapter.</p>
 
@@ -75,6 +95,8 @@
                 <p>Hand-wired or breadboard build following GitHub specs</p>
             </div>
         </div>
+
+        <button class="btn-secondary" id="backToStep1FromModel">← Back</button>
     </section>
 
     <!-- Step 2: Board Selection -->
@@ -100,7 +122,7 @@
         <button class="btn-secondary" id="backToStep1">← Back</button>
     </section>
 
-    <!-- Step 3: Flash Firmware -->
+    <!-- Step 3: Flash Adapter Firmware (UF2) -->
     <section id="step3" class="wizard-step">
         <h2>Flash Your Firmware</h2>
         <p class="step-description">You've selected: <strong id="selectedConfig"></strong></p>
@@ -213,8 +235,105 @@
         <button class="btn-secondary" id="backToStep2">← Back</button>
         <button class="btn-primary" id="startOver">Start Over</button>
     </section>
+
+    <!-- Step 4: Flash Summit Firmware (ESP32 Web Flasher) -->
+    <section id="step4" class="wizard-step">
+        <h2>Flash Vail Summit Firmware</h2>
+        <p class="step-description">Web-based ESP32 flasher for the Vail Summit</p>
+
+        <!-- Flash Instructions -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">1</span>
+                <h3>Connect Your Vail Summit</h3>
+            </div>
+            <p>Use a USB-C cable and connect your Vail Summit to your computer.</p>
+            <div class="info-box">
+                <strong>Note:</strong> This flasher requires Chrome, Edge, or Opera browser with Web Serial support.
+            </div>
+        </div>
+
+        <!-- ESP32 Flash Interface -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">2</span>
+                <h3>Flash Firmware</h3>
+            </div>
+            <p>Click the button below to start the flashing process. Your browser will prompt you to select the serial port.</p>
+
+            <div id="espFlasherContainer">
+                <button id="connectButton" class="btn-primary">Connect to Vail Summit</button>
+                <button id="programButton" class="btn-download" style="display: none;">Flash Firmware</button>
+                <button id="eraseButton" class="btn-secondary" style="display: none;">Erase Flash</button>
+
+                <div class="progress-container" id="progressContainer" style="display: none; margin-top: 20px;">
+                    <div class="progress-label" id="progressLabel">Preparing...</div>
+                    <div style="background: #e0e0e0; border-radius: 8px; overflow: hidden; height: 24px;">
+                        <div id="progressBar" style="background: linear-gradient(90deg, #4CAF50, #45a049); height: 100%; width: 0%; transition: width 0.3s;"></div>
+                    </div>
+                    <div id="progressPercent" style="margin-top: 8px; font-size: 14px; color: #666;">0%</div>
+                </div>
+
+                <div class="log-container" style="margin-top: 20px;">
+                    <h4>Flash Log:</h4>
+                    <pre id="espFlashLog" style="background: #f5f5f5; padding: 12px; border-radius: 4px; max-height: 300px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12px;"></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Finalize -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">3</span>
+                <h3>Setup Complete</h3>
+            </div>
+            <p>Once flashing is complete:</p>
+            <ol>
+                <li>Wait for the device to reboot automatically</li>
+                <li>Your Vail Summit will start up with the new firmware</li>
+                <li>Follow the on-screen setup wizard to configure WiFi and preferences</li>
+            </ol>
+            <div class="success-message">
+                <strong>✅ You're all set!</strong> Your Vail Summit is ready for morse code training.
+            </div>
+        </div>
+
+        <!-- Troubleshooting -->
+        <div class="troubleshooting">
+            <h3>❓ Troubleshooting</h3>
+            <details>
+                <summary>Browser doesn't support Web Serial</summary>
+                <p>Web Serial API is required for ESP32 flashing. Please use Chrome, Edge, or Opera browser. Firefox and Safari are not currently supported.</p>
+            </details>
+
+            <details>
+                <summary>Device not detected</summary>
+                <p>Try these steps:</p>
+                <ul>
+                    <li>Make sure you're using a data-capable USB cable (not charge-only)</li>
+                    <li>Try a different USB port on your computer</li>
+                    <li>Check that the ESP32-S3 drivers are installed on your system</li>
+                    <li>Try holding the BOOT button while plugging in the device</li>
+                </ul>
+            </details>
+
+            <details>
+                <summary>Flashing failed or stuck</summary>
+                <p>If flashing fails:</p>
+                <ul>
+                    <li>Click "Erase Flash" and try again</li>
+                    <li>Unplug the device, wait 5 seconds, and reconnect</li>
+                    <li>Try holding the BOOT button during connection</li>
+                </ul>
+            </details>
+        </div>
+
+        <button class="btn-secondary" id="backToStep1FromSummit">← Back</button>
+        <button class="btn-primary" id="startOverFromSummit">Start Over</button>
+    </section>
 </div>
 
+<script src="esp-flasher.js" type="module"></script>
 <script src="script.js" defer></script>
 </body>
 </html>

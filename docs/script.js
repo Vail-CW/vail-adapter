@@ -1,8 +1,9 @@
 // Wizard state management
 const wizardState = {
     currentStep: 1,
-    model: null,      // 'basic_pcb', 'advanced_pcb', or 'non_pcb'
-    board: null,      // 'qtpy' or 'xiao'
+    device: null,     // 'adapter' or 'summit'
+    model: null,      // 'basic_pcb', 'advanced_pcb', or 'non_pcb' (for adapter only)
+    board: null,      // 'qtpy' or 'xiao' (for adapter only)
 };
 
 // Firmware file mapping
@@ -52,7 +53,14 @@ function goToStep(stepNumber) {
     });
 
     // Show target step
-    const targetStep = document.getElementById(`step${stepNumber}`);
+    let targetStepId = `step${stepNumber}`;
+
+    // Handle step 1.5 (adapter model selection)
+    if (stepNumber === 1.5) {
+        targetStepId = 'step1_5';
+    }
+
+    const targetStep = document.getElementById(targetStepId);
     if (targetStep) {
         targetStep.classList.add('active');
         wizardState.currentStep = stepNumber;
@@ -191,7 +199,7 @@ async function triggerBootloaderViaWebSerial() {
 
 // Initialize wizard on page load
 document.addEventListener('DOMContentLoaded', () => {
-    // Step 1: Model selection
+    // Step 1: Device selection (Adapter vs Summit)
     document.querySelectorAll('#step1 .selection-card').forEach(card => {
         card.addEventListener('click', () => {
             // Remove selected state from all cards
@@ -201,9 +209,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Mark this card as selected
             card.classList.add('selected');
+            wizardState.device = card.dataset.device;
+
+            // Navigate based on device type
+            setTimeout(() => {
+                if (wizardState.device === 'adapter') {
+                    // Go to adapter model selection (step 1.5)
+                    goToStep(1.5);
+                } else if (wizardState.device === 'summit') {
+                    // Go directly to Summit flash page (step 4)
+                    goToStep(4);
+                }
+            }, 300);
+        });
+    });
+
+    // Step 1.5: Adapter Model selection
+    document.querySelectorAll('#step1_5 .selection-card').forEach(card => {
+        card.addEventListener('click', () => {
+            // Remove selected state from all cards
+            document.querySelectorAll('#step1_5 .selection-card').forEach(c => {
+                c.classList.remove('selected');
+            });
+
+            // Mark this card as selected
+            card.classList.add('selected');
             wizardState.model = card.dataset.model;
 
-            // Advance to step 2 after a short delay
+            // Advance to step 2 (board selection) after a short delay
             setTimeout(() => {
                 goToStep(2);
             }, 300);
@@ -230,16 +263,35 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Back buttons
-    document.getElementById('backToStep1')?.addEventListener('click', () => {
+    document.getElementById('backToStep1FromModel')?.addEventListener('click', () => {
         goToStep(1);
+    });
+
+    document.getElementById('backToStep1')?.addEventListener('click', () => {
+        goToStep(1.5);
     });
 
     document.getElementById('backToStep2')?.addEventListener('click', () => {
         goToStep(2);
     });
 
-    // Start over button
+    document.getElementById('backToStep1FromSummit')?.addEventListener('click', () => {
+        goToStep(1);
+    });
+
+    // Start over buttons
     document.getElementById('startOver')?.addEventListener('click', () => {
+        wizardState.device = null;
+        wizardState.model = null;
+        wizardState.board = null;
+        document.querySelectorAll('.selection-card').forEach(card => {
+            card.classList.remove('selected');
+        });
+        goToStep(1);
+    });
+
+    document.getElementById('startOverFromSummit')?.addEventListener('click', () => {
+        wizardState.device = null;
         wizardState.model = null;
         wizardState.board = null;
         document.querySelectorAll('.selection-card').forEach(card => {
