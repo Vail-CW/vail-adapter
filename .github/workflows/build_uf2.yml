@@ -25,11 +25,11 @@ jobs:
           # --- XIAO SAMD21 Configurations ---
           - board_name: "XIAO_SAMD21"
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
-            hw_define: "V1_PCB"
+            hw_define: "V1_Basic_PCB"
             uf2_name: "xiao_basic_pcb_v1.uf2"
           - board_name: "XIAO_SAMD21"
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
-            hw_define: "V1_2_PCB"
+            hw_define: "V2_Basic_PCB"
             uf2_name: "xiao_basic_pcb_v2.uf2"
           - board_name: "XIAO_SAMD21"
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
@@ -37,20 +37,20 @@ jobs:
             uf2_name: "xiao_non_pcb.uf2"
           - board_name: "XIAO_SAMD21"
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
-            hw_define: "V2_ADVANCED_PCB"
+            hw_define: "Advanced_PCB"
             uf2_name: "xiao_advanced_pcb.uf2"
           # --- Adafruit QT Py SAMD21 Configurations ---
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
-            hw_define: "V1_PCB"
+            hw_define: "V1_Basic_PCB"
             uf2_name: "qtpy_basic_pcb_v1.uf2"
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
-            hw_define: "V1_2_PCB"
+            hw_define: "V2_Basic_PCB"
             uf2_name: "qtpy_basic_pcb_v2.uf2"
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
-            hw_define: "V2_ADVANCED_PCB"
+            hw_define: "Advanced_PCB"
             uf2_name: "qtpy_advanced_pcb.uf2"
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
@@ -79,9 +79,9 @@ jobs:
           arduino-cli lib install Keyboard
       - name: Set Hardware Define in Header
         env:
-          CONFIG_FILE: "config.h" 
+          CONFIG_FILE: "config.h"
           CONFIG_DEFINE: ${{ matrix.hw_define }}
-          DEFINES_LIST: "V1_PCB V1_2_PCB V2_ADVANCED_PCB NO_PCB_GITHUB_SPECS"
+          DEFINES_LIST: "V1_Basic_PCB V2_Basic_PCB Advanced_PCB NO_PCB_GITHUB_SPECS"
         run: |
           echo "Setting Hardware Define to: ${CONFIG_DEFINE} in ${CONFIG_FILE}"
           if [ ! -f "$CONFIG_FILE" ]; then echo "Error: $CONFIG_FILE not found!"; exit 1; fi
