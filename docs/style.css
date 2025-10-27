@@ -293,18 +293,22 @@ h4 {
     margin-bottom: 0.5rem;
 }
 
-#serialLog {
+#serialLog, #espFlashLog {
     background-color: #1a1a1a !important;
     color: #d0d0d0 !important;
     border: 1px solid #444 !important;
     padding: 1rem;
     border-radius: 6px;
-    height: 150px;
+    max-height: 300px;
     overflow-y: auto;
     white-space: pre-wrap;
     word-wrap: break-word;
     font-family: 'Courier New', monospace;
     font-size: 0.85rem;
+}
+
+#serialLog {
+    height: 150px;
 }
 
 /* Buttons */

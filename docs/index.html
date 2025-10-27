@@ -58,7 +58,7 @@
 
         <div class="card-grid">
             <div class="selection-card" data-device="adapter">
-                <div class="card-icon">🔌</div>
+                <div class="card-icon">📡</div>
                 <h3>Vail Adapter</h3>
                 <p>USB adapter that connects paddles to your computer for web-based CW</p>
             </div>
@@ -245,11 +245,11 @@
         <div class="flash-step">
             <div class="step-header">
                 <span class="step-badge">1</span>
-                <h3>Connect Your Vail Summit</h3>
+                <h3>Connect Your Device</h3>
             </div>
-            <p>Use a USB-C cable and connect your Vail Summit to your computer.</p>
+            <p>Make sure your Vail Summit is plugged in via USB.</p>
             <div class="info-box">
-                <strong>Note:</strong> This flasher requires Chrome, Edge, or Opera browser with Web Serial support.
+                <strong>Note:</strong> The flasher will automatically put the device into bootloader mode. If this fails, you may need to manually enter bootloader mode by holding BOOT and pressing RESET.
             </div>
         </div>
 
@@ -257,12 +257,14 @@
         <div class="flash-step">
             <div class="step-header">
                 <span class="step-badge">2</span>
-                <h3>Flash Firmware</h3>
+                <h3>Connect and Flash</h3>
             </div>
-            <p>Click the button below to start the flashing process. Your browser will prompt you to select the serial port.</p>
+            <p>Click Connect below and select your device from the list (it may appear as "USB Serial Device" or similar).</p>
 
             <div id="espFlasherContainer">
-                <button id="connectButton" class="btn-primary">Connect to Vail Summit</button>
+                <button id="enterBootloaderButton" class="btn-primary">Step 1: Enter Bootloader Mode</button>
+                <button id="connectButton" class="btn-primary" style="display: none;">Step 2: Connect in Bootloader Mode</button>
+                <button id="disconnectButton" class="btn-secondary" style="display: none;">Disconnect</button>
                 <button id="programButton" class="btn-download" style="display: none;">Flash Firmware</button>
                 <button id="eraseButton" class="btn-secondary" style="display: none;">Erase Flash</button>
 
@@ -276,7 +278,7 @@
 
                 <div class="log-container" style="margin-top: 20px;">
                     <h4>Flash Log:</h4>
-                    <pre id="espFlashLog" style="background: #f5f5f5; padding: 12px; border-radius: 4px; max-height: 300px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12px;"></pre>
+                    <pre id="espFlashLog"></pre>
                 </div>
             </div>
         </div>
@@ -285,12 +287,13 @@
         <div class="flash-step">
             <div class="step-header">
                 <span class="step-badge">3</span>
-                <h3>Setup Complete</h3>
+                <h3>Complete!</h3>
             </div>
             <p>Once flashing is complete:</p>
             <ol>
-                <li>Wait for the device to reboot automatically</li>
-                <li>Your Vail Summit will start up with the new firmware</li>
+                <li><strong>Unplug</strong> your Vail Summit from USB</li>
+                <li><strong>Wait 2 seconds</strong></li>
+                <li><strong>Plug it back in</strong> to power it on with the new firmware</li>
                 <li>Follow the on-screen setup wizard to configure WiFi and preferences</li>
             </ol>
             <div class="success-message">

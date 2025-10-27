@@ -75,6 +75,16 @@ function goToStep(stepNumber) {
         if (stepNumber === 3) {
             updateStep3Content();
         }
+
+        // Initialize ESP flasher if navigating to step 4 (Summit)
+        if (stepNumber === 4) {
+            // Wait a moment for the DOM to update
+            setTimeout(() => {
+                if (typeof window.initializeESPFlasher === 'function') {
+                    window.initializeESPFlasher();
+                }
+            }, 100);
+        }
     }
 }
 
