@@ -1,0 +1,123 @@
+name: Build and Deploy Summit Firmware
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        description: 'Branch to build firmware from'
+        required: true
+        default: 'vail-summit'
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_branch }}
+          fetch-depth: 0  # Fetch all history for all branches
+
+      - name: Setup Arduino CLI
+        uses: arduino/setup-arduino-cli@v1
+
+      - name: Install ESP32 platform
+        run: |
+          arduino-cli config init
+          arduino-cli config add board_manager.additional_urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+
+      - name: Install required libraries
+        run: |
+          arduino-cli lib install "Adafruit GFX Library"
+          arduino-cli lib install "Adafruit ST7735 and ST7789 Library"
+          arduino-cli lib install "Adafruit MAX1704X"
+          arduino-cli lib install "Adafruit LC709203F"
+          arduino-cli lib install "WebSockets"
+          arduino-cli lib install "ArduinoJson"
+
+      - name: Build firmware
+        run: |
+          cd morse_trainer
+          # Arduino requires sketch name to match folder name
+          if [ ! -f "morse_trainer.ino" ]; then
+            # If vail-summit.ino exists, rename it
+            if [ -f "vail-summit.ino" ]; then
+              mv vail-summit.ino morse_trainer.ino
+            fi
+          fi
+
+          # Build for ESP32-S3 Feather
+          arduino-cli compile \
+            --fqbn esp32:esp32:adafruit_feather_esp32s3 \
+            --output-dir ../build \
+            --export-binaries \
+            morse_trainer.ino
+
+          # List generated files
+          echo "Generated files:"
+          ls -lh ../build/
+
+      - name: Rename binary files
+        run: |
+          cd build
+          # Rename files to standard names
+          mv morse_trainer.ino.bootloader.bin bootloader.bin || true
+          mv morse_trainer.ino.partitions.bin partitions.bin || true
+          mv morse_trainer.ino.bin vail-summit.bin || true
+
+          echo "Renamed files:"
+          ls -lh
+
+      - name: Checkout master branch
+        run: |
+          git fetch origin master:master
+          git checkout master
+
+      - name: Copy binaries to firmware directory
+        run: |
+          mkdir -p docs/firmware_files/summit
+          cp build/bootloader.bin docs/firmware_files/summit/
+          cp build/partitions.bin docs/firmware_files/summit/
+          cp build/vail-summit.bin docs/firmware_files/summit/
+
+          echo "Files copied to docs/firmware_files/summit/:"
+          ls -lh docs/firmware_files/summit/
+
+      - name: Commit and push firmware
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add docs/firmware_files/summit/*.bin
+
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update Summit firmware from ${{ inputs.source_branch }} branch [skip ci]
+
+            Built from branch: ${{ inputs.source_branch }}
+            Commit: ${{ github.sha }}
+
+            Firmware files:
+            - bootloader.bin
+            - partitions.bin
+            - vail-summit.bin
+
+            🤖 Generated with GitHub Actions"
+
+            git push origin master
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: summit-firmware-${{ github.sha }}
+          path: |
+            build/bootloader.bin
+            build/partitions.bin
+            build/vail-summit.bin
+          retention-days: 30
