@@ -12,6 +12,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Allow pushing to repository
 
     steps:
       - name: Checkout source branch
@@ -85,6 +87,8 @@ jobs:
           ls -lh docs/firmware_files/summit/
 
       - name: Commit and push firmware
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
@@ -106,7 +110,8 @@ jobs:
 
             🤖 Generated with GitHub Actions"
 
-            git push origin master
+            # Push using the GitHub token for authentication
+            git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git master
           fi
 
       - name: Upload artifacts
