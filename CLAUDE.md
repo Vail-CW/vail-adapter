@@ -184,9 +184,13 @@ Settings are loaded on startup and saved immediately when changed.
 - Iambic logic in `training_practice.h` implements memory modes and squeeze keying
 
 ### Capacitive Touch
-- DIT on GPIO 5 (T5), DAH on GPIO 13 (T13)
-- Threshold configured in `config.h` (`TOUCH_THRESHOLD = 40`)
+- DIT on GPIO 8 (T8), DAH on GPIO 5 (T5)
+- Threshold configured in `config.h` (`TOUCH_THRESHOLD = 40000`)
 - Uses ESP32-S3 internal capacitive sensing (no external components required)
+- **CRITICAL**: Must use GPIO numbers directly in `touchRead()`, not T-constants (ESP32-S3 bug)
+- **CRITICAL**: Touch values RISE when touched on ESP32-S3 (check `> threshold`, not `< threshold`)
+- GPIO 13 conflicts with GPIO 14 (I2S/touch shield channel) and causes peripheral freeze
+- GPIO 8 and GPIO 5 work reliably together without conflicts
 
 ### Radio Keying Output
 - DIT output on GPIO 18 (A0), DAH output on GPIO 17 (A1)
@@ -215,27 +219,56 @@ VAIL SUMMIT firmware can be updated via:
 
 When firmware changes are ready for distribution:
 1. Code is developed and tested on this `vail-summit` branch
-2. Firmware is compiled using Arduino CLI for ESP32-S3 Feather
+2. Firmware is compiled using GitHub Actions workflow (recommended) or Arduino CLI manually
 3. Binary files (`bootloader.bin`, `partitions.bin`, `vail-summit.bin`) are committed to `master` branch at `docs/firmware_files/summit/`
 4. Users can flash firmware via web updater at `https://update.vailadapter.com`
 
 ### Building Firmware for Distribution
 
-**Arduino CLI Build Process:**
-```bash
-# Navigate to morse_trainer directory
-cd morse_trainer
+**Option 1: GitHub Actions Workflow (Recommended)**
 
-# Rename main sketch to match folder name (Arduino requirement)
-mv morse_trainer.ino vail-summit.ino
+The repository includes a GitHub Actions workflow that automates the build and deployment process:
+
+1. Go to the **Actions** tab on GitHub
+2. Select **"Build and Deploy Summit Firmware"**
+3. Click **"Run workflow"**
+4. Choose the source branch (default: `vail-summit`)
+5. Click **"Run workflow"** button
+
+The workflow will:
+- Build firmware using Arduino CLI for ESP32-S3 Feather
+- Generate `bootloader.bin`, `partitions.bin`, and `vail-summit.bin`
+- Automatically switch to `master` branch
+- Copy binaries to `docs/firmware_files/summit/`
+- Commit and push to `master` (with `[skip ci]` to avoid loops)
+- Upload build artifacts for 30-day retention
+
+**Option 2: Manual Arduino CLI Build Process:**
+```bash
+# The .ino file and .h files are in the root directory
+# Create a folder matching the sketch name
+mkdir -p vail-summit
+cp *.h vail-summit/
+cp vail-summit.ino vail-summit/
 
 # Compile for ESP32-S3 Feather
-arduino-cli compile --fqbn esp32:esp32:adafruit_feather_esp32s3 --output-dir build vail-summit.ino
+arduino-cli compile --fqbn esp32:esp32:adafruit_feather_esp32s3 --output-dir build --export-binaries vail-summit/vail-summit.ino
 
 # Generated files in build/:
 # - vail-summit.ino.bootloader.bin (bootloader at 0x0)
 # - vail-summit.ino.partitions.bin (partition table at 0x8000)
 # - vail-summit.ino.bin (application at 0x10000)
+
+# Manually copy to master branch
+git fetch origin master:master
+git checkout master
+mkdir -p docs/firmware_files/summit
+cp build/vail-summit.ino.bootloader.bin docs/firmware_files/summit/bootloader.bin
+cp build/vail-summit.ino.partitions.bin docs/firmware_files/summit/partitions.bin
+cp build/vail-summit.ino.bin docs/firmware_files/summit/vail-summit.bin
+git add docs/firmware_files/summit/*.bin
+git commit -m "Update Summit firmware [skip ci]"
+git push origin master
 ```
 
 **Firmware Stats:**
