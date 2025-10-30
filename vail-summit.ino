@@ -63,10 +63,6 @@
 #include "qso_logger_statistics.h"
 #include "qso_logger_settings.h"
 
-// Screen Mirroring (must come before web server)
-#include "mirror_display.h"  // MirroredST7789 class
-#include "screen_mirror.h"   // PSRAM framebuffer and encoding
-
 // Web Server (must come after QSO Logger to access storage)
 #include "web_server.h"
 
@@ -81,8 +77,8 @@ bool hasLC709203 = false;
 bool hasMAX17048 = false;
 bool hasBatteryMonitor = false;
 
-// Create mirrored display object (captures all draw operations to PSRAM framebuffer)
-MirroredST7789 tft = MirroredST7789(TFT_CS, TFT_DC, TFT_RST);
+// Create display object
+Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 
 // ============================================
 // Menu System State
@@ -164,10 +160,6 @@ void setup() {
   Serial.println("\nInitializing I2S audio...");
   initI2SAudio();
   delay(100);
-
-  // Initialize screen mirroring EARLY (before WiFi consumes memory)
-  Serial.println("Initializing screen mirroring...");
-  initScreenMirror();
 
   // Initialize LCD (after I2S to avoid DMA conflicts)
   initDisplay();
@@ -279,14 +271,6 @@ void loop() {
     updateMorseShooterInput(tft);
     // Visuals updated less frequently
     updateMorseShooterVisuals(tft);
-  }
-
-  // Update screen mirror if enabled
-  if (mirrorEnabled) {
-    if (captureScreen(tft)) {
-      // Screen was captured, now encode to JPEG
-      encodeToJpeg();
-    }
   }
 
   // Check for keyboard input (reduce I2C polling frequency during practice/game modes)
