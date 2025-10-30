@@ -9,7 +9,6 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <WiFi.h>
-#include <ESP.h>
 #include <SPIFFS.h>
 
 // External declarations for global variables
