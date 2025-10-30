@@ -10,10 +10,9 @@
 #include <Adafruit_ST7789.h>
 #include "config.h"
 #include <Fonts/FreeSansBold12pt7b.h>
-#include "mirror_display.h"  // For MirroredST7789 class
 
 // Forward declarations from main file
-extern MirroredST7789 tft;
+extern Adafruit_ST7789 tft;
 extern int currentSelection;
 
 // Menu mode enum - must match main file

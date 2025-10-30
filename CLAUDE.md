@@ -163,7 +163,10 @@ The fuel gauge chips provide voltage and state-of-charge percentage. Calibration
 
 All user settings are stored in ESP32 Preferences (non-volatile flash storage):
 
-- **"wifi"** namespace: SSID and password
+- **"wifi"** namespace: Up to 3 WiFi network credentials (ssid1-3, pass1-3)
+  - Auto-connect tries all saved networks in order at startup
+  - Most recently connected network stored in slot 1
+  - Saved networks marked with star (*) in WiFi settings UI
 - **"cwsettings"** namespace: WPM speed, tone frequency (Hz), key type
 - **"audio"** namespace: volume percentage
 - **"callsign"** namespace: user callsign for Vail repeater

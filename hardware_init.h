@@ -11,10 +11,9 @@
 #include <Adafruit_LC709203F.h>
 #include <Adafruit_MAX1704X.h>
 #include "config.h"
-#include "mirror_display.h"  // For MirroredST7789 class
 
 // Forward declarations from main file
-extern MirroredST7789 tft;
+extern Adafruit_ST7789 tft;
 extern Adafruit_LC709203F lc;
 extern Adafruit_MAX17048 maxlipo;
 extern bool hasLC709203;

@@ -12,10 +12,9 @@
 #include <Fonts/FreeSans9pt7b.h>
 #include "config.h"
 #include "qso_logger.h"
-#include "mirror_display.h"  // For MirroredST7789 class
 
 // Forward declarations from main file
-extern MirroredST7789 tft;
+extern Adafruit_ST7789 tft;
 void drawHeader();
 
 // ============================================

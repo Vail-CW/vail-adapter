@@ -48,6 +48,7 @@ void drawNetworkList(Adafruit_ST7789 &display);
 void drawPasswordInput(Adafruit_ST7789 &display);
 void connectToWiFi(String ssid, String password);
 void saveWiFiCredentials(String ssid, String password);
+int loadAllWiFiCredentials(String ssids[3], String passwords[3]);
 bool loadWiFiCredentials(String &ssid, String &password);
 void autoConnectWiFi();
 
@@ -65,7 +66,7 @@ void startWiFiSettings(Adafruit_ST7789 &display) {
     wifiState = WIFI_STATE_NETWORK_LIST;
   } else {
     wifiState = WIFI_STATE_ERROR;
-    statusMessage = "No networks found";
+    statusMessage = "No networks found. Try again?";
   }
 
   drawWiFiUI(display);
@@ -74,11 +75,26 @@ void startWiFiSettings(Adafruit_ST7789 &display) {
 // Scan for WiFi networks
 void scanNetworks() {
   Serial.println("Scanning for WiFi networks...");
+
+  // Ensure clean WiFi state before scanning
+  WiFi.disconnect(true);  // Disconnect and clear saved credentials from WiFi hardware
+  WiFi.mode(WIFI_OFF);
+  delay(100);
   WiFi.mode(WIFI_STA);
-  WiFi.disconnect();
   delay(100);
 
   int n = WiFi.scanNetworks();
+
+  Serial.print("Scan result: ");
+  Serial.println(n);
+
+  if (n < 0) {
+    // Scan failed
+    Serial.println("WiFi scan failed!");
+    networkCount = 0;
+    return;
+  }
+
   networkCount = min(n, 20);
 
   Serial.print("Found ");
@@ -153,11 +169,13 @@ void drawWiFiUI(Adafruit_ST7789 &display) {
   String footerText = "";
 
   if (wifiState == WIFI_STATE_NETWORK_LIST) {
-    footerText = "Up/Down: Select  Enter: Connect  ESC: Back";
+    footerText = "*=Saved  Up/Down:Select  Enter:Connect  ESC:Back";
   } else if (wifiState == WIFI_STATE_PASSWORD_INPUT) {
     footerText = "Type password  Enter: Connect  ESC: Cancel";
-  } else if (wifiState == WIFI_STATE_CONNECTED || wifiState == WIFI_STATE_ERROR) {
+  } else if (wifiState == WIFI_STATE_CONNECTED) {
     footerText = "Press ESC to return";
+  } else if (wifiState == WIFI_STATE_ERROR) {
+    footerText = "Enter: Rescan  ESC: Return";
   }
 
   int16_t x1, y1;
@@ -170,10 +188,18 @@ void drawWiFiUI(Adafruit_ST7789 &display) {
 
 // Draw network list
 void drawNetworkList(Adafruit_ST7789 &display) {
+  // Clear the network list area (preserve header and footer)
+  display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 60, COLOR_BACKGROUND);
+
   display.setTextSize(1);
   display.setTextColor(ST77XX_CYAN);
   display.setCursor(10, 55);
   display.print("Available Networks:");
+
+  // Load saved networks to mark them
+  String savedSSIDs[3];
+  String savedPasswords[3];
+  int savedCount = loadAllWiFiCredentials(savedSSIDs, savedPasswords);
 
   // Calculate visible range (show 5 networks at a time)
   int startIdx = max(0, selectedNetwork - 2);
@@ -187,6 +213,15 @@ void drawNetworkList(Adafruit_ST7789 &display) {
   int yPos = 75;
   for (int i = startIdx; i < endIdx; i++) {
     bool isSelected = (i == selectedNetwork);
+
+    // Check if this network is saved
+    bool isSaved = false;
+    for (int j = 0; j < savedCount; j++) {
+      if (networks[i].ssid == savedSSIDs[j]) {
+        isSaved = true;
+        break;
+      }
+    }
 
     // Draw selection background
     if (isSelected) {
@@ -217,12 +252,26 @@ void drawNetworkList(Adafruit_ST7789 &display) {
 
     // Draw SSID
     display.setTextColor(isSelected ? ST77XX_WHITE : ST77XX_CYAN);
-    display.setCursor(networks[i].encrypted ? 42 : 32, yPos + 6);
+    int ssidX = networks[i].encrypted ? 42 : 32;
 
-    // Truncate long SSIDs
+    // If saved, draw star icon before SSID
+    if (isSaved) {
+      uint16_t starColor = isSelected ? ST77XX_WHITE : ST77XX_YELLOW;
+      // Draw simple star (asterisk-style)
+      display.setTextColor(starColor);
+      display.setCursor(ssidX, yPos + 6);
+      display.print("*");
+      ssidX += 6;
+      display.setTextColor(isSelected ? ST77XX_WHITE : ST77XX_CYAN);
+    }
+
+    display.setCursor(ssidX, yPos + 6);
+
+    // Truncate long SSIDs (adjust for star icon)
     String ssid = networks[i].ssid;
-    if (ssid.length() > 30) {
-      ssid = ssid.substring(0, 27) + "...";
+    int maxLen = isSaved ? 28 : 30;
+    if (ssid.length() > maxLen) {
+      ssid = ssid.substring(0, maxLen - 3) + "...";
     }
     display.print(ssid);
 
@@ -387,6 +436,23 @@ int handleWiFiInput(char key, Adafruit_ST7789 &display) {
     if (key == KEY_ESC) {
       return -1;  // Exit WiFi settings
     }
+    else if (wifiState == WIFI_STATE_ERROR && (key == KEY_ENTER || key == KEY_ENTER_ALT)) {
+      // Rescan networks on ENTER when in error state
+      wifiState = WIFI_STATE_SCANNING;
+      statusMessage = "Scanning for networks...";
+      drawWiFiUI(display);
+      scanNetworks();
+
+      if (networkCount > 0) {
+        wifiState = WIFI_STATE_NETWORK_LIST;
+      } else {
+        wifiState = WIFI_STATE_ERROR;
+        statusMessage = "No networks found. Try again?";
+      }
+
+      drawWiFiUI(display);
+      return 2;
+    }
   }
 
   return 0;
@@ -425,38 +491,134 @@ void connectToWiFi(String ssid, String password) {
   }
 }
 
-// Save WiFi credentials to flash memory
+// Save WiFi credentials to flash memory (up to 3 networks)
 void saveWiFiCredentials(String ssid, String password) {
   wifiPrefs.begin("wifi", false);
-  wifiPrefs.putString("ssid", ssid);
-  wifiPrefs.putString("password", password);
-  wifiPrefs.end();
 
+  // Load existing saved networks
+  String ssid1 = wifiPrefs.getString("ssid1", "");
+  String pass1 = wifiPrefs.getString("pass1", "");
+  String ssid2 = wifiPrefs.getString("ssid2", "");
+  String pass2 = wifiPrefs.getString("pass2", "");
+  String ssid3 = wifiPrefs.getString("ssid3", "");
+  String pass3 = wifiPrefs.getString("pass3", "");
+
+  // Check if this SSID already exists in the list
+  if (ssid == ssid1) {
+    // Update slot 1
+    wifiPrefs.putString("pass1", password);
+    Serial.println("Updated existing network in slot 1");
+  }
+  else if (ssid == ssid2) {
+    // Update slot 2
+    wifiPrefs.putString("pass2", password);
+    Serial.println("Updated existing network in slot 2");
+  }
+  else if (ssid == ssid3) {
+    // Update slot 3
+    wifiPrefs.putString("pass3", password);
+    Serial.println("Updated existing network in slot 3");
+  }
+  else {
+    // Add new network - shift existing ones down
+    if (ssid1.length() == 0) {
+      // Slot 1 is empty
+      wifiPrefs.putString("ssid1", ssid);
+      wifiPrefs.putString("pass1", password);
+      Serial.println("Saved to slot 1");
+    }
+    else if (ssid2.length() == 0) {
+      // Slot 2 is empty
+      wifiPrefs.putString("ssid2", ssid);
+      wifiPrefs.putString("pass2", password);
+      Serial.println("Saved to slot 2");
+    }
+    else if (ssid3.length() == 0) {
+      // Slot 3 is empty
+      wifiPrefs.putString("ssid3", ssid);
+      wifiPrefs.putString("pass3", password);
+      Serial.println("Saved to slot 3");
+    }
+    else {
+      // All slots full, shift down and add to slot 1 (most recent)
+      wifiPrefs.putString("ssid3", ssid2);
+      wifiPrefs.putString("pass3", pass2);
+      wifiPrefs.putString("ssid2", ssid1);
+      wifiPrefs.putString("pass2", pass1);
+      wifiPrefs.putString("ssid1", ssid);
+      wifiPrefs.putString("pass1", password);
+      Serial.println("Saved to slot 1 (shifted others down, slot 3 dropped)");
+    }
+  }
+
+  wifiPrefs.end();
   Serial.println("WiFi credentials saved");
 }
 
-// Load WiFi credentials from flash memory
-bool loadWiFiCredentials(String &ssid, String &password) {
+// Load WiFi credentials from flash memory (loads all saved networks)
+int loadAllWiFiCredentials(String ssids[3], String passwords[3]) {
   wifiPrefs.begin("wifi", true);
-  ssid = wifiPrefs.getString("ssid", "");
-  password = wifiPrefs.getString("password", "");
+
+  int count = 0;
+
+  ssids[0] = wifiPrefs.getString("ssid1", "");
+  passwords[0] = wifiPrefs.getString("pass1", "");
+  if (ssids[0].length() > 0) count++;
+
+  ssids[1] = wifiPrefs.getString("ssid2", "");
+  passwords[1] = wifiPrefs.getString("pass2", "");
+  if (ssids[1].length() > 0) count++;
+
+  ssids[2] = wifiPrefs.getString("ssid3", "");
+  passwords[2] = wifiPrefs.getString("pass3", "");
+  if (ssids[2].length() > 0) count++;
+
   wifiPrefs.end();
 
-  return (ssid.length() > 0);
+  return count;
 }
 
-// Auto-connect to saved WiFi on startup
+// Load WiFi credentials from flash memory (legacy function for compatibility)
+bool loadWiFiCredentials(String &ssid, String &password) {
+  String ssids[3];
+  String passwords[3];
+  int count = loadAllWiFiCredentials(ssids, passwords);
+
+  if (count > 0) {
+    ssid = ssids[0];
+    password = passwords[0];
+    return true;
+  }
+
+  return false;
+}
+
+// Auto-connect to saved WiFi on startup (tries all 3 saved networks)
 void autoConnectWiFi() {
-  String ssid, password;
+  String ssids[3];
+  String passwords[3];
 
-  if (loadWiFiCredentials(ssid, password)) {
-    Serial.print("Auto-connecting to saved network: ");
-    Serial.println(ssid);
+  int count = loadAllWiFiCredentials(ssids, passwords);
 
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid.c_str(), password.c_str());
+  if (count == 0) {
+    Serial.println("No saved WiFi credentials");
+    return;
+  }
 
-    // Wait up to 10 seconds
+  Serial.print("Found ");
+  Serial.print(count);
+  Serial.println(" saved network(s)");
+
+  WiFi.mode(WIFI_STA);
+
+  // Try each saved network in order
+  for (int i = 0; i < count; i++) {
+    Serial.print("Attempting to connect to: ");
+    Serial.println(ssids[i]);
+
+    WiFi.begin(ssids[i].c_str(), passwords[i].c_str());
+
+    // Wait up to 10 seconds for connection
     int attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < 40) {
       delay(250);
@@ -467,14 +629,19 @@ void autoConnectWiFi() {
 
     if (WiFi.status() == WL_CONNECTED) {
       Serial.println("Auto-connect successful!");
+      Serial.print("Connected to: ");
+      Serial.println(ssids[i]);
       Serial.print("IP: ");
       Serial.println(WiFi.localIP());
+      return;  // Successfully connected, exit
     } else {
-      Serial.println("Auto-connect failed");
+      Serial.print("Failed to connect to: ");
+      Serial.println(ssids[i]);
+      WiFi.disconnect();
     }
-  } else {
-    Serial.println("No saved WiFi credentials");
   }
+
+  Serial.println("Could not connect to any saved network");
 }
 
 #endif // SETTINGS_WIFI_H
