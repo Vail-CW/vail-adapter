@@ -41,6 +41,16 @@ jobs:
           arduino-cli lib install "WebSockets"
           arduino-cli lib install "ArduinoJson"
 
+          # Install ESPAsyncWebServer and AsyncTCP from GitHub (not in Library Manager)
+          mkdir -p ~/Arduino/libraries
+          cd ~/Arduino/libraries
+
+          # Install AsyncTCP (dependency for ESPAsyncWebServer on ESP32)
+          git clone https://github.com/me-no-dev/AsyncTCP.git
+
+          # Install ESPAsyncWebServer
+          git clone https://github.com/me-no-dev/ESPAsyncWebServer.git
+
       - name: Build firmware
         run: |
           # The .ino file is in the root directory on vail-summit branch
