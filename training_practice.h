@@ -1,6 +1,7 @@
 /*
  * Practice Oscillator Mode
  * Allows free-form morse code practice with paddle/key
+ * Includes real-time morse decoding with adaptive speed tracking
  */
 
 #ifndef TRAINING_PRACTICE_H
@@ -8,6 +9,7 @@
 
 #include "config.h"
 #include "settings_cw.h"
+#include "morse_decoder_adaptive.h"
 
 // Practice mode state
 bool practiceActive = false;
@@ -32,9 +34,22 @@ unsigned long practiceStartTime = 0;
 int ditCount = 0;
 int dahCount = 0;
 
+// Decoder state
+MorseDecoderAdaptive decoder(20, 20, 30);  // Initial 20 WPM, buffer size 30
+String decodedText = "";
+String decodedMorse = "";
+bool showDecoding = true;
+bool needsUIUpdate = false;
+
+// Timing capture for decoder
+unsigned long lastStateChangeTime = 0;
+bool lastToneState = false;
+unsigned long lastElementTime = 0;  // Track last element for timeout flush
+
 // Forward declarations
 void startPracticeMode(Adafruit_ST7789 &display);
 void drawPracticeUI(Adafruit_ST7789 &display);
+void drawDecodedTextOnly(Adafruit_ST7789 &display);
 int handlePracticeInput(char key, Adafruit_ST7789 &display);
 void updatePracticeOscillator();
 void drawPracticeStats(Adafruit_ST7789 &display);
@@ -72,9 +87,48 @@ void startPracticeMode(Adafruit_ST7789 &display) {
   ditCount = 0;
   dahCount = 0;
 
+  // Reset decoder
+  decoder.reset();
+  decoder.setWPM(cwSpeed);
+  decodedText = "";
+  decodedMorse = "";
+  lastStateChangeTime = 0;  // Don't initialize until first key press
+  lastToneState = false;
+  lastElementTime = 0;  // Reset element timeout tracker
+  showDecoding = true;
+  needsUIUpdate = false;
+
+  // Setup decoder callbacks
+  decoder.messageCallback = [](String morse, String text) {
+    decodedMorse += morse;
+    decodedText += text;
+
+    // Limit text length (keep last 200 characters)
+    if (decodedText.length() > 200) {
+      decodedText = decodedText.substring(decodedText.length() - 200);
+    }
+    if (decodedMorse.length() > 300) {
+      decodedMorse = decodedMorse.substring(decodedMorse.length() - 300);
+    }
+
+    needsUIUpdate = true;
+
+    Serial.print("Decoded: ");
+    Serial.print(text);
+    Serial.print(" (");
+    Serial.print(morse);
+    Serial.println(")");
+  };
+
+  decoder.speedCallback = [](float wpm, float fwpm) {
+    Serial.print("Speed detected: ");
+    Serial.print(wpm);
+    Serial.println(" WPM");
+  };
+
   drawPracticeUI(display);
 
-  Serial.println("Practice mode started");
+  Serial.println("Practice mode started with decoding enabled");
   Serial.print("Speed: ");
   Serial.print(cwSpeed);
   Serial.print(" WPM, Tone: ");
@@ -97,50 +151,93 @@ void drawPracticeUI(Adafruit_ST7789 &display) {
   // Title
   display.setTextSize(2);
   display.setTextColor(ST77XX_CYAN);
-  display.setCursor(80, 60);
+  display.setCursor(55, 50);
   display.print("PRACTICE");
 
-  // Display current settings
+  // Display current settings (compact row)
   display.setTextSize(1);
   display.setTextColor(ST77XX_WHITE);
-
-  int yPos = 95;
-  display.setCursor(60, yPos);
-  display.print("Speed: ");
+  display.setCursor(10, 75);
+  display.print("Speed:");
   display.setTextColor(ST77XX_GREEN);
   display.print(cwSpeed);
-  display.setTextColor(ST77XX_WHITE);
+  display.setTextColor(0x7BEF);  // Gray
   display.print(" WPM");
 
-  yPos += 20;
-  display.setCursor(60, yPos);
-  display.print("Tone: ");
-  display.setTextColor(ST77XX_GREEN);
-  display.print(cwTone);
-  display.setTextColor(ST77XX_WHITE);
-  display.print(" Hz");
-
-  yPos += 20;
-  display.setCursor(60, yPos);
-  display.print("Key: ");
-  display.setTextColor(ST77XX_GREEN);
-  if (cwKeyType == KEY_STRAIGHT) {
-    display.print("Straight");
-  } else if (cwKeyType == KEY_IAMBIC_A) {
-    display.print("Iambic A");
-  } else {
-    display.print("Iambic B");
+  // Show detected speed (always show if decoding enabled)
+  float detectedWPM = decoder.getWPM();
+  if (showDecoding && detectedWPM > 0) {
+    if (abs(detectedWPM - cwSpeed) > 1.0f) {
+      display.setTextColor(ST77XX_YELLOW);  // Yellow if different
+    } else {
+      display.setTextColor(ST77XX_GREEN);  // Green if same
+    }
+    display.print(" -> ");
+    display.print(detectedWPM, 1);
   }
 
-  // No visual indicators - keeps display static for best audio performance
   display.setTextColor(ST77XX_WHITE);
-  display.setCursor(30, 165);
-  display.print("Key to practice - ESC to exit");
+  display.setCursor(200, 75);
+  display.print("Tone:");
+  display.setTextColor(ST77XX_GREEN);
+  display.print(cwTone);
+
+  // Decoded text area (if enabled)
+  if (showDecoding) {
+    display.setTextSize(1);
+    display.setTextColor(0x7BEF);  // Gray
+    display.setCursor(10, 95);
+    display.print("Decoded Text:");
+
+    // Show decoded text (larger area now, 4-5 lines)
+    display.setTextSize(2);
+    display.setTextColor(ST77XX_WHITE);
+
+    // Calculate how much text fits (approx 26 chars per line at size 2)
+    int charsPerLine = 26;
+    int maxLines = 5;  // More lines available without morse display
+    int maxChars = charsPerLine * maxLines;
+
+    int textStartIdx = max(0, (int)decodedText.length() - maxChars);
+    String displayText = decodedText.substring(textStartIdx);
+
+    // Word wrap: split into lines
+    int yPos = 110;  // Start higher without morse display
+    int xPos = 10;
+    String currentLine = "";
+
+    for (int i = 0; i < (int)displayText.length() && yPos < 195; i++) {
+      char c = displayText[i];
+      currentLine += c;
+
+      if (c == ' ' || i == (int)displayText.length() - 1) {
+        // Check if line exceeds width
+        if (currentLine.length() >= charsPerLine) {
+          display.setCursor(xPos, yPos);
+          display.print(currentLine);
+          currentLine = "";
+          yPos += 20;
+        }
+      }
+    }
+
+    // Print remaining
+    if (currentLine.length() > 0 && yPos < 195) {
+      display.setCursor(xPos, yPos);
+      display.print(currentLine);
+    }
+  } else {
+    // Decoding disabled message
+    display.setTextSize(1);
+    display.setTextColor(0x7BEF);  // Gray
+    display.setCursor(50, 125);
+    display.print("Press D to enable decoding");
+  }
 
   // Draw footer instructions
   display.setTextSize(1);
   display.setTextColor(COLOR_WARNING);
-  String footerText = "ESC: Exit to Training Menu";
+  String footerText = showDecoding ? "D:Hide Decode  ESC:Exit" : "D:Show Decode  ESC:Exit";
 
   int16_t x1, y1;
   uint16_t w, h;
@@ -148,6 +245,72 @@ void drawPracticeUI(Adafruit_ST7789 &display) {
   int centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, SCREEN_HEIGHT - 12);
   display.print(footerText);
+}
+
+// Draw only the decoded text area (for real-time updates without full redraw)
+void drawDecodedTextOnly(Adafruit_ST7789 &display) {
+  if (!showDecoding) return;
+
+  // Also update the WPM display
+  display.fillRect(95, 75, 100, 10, COLOR_BACKGROUND);  // Clear WPM area
+  float detectedWPM = decoder.getWPM();
+  if (detectedWPM > 0) {
+    display.setTextSize(1);
+    if (abs(detectedWPM - cwSpeed) > 1.0f) {
+      display.setTextColor(ST77XX_YELLOW);  // Yellow if different
+    } else {
+      display.setTextColor(ST77XX_GREEN);  // Green if same
+    }
+    display.setCursor(95, 75);
+    display.print(" -> ");
+    display.print(detectedWPM, 1);
+  }
+
+  // Clear decoded text area only (from y=95 to y=200)
+  display.fillRect(0, 95, SCREEN_WIDTH, 105, COLOR_BACKGROUND);
+
+  display.setTextSize(1);
+  display.setTextColor(0x7BEF);  // Gray
+  display.setCursor(10, 95);
+  display.print("Decoded Text:");
+
+  // Show decoded text (larger area now, 4-5 lines)
+  display.setTextSize(2);
+  display.setTextColor(ST77XX_WHITE);
+
+  // Calculate how much text fits (approx 26 chars per line at size 2)
+  int charsPerLine = 26;
+  int maxLines = 5;  // More lines available without morse display
+  int maxChars = charsPerLine * maxLines;
+
+  int textStartIdx = max(0, (int)decodedText.length() - maxChars);
+  String displayText = decodedText.substring(textStartIdx);
+
+  // Word wrap: split into lines
+  int yPos = 110;  // Start higher without morse display
+  int xPos = 10;
+  String currentLine = "";
+
+  for (int i = 0; i < (int)displayText.length() && yPos < 195; i++) {
+    char c = displayText[i];
+    currentLine += c;
+
+    if (c == ' ' || i == (int)displayText.length() - 1) {
+      // Check if line exceeds width
+      if (currentLine.length() >= charsPerLine) {
+        display.setCursor(xPos, yPos);
+        display.print(currentLine);
+        currentLine = "";
+        yPos += 20;
+      }
+    }
+  }
+
+  // Print remaining
+  if (currentLine.length() > 0 && yPos < 195) {
+    display.setCursor(xPos, yPos);
+    display.print(currentLine);
+  }
 }
 
 // Draw practice statistics and visual feedback
@@ -186,7 +349,15 @@ int handlePracticeInput(char key, Adafruit_ST7789 &display) {
   if (key == KEY_ESC) {
     practiceActive = false;
     stopTone();
+    decoder.flush();  // Decode any remaining buffered timings
     return -1;  // Exit practice mode
+  }
+  else if (key == 'd' || key == 'D') {
+    // Toggle decoding display
+    showDecoding = !showDecoding;
+    drawPracticeUI(display);
+    beep(TONE_MENU_NAV, BEEP_SHORT);
+    return 1;
   }
 
   return 0;
@@ -195,6 +366,22 @@ int handlePracticeInput(char key, Adafruit_ST7789 &display) {
 // Update practice oscillator (called in main loop)
 void updatePracticeOscillator() {
   if (!practiceActive) return;
+
+  // Check for decoder timeout (flush if no activity for word gap duration)
+  // The decoder auto-flushes on character gaps (2.5 dits), but we need a backup
+  // timeout to flush if the user stops keying mid-character or after a character
+  // without enough silence to trigger the auto-flush (e.g., released paddles but
+  // silence duration not yet captured). Use word gap (7 dits) as safety timeout.
+  if (showDecoding && lastElementTime > 0 && !ditPressed && !dahPressed) {
+    unsigned long timeSinceLastElement = millis() - lastElementTime;
+    float wordGapDuration = MorseWPM::wordGap(decoder.getWPM());
+
+    // Flush buffered data after word gap silence (backup timeout)
+    if (timeSinceLastElement > wordGapDuration) {
+      decoder.flush();
+      lastElementTime = 0;  // Reset timeout
+    }
+  }
 
   // Read paddle/key inputs (physical + capacitive touch)
   // ESP32-S3: Use GPIO numbers directly, check > threshold (values rise when touched)
@@ -218,18 +405,45 @@ void updatePracticeOscillator() {
 
 // Straight key handler (simple on/off)
 void straightKeyHandler() {
+  unsigned long currentTime = millis();
+  bool toneOn = isTonePlaying();
+
   // Use DIT pin as straight key
-  if (ditPressed) {
-    if (!isTonePlaying()) {
-      startTone(cwTone);
-      Serial.println("Started tone");
+  if (ditPressed && !toneOn) {
+    // Tone starting
+    if (showDecoding && lastToneState == false) {
+      // Send silence duration to decoder (negative)
+      // Only if we have a valid previous state change time
+      if (lastStateChangeTime > 0) {
+        float silenceDuration = currentTime - lastStateChangeTime;
+        if (silenceDuration > 0) {
+          decoder.addTiming(-silenceDuration);
+        }
+      }
+      lastStateChangeTime = currentTime;
+      lastToneState = true;
     }
+
+    startTone(cwTone);
+  }
+  else if (ditPressed && toneOn) {
+    // Tone continuing
     continueTone(cwTone);
-  } else {
-    if (isTonePlaying()) {
-      stopTone();
-      Serial.println("Stopped tone");
+  }
+  else if (!ditPressed && toneOn) {
+    // Tone stopping
+    if (showDecoding && lastToneState == true) {
+      // Send tone duration to decoder (positive)
+      float toneDuration = currentTime - lastStateChangeTime;
+      if (toneDuration > 0) {
+        decoder.addTiming(toneDuration);
+        lastElementTime = currentTime;  // Update timeout tracker
+      }
+      lastStateChangeTime = currentTime;
+      lastToneState = false;
     }
+
+    stopTone();
   }
 }
 
@@ -241,6 +455,19 @@ void iambicKeyerHandler() {
   if (!keyerActive && !inSpacing) {
     if (ditPressed || ditMemory) {
       // Start sending dit
+      if (showDecoding && lastToneState == false) {
+        // Send silence duration to decoder - let decoder filter inter-element gaps
+        // Only if we have a valid previous state change time
+        if (lastStateChangeTime > 0) {
+          float silenceDuration = currentTime - lastStateChangeTime;
+          if (silenceDuration > 0) {
+            decoder.addTiming(-silenceDuration);
+          }
+        }
+        lastStateChangeTime = currentTime;
+        lastToneState = true;
+      }
+
       keyerActive = true;
       sendingDit = true;
       sendingDah = false;
@@ -254,6 +481,19 @@ void iambicKeyerHandler() {
     }
     else if (dahPressed || dahMemory) {
       // Start sending dah
+      if (showDecoding && lastToneState == false) {
+        // Send silence duration to decoder - let decoder filter inter-element gaps
+        // Only if we have a valid previous state change time
+        if (lastStateChangeTime > 0) {
+          float silenceDuration = currentTime - lastStateChangeTime;
+          if (silenceDuration > 0) {
+            decoder.addTiming(-silenceDuration);
+          }
+        }
+        lastStateChangeTime = currentTime;
+        lastToneState = true;
+      }
+
       keyerActive = true;
       sendingDit = false;
       sendingDah = true;
@@ -294,6 +534,17 @@ void iambicKeyerHandler() {
     // Check if element is complete
     if (currentTime - elementStartTime >= elementDuration) {
       // Element complete, turn off tone and start spacing
+      if (showDecoding && lastToneState == true) {
+        // Send tone duration to decoder
+        float toneDuration = currentTime - lastStateChangeTime;
+        if (toneDuration > 0) {
+          decoder.addTiming(toneDuration);
+          lastElementTime = currentTime;  // Update timeout tracker
+        }
+        lastStateChangeTime = currentTime;
+        lastToneState = false;
+      }
+
       stopTone();
       keyerActive = false;
       sendingDit = false;

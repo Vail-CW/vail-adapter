@@ -60,9 +60,12 @@ Each major feature is isolated in its own header file with state, UI drawing, in
 
 - **`config.h`**: Central hardware configuration, pin assignments, timing constants, color scheme
 - **`morse_code.h`**: Morse lookup table and timing calculations (PARIS method)
+- **`morse_wpm.h`**: WPM timing utilities (PARIS standard, Farnsworth) - EUPL v1.2 licensed
+- **`morse_decoder.h`**: Base morse decoder class (timings → text) - EUPL v1.2 licensed
+- **`morse_decoder_adaptive.h`**: Adaptive speed tracking decoder - EUPL v1.2 licensed
 - **`i2s_audio.h`**: I2S audio driver for MAX98357A amplifier with software volume control
 - **`training_hear_it_type_it.h`**: Random callsign generator and receive training
-- **`training_practice.h`**: Practice oscillator with iambic keyer logic
+- **`training_practice.h`**: Practice oscillator with iambic keyer logic and real-time morse decoding
 - **`training_cwa.h`**: CW Academy curriculum with 16-session progression (Session 1-10: character introduction, Session 11-13: QSO practice, Session 14-16: on-air prep)
 - **`game_morse_shooter.h`**: Arcade game with falling letters, iambic keyer input, laser shooting, and score tracking
 - **`settings_wifi.h`**: WiFi scanning, connection, credential storage
@@ -538,6 +541,100 @@ When adding content for each session (future chunks):
 2. Organize by session (1-16) and type (characters, words, abbreviations, numbers, callsigns, phrases)
 3. Use progressive difficulty within each session
 4. Reference `cw-academy-training-mode.md` for official content
+
+## Morse Code Decoder (Adaptive)
+
+### Overview
+The morse decoder provides real-time decoding of paddle/key input with adaptive speed tracking. Based on the open-source [morse-pro](https://github.com/scp93ch/morse-pro) JavaScript library by Stephen C Phillips, ported to C++ for ESP32.
+
+### Architecture: Three-Module Design
+
+**Module Structure:**
+- **`morse_wpm.h`** - WPM timing utilities (PARIS standard formulas)
+- **`morse_decoder.h`** - Base decoder class (timings → morse patterns → text)
+- **`morse_decoder_adaptive.h`** - Adaptive speed tracking with weighted averaging
+
+### How It Works
+
+**Input Format:**
+- Decoder accepts timing values in milliseconds
+- **Positive values** = tone ON (dit or dah)
+- **Negative values** = silence (element gap, character gap, word gap)
+
+**Adaptive Speed Algorithm:**
+Every decoded element provides speed information:
+- Dit → duration = 1 dit
+- Dah → duration = 3 dits
+- Character gap → duration = 3 fdits (Farnsworth)
+
+The decoder maintains a circular buffer of the last 30 timing samples and uses **weighted averaging** (newer samples weighted more heavily: 1, 2, 3, ..., 30) to continuously refine its WPM estimate.
+
+**Classification Thresholds:**
+- Dit/Dah boundary: 2 × dit length
+- Dah/Space boundary: 5 × Farnsworth dit length
+- Noise threshold: 10ms (filters glitches)
+
+### Integration with Practice Mode
+
+**Real-Time Decoding:**
+- Enabled by default in practice mode
+- Press 'D' key to toggle display on/off
+- Shows decoded text (4-5 lines, word-wrapped, scrolling)
+- Displays detected WPM with color coding (green = matches configured, yellow = different)
+- Supports 9 prosigns: AR, AS, BK, BT, CT, HH, SK, SN, SOS (displayed as `<AR>`, etc.)
+
+**Timing Capture:**
+- **Straight Key**: Measures tone-on and silence durations directly
+- **Iambic**: Uses element start/stop times from iambic state machine
+- Feeds timings to decoder after each element completes
+- **First-run initialization**: `lastStateChangeTime` set to 0 to prevent spurious decoding on first entry to practice mode
+- Only calculates silence/tone durations after first valid key press
+
+**UI Update Strategy:**
+- Decoder callback sets `needsUIUpdate = true`
+- Main loop checks flag after `updatePracticeOscillator()`
+- **Only updates when tone is NOT playing** to avoid audio glitches
+- Calls `drawDecodedTextOnly()` for partial screen update (decoded text area only)
+- Full redraw avoided during practice for best audio performance
+
+**Auto-Flush Logic:**
+- Character boundary detection: 2.5 dits of silence triggers automatic flush
+- Manual timeout backup: 7 dits (word gap) if auto-flush missed
+- Prevents premature character splitting due to timing jitter
+- Ensures real-time character display without waiting for next element
+
+### Performance
+
+**Memory Footprint:**
+- `MorseDecoderAdaptive` instance: ~1-2 KB
+- Decoded text buffers (200 chars): ~200 bytes
+- Timing buffers (30 samples × 2): ~240 bytes
+- **Total: ~2.5 KB** (negligible on ESP32-S3)
+
+**CPU Usage:**
+- Decoder processing: <1ms per character
+- No floating-point intensive operations
+- Real-time suitable for ESP32 at 240 MHz
+
+### Licensing
+
+The morse decoder modules are licensed under **EUPL v1.2** (European Union Public Licence):
+- Original code: Copyright (c) 2024 Stephen C Phillips
+- ESP32 port: Copyright (c) 2025 VAIL SUMMIT Contributors
+- **Weak copyleft** - can be used in proprietary firmware
+- **Must keep decoder modules open source** if modified
+- Compatible with GPL, LGPL, MPL
+
+Main VAIL SUMMIT firmware can remain under any license. Only the three decoder modules (`morse_wpm.h`, `morse_decoder.h`, `morse_decoder_adaptive.h`) are EUPL-licensed.
+
+### Future Applications
+
+The decoder is designed as a reusable component for:
+1. **CW Academy validation** - Auto-check student answers
+2. **Vail repeater decoding** - Decode incoming morse from others
+3. **Receive training** - Decode audio from I2S microphone (requires tone detection)
+4. **Accuracy metrics** - Compare intended vs. decoded patterns
+5. **Contest logging** - Real-time callsign/exchange capture
 
 ## Morse Shooter Game
 

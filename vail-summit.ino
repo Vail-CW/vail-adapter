@@ -258,6 +258,12 @@ void loop() {
     // Call this frequently to keep audio buffer filled
     // No display updates during practice to maximize audio performance
     updatePracticeOscillator();
+
+    // Update decoded text display when new text is decoded (only if not actively keying)
+    if (needsUIUpdate && !isTonePlaying()) {
+      drawDecodedTextOnly(tft);
+      needsUIUpdate = false;
+    }
   }
 
   // Update Vail repeater if in Vail mode
