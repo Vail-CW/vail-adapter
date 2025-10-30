@@ -219,6 +219,32 @@ Settings are loaded on startup and saved immediately when changed.
 - Software volume control (0-100%)
 - Hardware gain set by GAIN pin (float=9dB, GND=12dB, VIN=6dB)
 
+## Firmware Version Management
+
+**Version Information Location:** `config.h` (lines 9-14)
+
+```cpp
+#define FIRMWARE_VERSION "1.0.0"
+#define FIRMWARE_DATE "2025-01-30"  // Update this date each time you build new firmware
+#define FIRMWARE_NAME "VAIL SUMMIT"
+```
+
+**When to Update:**
+- **FIRMWARE_VERSION**: Increment for major releases (1.0.0 → 1.1.0 → 2.0.0)
+  - Major version: Breaking changes or major new features
+  - Minor version: New features, backward compatible
+  - Patch version: Bug fixes only
+- **FIRMWARE_DATE**: Update to current date (YYYY-MM-DD) every time you build firmware for distribution
+- **FIRMWARE_NAME**: Should remain "VAIL SUMMIT" unless device name changes
+
+**Where Version Appears:**
+- Web dashboard footer
+- System Info page (version + build date)
+- Serial output on startup
+- ADIF export headers
+
+**Important:** Always update FIRMWARE_DATE before building firmware, even if FIRMWARE_VERSION stays the same. This helps track when a specific build was created.
+
 ## Firmware Updates
 
 VAIL SUMMIT firmware can be updated via:
@@ -1205,9 +1231,10 @@ WiFi disconnects → stopWebServer() → mDNS ends → Server stops
 
 **Navigation Cards:**
 - **QSO Logger** - View, manage, export logs
-- **Device Settings** - CW speed, tone, volume
+- **Device Settings** - CW speed, tone, volume, callsign
 - **WiFi Setup** - Network configuration
 - **System Info** - Firmware, memory, storage stats
+- **Radio Control** - Remote morse code transmission via radio output
 
 ### Enhanced QSO Logger Web Interface
 
@@ -1372,6 +1399,138 @@ const todayQSOs = allQSOs.filter(q => q.date === today && q.gridsquare);
 - Only shows QSOs with valid grid squares (4+ characters)
 - Click marker to see callsign and grid
 - Map auto-centers on USA (lat: 39.8283, lon: -98.5795, zoom: 4)
+
+### Device Settings Page (/settings)
+
+**Purpose:** Configure device parameters via web interface
+
+**Features:**
+
+1. **CW Settings Card**
+   - Speed slider (5-40 WPM) with live display
+   - Tone frequency slider (400-1200 Hz, 50 Hz steps) with live display
+   - Key type dropdown (Straight, Iambic A, Iambic B)
+   - Save button with validation and feedback
+
+2. **Audio Settings Card**
+   - Volume slider (0-100%) with live display
+   - Save button
+
+3. **Station Settings Card**
+   - Callsign text input (max 10 characters)
+   - Auto-uppercases input
+   - Save button
+
+**API Endpoints:**
+- `GET /api/settings/cw` - Returns `{wpm, tone, keyType}`
+- `POST /api/settings/cw` - Updates CW settings with validation (5-40 WPM, 400-1200 Hz, keyType 0-2)
+- `GET /api/settings/volume` - Returns `{volume}`
+- `POST /api/settings/volume` - Updates volume (0-100 validation)
+- `GET /api/settings/callsign` - Returns `{callsign}`
+- `POST /api/settings/callsign` - Updates callsign (length validation, auto-uppercase)
+
+**Implementation:**
+- Settings load automatically on page load
+- Real-time slider updates show current values
+- Validation on save (range checking for all numeric inputs)
+- Success/error messages with 5-second auto-dismiss
+- Saves to ESP32 Preferences immediately (namespaces: "cw", "audio", "callsign")
+- Updates global variables (`cwSpeed`, `cwTone`, `cwKeyType`, `vailCallsign`)
+- Calls existing save functions (`saveCWSettings()`, `setVolume()`, `saveCallsign()`)
+
+### System Info Page (/system)
+
+**Purpose:** Display comprehensive device diagnostics and status
+
+**Information Cards:**
+
+1. **Firmware Card**
+   - Version (e.g., "0.1")
+   - Build Date (e.g., "2025-10-30")
+
+2. **System Card**
+   - Uptime (formatted as days/hours/minutes/seconds)
+   - CPU Speed (MHz)
+   - Flash Size (formatted as MB)
+
+3. **Memory Card**
+   - Free RAM (formatted as KB/MB)
+   - Min Free RAM (lowest point since boot)
+   - Free PSRAM (formatted as KB/MB, or "N/A" if no PSRAM)
+   - Min Free PSRAM (lowest point since boot)
+
+4. **Storage Card**
+   - SPIFFS Used (formatted as KB/MB)
+   - SPIFFS Total (formatted as KB/MB)
+   - QSO Logs (count from `storageStats.totalLogs`)
+
+5. **WiFi Card**
+   - Status (Connected/Disconnected)
+   - SSID (network name)
+   - IP Address
+   - Signal Strength (RSSI in dBm, color-coded: green >-60, yellow -60 to -70, red <-70)
+
+6. **Battery Card**
+   - Voltage (V, 2 decimal places)
+   - Charge (percentage)
+   - Monitor (MAX17048, LC709203F, or None)
+
+**API Endpoint:**
+- `GET /api/system/info` - Returns comprehensive JSON with all diagnostic data
+
+**Features:**
+- Auto-refresh every 10 seconds
+- Smart formatting (bytes → KB/MB, uptime → human-readable)
+- WiFi signal color coding for quick status assessment
+- Last update timestamp displayed at bottom
+- Graceful fallbacks for missing data (N/A, 0, Unknown)
+
+### Radio Control Page (/radio)
+
+**Purpose:** Remote morse code transmission via radio output jack
+
+**Features:**
+
+1. **Radio Mode Status Card**
+   - Shows whether Radio Output mode is active/inactive (polls every 5 seconds)
+   - "Enter Radio Mode" button to switch device to MODE_RADIO_OUTPUT
+   - Status badge updates in real-time
+
+2. **Transmission Settings Card**
+   - WPM speed slider (5-40 WPM) with live display
+   - Adjusts device's global `cwSpeed` setting
+   - Saved to Preferences immediately on change
+
+3. **Send Morse Code Message Card**
+   - Text area for message input (max 200 characters)
+   - Character counter
+   - Send button queues message for transmission
+   - Info box explains radio output behavior (no sidetone, uses device settings)
+
+**API Endpoints:**
+- `GET /api/radio/status` - Returns `{active, mode}` (checks if `currentMode == MODE_RADIO_OUTPUT`)
+- `POST /api/radio/enter` - Switches device to Radio Output mode, calls `startRadioOutput(tft)`
+- `POST /api/radio/send` - Queues message via `queueRadioMessage()`, returns success or "queue full" error
+- `GET /api/radio/wpm` - Returns current WPM speed
+- `POST /api/radio/wpm` - Updates WPM speed (5-40 validation), calls `saveCWSettings()`
+
+**Message Queue System (radio_output.h):**
+- Circular buffer holds up to 5 messages (200 characters each)
+- `processRadioMessageQueue()` runs in main loop via `updateRadioOutput()`
+- Waits if user is manually keying (doesn't interrupt)
+- Sends messages character-by-character with proper WPM timing
+- Keys radio via GPIO 18 (DIT) and GPIO 17 (DAH) pins
+- Uses blocking morse character playback with accurate letter/word spacing
+- Debug logging shows character timing and queue status
+
+**User Workflow:**
+1. User opens `/radio` in browser
+2. Clicks "Enter Radio Mode" to switch device
+3. Types message in text area
+4. Clicks "Send Message" - message is queued on device
+5. Device automatically transmits as morse code via 3.5mm radio output
+6. Can queue up to 5 messages
+7. Messages transmit sequentially without interrupting manual keying
 
 ### Access Methods
 

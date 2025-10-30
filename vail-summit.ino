@@ -100,6 +100,7 @@ void setup() {
   Serial.begin(SERIAL_BAUD);
   delay(3000); // Wait for serial monitor to connect
   Serial.println("\n\n=== VAIL SUMMIT STARTING ===");
+  Serial.printf("Firmware: %s (Build: %s)\n", FIRMWARE_VERSION, FIRMWARE_DATE);
   Serial.println("Starting setup...");
 
   // ============================================

@@ -7,6 +7,13 @@
 #define CONFIG_H
 
 // ============================================
+// Firmware Version Information
+// ============================================
+#define FIRMWARE_VERSION "0.1"
+#define FIRMWARE_DATE "2025-10-30"  // Update this date each time you build new firmware
+#define FIRMWARE_NAME "VAIL SUMMIT"
+
+// ============================================
 // LCD Display (ST7789V) - SPI Interface
 // ============================================
 #define TFT_CS      10    // Chip Select

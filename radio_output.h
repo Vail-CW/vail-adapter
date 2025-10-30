@@ -23,6 +23,26 @@ RadioMode radioMode = RADIO_MODE_SUMMIT_KEYER;
 int radioSettingSelection = 0;  // 0=Speed, 1=Key Type, 2=Radio Mode
 #define RADIO_SETTINGS_COUNT 3
 
+// Message queue for web-based transmission
+#define RADIO_MESSAGE_QUEUE_SIZE 5
+#define RADIO_MESSAGE_MAX_LENGTH 200
+struct RadioMessageQueue {
+  char messages[RADIO_MESSAGE_QUEUE_SIZE][RADIO_MESSAGE_MAX_LENGTH];
+  int readIndex;
+  int writeIndex;
+  int count;
+} radioMessageQueue = {
+  .readIndex = 0,
+  .writeIndex = 0,
+  .count = 0
+};
+
+// Current message transmission state
+bool isTransmittingMessage = false;
+int messageCharIndex = 0;
+unsigned long messageTransmissionTimer = 0;
+char currentTransmittingMessage[RADIO_MESSAGE_MAX_LENGTH] = "";
+
 // Iambic keyer state for Summit Keyer mode
 bool radioKeyerActive = false;
 bool radioSendingDit = false;
@@ -46,6 +66,9 @@ void saveRadioSettings();
 void loadRadioSettings();
 void radioStraightKeyHandler();
 void radioIambicKeyerHandler();
+bool queueRadioMessage(const char* message);
+void processRadioMessageQueue();
+void playMorseCharViaRadio(char c);
 
 // Load radio settings from flash
 void loadRadioSettings() {
@@ -267,6 +290,9 @@ int handleRadioOutputInput(char key, Adafruit_ST7789 &display) {
 void updateRadioOutput() {
   if (!radioOutputActive) return;
 
+  // Process message queue first (for web-based transmission)
+  processRadioMessageQueue();
+
   // Read paddle/key inputs (physical and capacitive touch)
   bool ditPressed = (digitalRead(DIT_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
   bool dahPressed = (digitalRead(DAH_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DAH_PIN) > TOUCH_THRESHOLD);
@@ -409,6 +435,136 @@ void radioIambicKeyerHandler() {
         // No queued element - return to idle
         radioDitMemory = false;
         radioDahMemory = false;
+      }
+    }
+  }
+}
+
+// Queue a message for radio transmission
+bool queueRadioMessage(const char* message) {
+  if (radioMessageQueue.count >= RADIO_MESSAGE_QUEUE_SIZE) {
+    return false; // Queue is full
+  }
+
+  // Copy message to queue
+  strlcpy(radioMessageQueue.messages[radioMessageQueue.writeIndex], message, RADIO_MESSAGE_MAX_LENGTH);
+
+  // Advance write index (circular buffer)
+  radioMessageQueue.writeIndex = (radioMessageQueue.writeIndex + 1) % RADIO_MESSAGE_QUEUE_SIZE;
+  radioMessageQueue.count++;
+
+  Serial.print("Message queued (");
+  Serial.print(radioMessageQueue.count);
+  Serial.println(" in queue)");
+
+  return true;
+}
+
+// Play a single morse character via radio output
+void playMorseCharViaRadio(char c) {
+  const char* pattern = getMorseCode(c);
+  if (pattern == nullptr) {
+    return; // Skip unknown characters
+  }
+
+  MorseTiming timing(cwSpeed);
+
+  // Play each element in the pattern
+  for (int i = 0; pattern[i] != '\0'; i++) {
+    int duration;
+    if (pattern[i] == '.') {
+      duration = timing.ditDuration;
+    } else if (pattern[i] == '-') {
+      duration = timing.dahDuration;
+    } else {
+      continue;
+    }
+
+    // Key the radio output (DIT pin for straight key format)
+    digitalWrite(RADIO_KEY_DIT_PIN, HIGH);
+    delay(duration);
+    digitalWrite(RADIO_KEY_DIT_PIN, LOW);
+
+    // Gap between elements (unless last element)
+    if (pattern[i + 1] != '\0') {
+      delay(timing.elementGap);
+    }
+  }
+}
+
+// Process radio message queue (called from updateRadioOutput)
+void processRadioMessageQueue() {
+  // Only process queue if we're in radio output mode and Summit Keyer mode
+  if (!radioOutputActive || radioMode != RADIO_MODE_SUMMIT_KEYER) {
+    return;
+  }
+
+  // Don't start new message if user is keying
+  bool ditPressed = (digitalRead(DIT_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
+  bool dahPressed = (digitalRead(DAH_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DAH_PIN) > TOUCH_THRESHOLD);
+  if (ditPressed || dahPressed || radioKeyerActive || radioInSpacing) {
+    return; // Wait for user to finish keying
+  }
+
+  // If not currently transmitting, check if there's a message in the queue
+  if (!isTransmittingMessage) {
+    if (radioMessageQueue.count > 0) {
+      // Dequeue message
+      strlcpy(currentTransmittingMessage, radioMessageQueue.messages[radioMessageQueue.readIndex], RADIO_MESSAGE_MAX_LENGTH);
+      radioMessageQueue.readIndex = (radioMessageQueue.readIndex + 1) % RADIO_MESSAGE_QUEUE_SIZE;
+      radioMessageQueue.count--;
+
+      // Start transmission
+      isTransmittingMessage = true;
+      messageCharIndex = 0;
+      messageTransmissionTimer = millis(); // Start immediately
+
+      Serial.print("Starting transmission: ");
+      Serial.println(currentTransmittingMessage);
+    }
+  } else {
+    // Continue transmitting current message
+    unsigned long currentTime = millis();
+
+    // Check if it's time to send the next character
+    if (currentTime >= messageTransmissionTimer) {
+      if (messageCharIndex < strlen(currentTransmittingMessage)) {
+        char c = currentTransmittingMessage[messageCharIndex];
+
+        if (c == ' ') {
+          // Word gap (7 dits total, but we already have letter gap from previous character, so add 4 more dits)
+          MorseTiming timing(cwSpeed);
+          messageTransmissionTimer = currentTime + (timing.ditDuration * 4);
+        } else {
+          // Play morse character (this blocks during transmission)
+          unsigned long charStartTime = millis();
+          playMorseCharViaRadio(c);
+          unsigned long charEndTime = millis();
+
+          // Calculate how long the character took to send
+          unsigned long charDuration = charEndTime - charStartTime;
+
+          // Add letter gap after the character
+          MorseTiming timing(cwSpeed);
+          messageTransmissionTimer = charEndTime + timing.letterGap;
+
+          Serial.print("Sent: ");
+          Serial.print(c);
+          Serial.print(" (took ");
+          Serial.print(charDuration);
+          Serial.print("ms, next at ");
+          Serial.print(messageTransmissionTimer);
+          Serial.println("ms)");
+        }
+
+        messageCharIndex++;
+      } else {
+        // Message complete
+        isTransmittingMessage = false;
+        Serial.println("Transmission complete");
+
+        // Add extra delay before starting next message
+        messageTransmissionTimer = currentTime + (DIT_DURATION(cwSpeed) * 7);
       }
     }
   }
