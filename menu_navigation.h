@@ -57,6 +57,15 @@ void startCallsignSettings(Adafruit_ST7789& tft);
 void startVailRepeater(Adafruit_ST7789& tft);
 void connectToVail(String channel);
 void startMorseShooter(Adafruit_ST7789& tft);
+void initLogEntry();  // QSO Logger initialization
+int handleQSOLogEntryInput(char key, Adafruit_ST7789& tft);  // QSO log entry input handler
+void startViewLogs(Adafruit_ST7789& tft);  // QSO view logs initialization
+int handleViewLogsInput(char key, Adafruit_ST7789& tft);  // QSO view logs input handler
+void startStatistics(Adafruit_ST7789& tft);  // QSO statistics initialization
+int handleStatisticsInput(char key, Adafruit_ST7789& tft);  // QSO statistics input handler
+void startLoggerSettings(Adafruit_ST7789& tft);  // QSO logger settings initialization
+int handleLoggerSettingsInput(char key, Adafruit_ST7789& tft);  // QSO logger settings input handler
+void drawLoggerSettingsUI(Adafruit_ST7789& tft);  // QSO logger settings UI
 
 extern String vailChannel;
 
@@ -134,12 +143,18 @@ void selectMenuItem() {
       drawMenu();
 
     } else if (currentSelection == 2) {
+      // Tools
+      currentMode = MODE_TOOLS_MENU;
+      currentSelection = 0;
+      drawMenu();
+
+    } else if (currentSelection == 3) {
       // Settings
       currentMode = MODE_SETTINGS_MENU;
       currentSelection = 0;
       drawMenu();
 
-    } else if (currentSelection == 3) {
+    } else if (currentSelection == 4) {
       // WiFi (Vail Repeater)
       if (WiFi.status() != WL_CONNECTED) {
         // Not connected to WiFi
@@ -160,16 +175,6 @@ void selectMenuItem() {
         startVailRepeater(tft);
         connectToVail(vailChannel);  // Use default channel
       }
-
-    } else if (currentSelection == 4) {
-      // Bluetooth
-      tft.fillScreen(COLOR_BACKGROUND);
-      tft.setTextSize(2);
-      tft.setTextColor(ST77XX_WHITE);
-      tft.setCursor(50, 100);
-      tft.print("Bluetooth coming soon");
-      delay(1500);
-      drawMenu();
     }
 
   } else if (currentMode == MODE_TRAINING_MENU) {
@@ -223,6 +228,40 @@ void selectMenuItem() {
       // General Settings
       currentMode = MODE_CALLSIGN_SETTINGS;
       startCallsignSettings(tft);
+    }
+
+  } else if (currentMode == MODE_TOOLS_MENU) {
+    selectedItem = toolsMenuOptions[currentSelection];
+
+    // Handle tools menu selections
+    if (currentSelection == 0) {
+      // QSO Logger
+      currentMode = MODE_QSO_LOGGER_MENU;
+      currentSelection = 0;
+      drawMenu();
+    }
+
+  } else if (currentMode == MODE_QSO_LOGGER_MENU) {
+    selectedItem = qsoLoggerMenuOptions[currentSelection];
+
+    // Handle QSO Logger menu selections
+    if (currentSelection == 0) {
+      // New Log Entry
+      currentMode = MODE_QSO_LOG_ENTRY;
+      initLogEntry();  // Initialize form with defaults
+      drawMenu();
+    } else if (currentSelection == 1) {
+      // View Logs
+      currentMode = MODE_QSO_VIEW_LOGS;
+      startViewLogs(tft);
+    } else if (currentSelection == 2) {
+      // Statistics
+      currentMode = MODE_QSO_STATISTICS;
+      startStatistics(tft);
+    } else if (currentSelection == 3) {
+      // Logger Settings
+      currentMode = MODE_QSO_LOGGER_SETTINGS;
+      startLoggerSettings(tft);
     }
   }
 }
@@ -440,13 +479,74 @@ void handleKeyPress(char key) {
     return;
   }
 
-  // Menu navigation (for MAIN_MENU, TRAINING_MENU, GAMES_MENU and SETTINGS_MENU)
+  // Handle QSO Log Entry mode
+  if (currentMode == MODE_QSO_LOG_ENTRY) {
+    int result = handleQSOLogEntryInput(key, tft);
+    if (result == -1) {
+      // Exit to QSO Logger menu
+      currentMode = MODE_QSO_LOGGER_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    } else if (result == 2) {
+      // Redraw requested
+      drawQSOLogEntryUI(tft);
+    }
+    return;
+  }
+
+  // Handle QSO View Logs mode
+  if (currentMode == MODE_QSO_VIEW_LOGS) {
+    int result = handleViewLogsInput(key, tft);
+    if (result == -1) {
+      // Exit to QSO Logger menu
+      currentMode = MODE_QSO_LOGGER_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    }
+    return;
+  }
+
+  // Handle QSO Statistics mode
+  if (currentMode == MODE_QSO_STATISTICS) {
+    int result = handleStatisticsInput(key, tft);
+    if (result == -1) {
+      // Exit to QSO Logger menu
+      currentMode = MODE_QSO_LOGGER_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    }
+    return;
+  }
+
+  // Handle QSO Logger Settings mode
+  if (currentMode == MODE_QSO_LOGGER_SETTINGS) {
+    int result = handleLoggerSettingsInput(key, tft);
+    if (result == -1) {
+      // Exit to QSO Logger menu
+      currentMode = MODE_QSO_LOGGER_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    } else if (result == 2) {
+      // Redraw requested
+      drawLoggerSettingsUI(tft);
+    }
+    return;
+  }
+
+  // Menu navigation (for MAIN_MENU, TRAINING_MENU, GAMES_MENU, SETTINGS_MENU, TOOLS_MENU, QSO_LOGGER_MENU)
   if (currentMode == MODE_MAIN_MENU || currentMode == MODE_TRAINING_MENU ||
-      currentMode == MODE_GAMES_MENU || currentMode == MODE_SETTINGS_MENU) {
+      currentMode == MODE_GAMES_MENU || currentMode == MODE_SETTINGS_MENU ||
+      currentMode == MODE_TOOLS_MENU || currentMode == MODE_QSO_LOGGER_MENU) {
     int maxItems = MENU_ITEMS;
     if (currentMode == MODE_TRAINING_MENU) maxItems = TRAINING_MENU_ITEMS;
     if (currentMode == MODE_GAMES_MENU) maxItems = GAMES_MENU_ITEMS;
     if (currentMode == MODE_SETTINGS_MENU) maxItems = SETTINGS_MENU_ITEMS;
+    if (currentMode == MODE_TOOLS_MENU) maxItems = TOOLS_MENU_ITEMS;
+    if (currentMode == MODE_QSO_LOGGER_MENU) maxItems = QSO_LOGGER_MENU_ITEMS;
 
     // Arrow key navigation
     if (key == KEY_UP) {
@@ -467,9 +567,17 @@ void handleKeyPress(char key) {
       selectMenuItem();
     }
     else if (key == KEY_ESC) {
-      if (currentMode == MODE_TRAINING_MENU || currentMode == MODE_GAMES_MENU || currentMode == MODE_SETTINGS_MENU) {
+      if (currentMode == MODE_TRAINING_MENU || currentMode == MODE_GAMES_MENU ||
+          currentMode == MODE_SETTINGS_MENU || currentMode == MODE_TOOLS_MENU) {
         // Back to main menu
         currentMode = MODE_MAIN_MENU;
+        currentSelection = 0;
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+        drawMenu();
+        return;
+      } else if (currentMode == MODE_QSO_LOGGER_MENU) {
+        // Back to tools menu
+        currentMode = MODE_TOOLS_MENU;
         currentSelection = 0;
         beep(TONE_MENU_NAV, BEEP_SHORT);
         drawMenu();
@@ -499,6 +607,10 @@ void handleKeyPress(char key) {
         drawMenuItems(gamesMenuOptions, gamesMenuIcons, GAMES_MENU_ITEMS);
       } else if (currentMode == MODE_SETTINGS_MENU) {
         drawMenuItems(settingsMenuOptions, settingsMenuIcons, SETTINGS_MENU_ITEMS);
+      } else if (currentMode == MODE_TOOLS_MENU) {
+        drawMenuItems(toolsMenuOptions, toolsMenuIcons, TOOLS_MENU_ITEMS);
+      } else if (currentMode == MODE_QSO_LOGGER_MENU) {
+        drawMenuItems(qsoLoggerMenuOptions, qsoLoggerMenuIcons, QSO_LOGGER_MENU_ITEMS);
       }
     }
   }

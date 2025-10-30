@@ -3,6 +3,10 @@
  * Main program file (refactored for modularity)
  */
 
+// Force PSRAM initialization (must be before other includes)
+#include "esp_psram.h"
+#include "esp_system.h"
+
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
 #include <SPI.h>
@@ -45,6 +49,27 @@
 // Connectivity
 #include "vail_repeater.h"
 
+// NTP Time
+#include "ntp_time.h"
+
+// QSO Logger (order matters - validation and API must come first)
+#include "qso_logger_validation.h"
+#include "pota_api.h"
+#include "qso_logger.h"
+#include "qso_logger_storage.h"
+#include "qso_logger_input.h"
+#include "qso_logger_ui.h"
+#include "qso_logger_view.h"
+#include "qso_logger_statistics.h"
+#include "qso_logger_settings.h"
+
+// Screen Mirroring (must come before web server)
+#include "mirror_display.h"  // MirroredST7789 class
+#include "screen_mirror.h"   // PSRAM framebuffer and encoding
+
+// Web Server (must come after QSO Logger to access storage)
+#include "web_server.h"
+
 // ============================================
 // Global Hardware Objects
 // ============================================
@@ -56,8 +81,8 @@ bool hasLC709203 = false;
 bool hasMAX17048 = false;
 bool hasBatteryMonitor = false;
 
-// Create display object
-Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+// Create mirrored display object (captures all draw operations to PSRAM framebuffer)
+MirroredST7789 tft = MirroredST7789(TFT_CS, TFT_DC, TFT_RST);
 
 // ============================================
 // Menu System State
@@ -77,6 +102,56 @@ void setup() {
   Serial.println("\n\n=== VAIL SUMMIT STARTING ===");
   Serial.println("Starting setup...");
 
+  // ============================================
+  // PSRAM Diagnostic - Run First
+  // ============================================
+  Serial.println("\n--- PSRAM Diagnostic ---");
+  Serial.printf("ESP32 Chip Model: %s\n", ESP.getChipModel());
+  Serial.printf("Chip Revision: %d\n", ESP.getChipRevision());
+  Serial.printf("CPU Frequency: %d MHz\n", ESP.getCpuFreqMHz());
+  Serial.printf("Flash Size: %d bytes\n", ESP.getFlashChipSize());
+
+  Serial.println("\nChecking PSRAM (before manual init)...");
+  Serial.printf("psramFound(): %s\n", psramFound() ? "true" : "false");
+  Serial.printf("ESP.getPsramSize(): %d bytes\n", ESP.getPsramSize());
+
+  // Manual PSRAM initialization (workaround for ESP32-S3 issue)
+  if (psramFound() && ESP.getPsramSize() == 0) {
+    Serial.println("\nPSRAM detected but not initialized. Attempting manual init...");
+    esp_err_t result = esp_psram_init();
+    if (result == ESP_OK) {
+      Serial.println("Manual PSRAM init: SUCCESS");
+    } else {
+      Serial.printf("Manual PSRAM init: FAILED (error code: %d)\n", result);
+    }
+  }
+
+  Serial.println("\nRechecking PSRAM (after manual init)...");
+  Serial.printf("psramFound(): %s\n", psramFound() ? "true" : "false");
+  Serial.printf("ESP.getPsramSize(): %d bytes\n", ESP.getPsramSize());
+  Serial.printf("ESP.getFreePsram(): %d bytes\n", ESP.getFreePsram());
+  Serial.printf("ESP.getMinFreePsram(): %d bytes\n", ESP.getMinFreePsram());
+
+  // Try a test allocation
+  if (psramFound()) {
+    Serial.println("\nPSRAM found! Testing allocation...");
+    void* testPtr = ps_malloc(1024);
+    if (testPtr) {
+      Serial.println("PSRAM test allocation: SUCCESS");
+      free(testPtr);
+    } else {
+      Serial.println("PSRAM test allocation: FAILED");
+    }
+  } else {
+    Serial.println("\nWARNING: PSRAM NOT DETECTED!");
+    Serial.println("Possible causes:");
+    Serial.println("  1. PSRAM not enabled in Arduino IDE (Tools > PSRAM)");
+    Serial.println("  2. Wrong board selected (should be ESP32-S3 variant)");
+    Serial.println("  3. Hardware doesn't have PSRAM");
+    Serial.println("  4. ESP32 Arduino core version issue");
+  }
+  Serial.println("--- End PSRAM Diagnostic ---\n");
+
   // Backlight is hardwired to 3.3V (no software control needed)
   Serial.println("Backlight hardwired to 3.3V");
 
@@ -90,6 +165,10 @@ void setup() {
   initI2SAudio();
   delay(100);
 
+  // Initialize screen mirroring EARLY (before WiFi consumes memory)
+  Serial.println("Initializing screen mirroring...");
+  initScreenMirror();
+
   // Initialize LCD (after I2S to avoid DMA conflicts)
   initDisplay();
 
@@ -101,6 +180,18 @@ void setup() {
 
   // Initialize WiFi and attempt auto-connect
   Serial.println("Initializing WiFi...");
+
+  // Set up WiFi event handler to auto-start web server
+  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info) {
+    if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
+      Serial.println("WiFi connected! Starting web server...");
+      setupWebServer();
+    } else if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
+      Serial.println("WiFi disconnected. Stopping web server...");
+      stopWebServer();
+    }
+  });
+
   autoConnectWiFi();
   Serial.println("WiFi initialized");
   // NOTE: OTA server starts on-demand when entering firmware update menu
@@ -112,6 +203,20 @@ void setup() {
   // Load saved callsign
   Serial.println("Loading callsign...");
   loadSavedCallsign();
+
+  // Initialize NTP time (if WiFi connected)
+  Serial.println("Initializing NTP time...");
+  initNTPTime();
+
+  // Initialize SPIFFS for QSO Logger
+  Serial.println("Initializing storage...");
+  if (!initStorage()) {
+    Serial.println("WARNING: Storage initialization failed!");
+  }
+
+  // Load QSO Logger operator settings
+  Serial.println("Loading QSO Logger settings...");
+  loadOperatorSettings();
 
   // Initial status update
   Serial.println("Updating status...");
@@ -133,6 +238,9 @@ void setup() {
   Serial.println("Second test beep at 700 Hz");
   beep(700, 300);
   Serial.println("Audio test complete\n");
+
+  // Optionally test QSO storage (uncomment to test)
+  // testSaveDummyQSO();
 }
 
 // ============================================
@@ -171,6 +279,14 @@ void loop() {
     updateMorseShooterInput(tft);
     // Visuals updated less frequently
     updateMorseShooterVisuals(tft);
+  }
+
+  // Update screen mirror if enabled
+  if (mirrorEnabled) {
+    if (captureScreen(tft)) {
+      // Screen was captured, now encode to JPEG
+      encodeToJpeg();
+    }
   }
 
   // Check for keyboard input (reduce I2C polling frequency during practice/game modes)

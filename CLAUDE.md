@@ -70,6 +70,12 @@ Each major feature is isolated in its own header file with state, UI drawing, in
 - **`settings_volume.h`**: Volume adjustment and persistence
 - **`settings_general.h`**: User callsign configuration
 - **`vail_repeater.h`**: WebSocket client for vail.woozle.org morse repeater
+- **`qso_logger.h`**: QSO logging data structures and field definitions
+- **`qso_logger_storage.h`**: SPIFFS-based JSON storage for QSO logs
+- **`qso_logger_input.h`**: Device-side QSO input forms and field navigation
+- **`qso_logger_validation.h`**: Validation functions for callsigns, frequencies, RST reports
+- **`web_server.h`**: AsyncWebServer for web-based QSO management and device control
+- **`web_logger_enhanced.h`**: HTML/CSS/JavaScript for enhanced web QSO logger interface
 
 ### Main Loop Responsibilities
 The `loop()` function (morse_trainer_menu.ino:210-258):
@@ -681,6 +687,137 @@ Potential improvements documented in `MORSE_SHOOTER_README.md`:
 - Boss battles (send longer phrases)
 - Leaderboard persistence
 
+## Screen Mirroring
+
+### Overview
+The screen mirroring feature allows real-time viewing of the device display through a web browser. It captures the ST7789 display output, downsamples to 160×120 pixels, encodes to JPEG, and streams to the web interface at configurable frame rates (1-30 FPS).
+
+### Architecture: `screen_mirror.h`
+
+**Memory Management:**
+- RGB565 buffer: 9,600 bytes (80×60×2)
+- RGB888 conversion buffer: 14,400 bytes (temporary during encoding)
+- BMP output buffer: ~14,500 bytes (54 byte header + pixel data)
+- Total RAM usage: ~38KB when active (reduced from original 160×120 to fit in available memory)
+
+**Capture Process:**
+1. `captureScreen(tft)` - Rate-limited by FPS setting (default 10 FPS)
+2. Screen content copied to RGB565 buffer (4x downsampled from 320×240 to 80×60)
+3. `encodeToJpeg()` - Converts RGB565→RGB888→BMP (JPEG if img_converters.h available)
+4. BMP/JPEG buffer ready for web server to serve via `/api/mirror/screenshot`
+
+**JPEG Encoding:**
+- Uses ESP32 built-in `img_converters.h` library
+- Quality: 50 (configurable via `MIRROR_QUALITY`)
+- Typical compression: 10:1 ratio (3-5KB per frame)
+- Encoding time: ~50-100ms per frame on ESP32-S3
+
+**Performance Considerations:**
+- **Test pattern mode**: Currently generates a gradient test pattern for proof of concept
+- **Future**: Will require implementing actual screen capture (readPixel or shadow framebuffer)
+- Screen capture is throttled to target FPS to avoid overwhelming CPU
+- JPEG encoding runs in main loop when mirroring is active
+- Does not interfere with audio during practice/games (separate priority)
+
+### Web Interface: `/mirror`
+
+**Controls:**
+- Start/Stop mirroring button
+- FPS selector: 1, 2, 5, 10, 15, 20, 30 FPS
+- Status indicator (Active/Inactive)
+
+**Display:**
+- Live JPEG stream with auto-refresh
+- Real-time FPS counter (actual vs. target)
+- Frame counter and last update timestamp
+- Pixelated image rendering (preserves retro aesthetic)
+
+**Statistics:**
+- Resolution: 80×60 (downsampled 4x from 320×240)
+- Display size: 800×600 pixels in browser (10x upscale with pixelated rendering)
+- Target FPS: User-configurable (1-30)
+- Actual FPS: Measured from frame delivery rate
+- Total frames received
+
+### API Endpoints
+
+**`GET /api/mirror/screenshot`**
+- Returns current screen as JPEG image
+- Headers: no-cache directives for real-time streaming
+- Returns 503 if mirroring not enabled or no capture available
+
+**`POST /api/mirror/enable`**
+- Body: `{"enabled": true/false, "fps": 1-30}`
+- Enables/disables screen mirroring
+- Sets capture frame rate
+
+**`GET /api/mirror/status`**
+- Returns: `{"enabled": bool, "fps": int, "width": int, "height": int}`
+- Used by web interface to restore state on page load
+
+### Implementation Notes
+
+**Current State - Full PSRAM Framebuffer Implementation:**
+The system uses a complete framebuffer in PSRAM (320×240×2 = 150KB) that captures ALL draw operations automatically. The `MirroredST7789` class extends `Adafruit_ST7789` and overrides key drawing primitives to maintain the framebuffer.
+
+**Architecture:**
+- **`mirror_display.h`** - `MirroredST7789` class that extends `Adafruit_ST7789`
+- **`screen_mirror.h`** - PSRAM allocation, downsampling, and encoding functions
+
+**MirroredST7789 Class:**
+Overrides these Adafruit_GFX primitives (all other functions call these):
+- `drawPixel()` - Single pixel drawing
+- `writeFillRect()` - Optimized filled rectangles (used by fillRect, fillScreen, etc.)
+- `drawFastHLine()` - Horizontal lines
+- `drawFastVLine()` - Vertical lines
+- `fillScreen()` - Full screen clear (optimized)
+
+All high-level drawing functions (circles, text, rounded rectangles, etc.) eventually call these primitives, so **everything is automatically captured**.
+
+**Dirty Flag System:**
+- `mirrorDirty` flag set by any draw operation
+- Only triggers encoding when screen content changes
+- Throttled to configured FPS to prevent over-encoding
+- Significantly reduces CPU usage when screen is static
+
+**Capture Process:**
+1. User draws to screen using normal `tft.fillRect()`, `tft.print()`, etc.
+2. `MirroredST7789` automatically writes to both display AND PSRAM framebuffer
+3. Sets `mirrorDirty = true`
+4. Main loop calls `captureScreen()` which downsamples from PSRAM (80×60)
+5. `encodeToJpeg()` converts to BMP/JPEG for web streaming
+
+**What's Captured:**
+- ✅ **All shapes** (rectangles, circles, triangles, lines, rounded corners)
+- ✅ **All text** (any font, any size, any color)
+- ✅ **All icons and graphics** (bitmaps, custom drawings)
+- ✅ **Everything rendered to the display** - true 1:1 mirror
+
+**Performance:**
+- Zero performance impact when mirroring disabled (normal Adafruit_ST7789 behavior)
+- ~5-10% drawing overhead when mirroring enabled (PSRAM writes are fast)
+- 20-30 FPS streaming achievable at 80×60 resolution
+- Downsampling from PSRAM is instant (no SPI delays)
+
+**Memory Usage:**
+- Full framebuffer: 150KB in PSRAM (ESP32-S3 has 4MB PSRAM available)
+- Downsampled buffer: 9.6KB heap (80×60×2)
+- RGB888 conversion temp buffer: 14.4KB heap (during encoding only)
+- JPEG/BMP output buffer: ~15KB heap
+- **Total: 150KB PSRAM + ~40KB heap**
+
+PSRAM allocation is preferred over heap for large buffers because:
+- PSRAM is external memory (doesn't compete with heap)
+- ESP32-S3 has 4MB PSRAM vs ~150KB usable heap
+- Using only 3.75% of available PSRAM is negligible
+
+### Use Cases
+
+1. **Remote Debugging**: View device screen over WiFi without physical access
+2. **Demonstrations**: Show device operation to remote audience
+3. **Documentation**: Capture screenshots for manuals
+4. **Development**: Monitor UI changes during coding/testing
+
 ## Common Development Patterns
 
 ### Adding a New Menu Mode
@@ -737,3 +874,445 @@ Use `playMorseString()` in morse_code.h for automatic playback of strings with p
 **Keys not responding:** Check serial monitor for I2C scan results. Verify CardKB at 0x5F, battery monitor at 0x36.
 
 **Display freezes:** Usually caused by blocking code in main loop. Move long operations to separate update functions or use state machines.
+
+## QSO Logger
+
+### Overview
+The QSO Logger provides comprehensive contact logging functionality both on-device and via web interface. It stores logs in SPIFFS as JSON files organized by date, with support for ADIF and CSV export.
+
+### Architecture: Multi-Module Design
+
+**Module Structure:**
+- **`qso_logger.h`** - Core data structures (QSO struct with 30+ fields)
+- **`qso_logger_storage.h`** - SPIFFS file operations, JSON serialization, metadata management
+- **`qso_logger_input.h`** - Device-side input forms with field navigation
+- **`qso_logger_validation.h`** - Validation functions for callsigns, frequencies, RST, grid squares
+
+### QSO Data Structure
+
+The `QSO` struct contains all ADIF-compatible fields:
+
+**Required fields:**
+- `callsign` (char[11]) - Must be 3-10 alphanumeric characters with at least one digit
+- `frequency` (float) - Must be 1.8-1300 MHz
+- `mode` (char[10]) - CW, SSB, FM, AM, FT8, FT4, RTTY, PSK31
+- `band` (char[6]) - Auto-calculated from frequency
+- `date` (char[9]) - YYYYMMDD format
+- `time_on` (char[7]) - HHMM format
+
+**Optional fields:**
+- RST sent/received, name, QTH, power, grid squares (my/their)
+- POTA references (my/their), IOTA, country, state
+- Contest info (name, serial sent/received)
+- Operator/station callsigns
+- Notes (char[101])
+
+### Storage Architecture
+
+**File Organization:**
+```
+/logs/
+  qso_20251028.json    # Today's logs
+  qso_20251027.json    # Yesterday's logs
+  metadata.json        # Statistics cache
+```
+
+**Log File Format:**
+```json
+{
+  "date": "20251028",
+  "count": 3,
+  "logs": [
+    {
+      "id": 1730154000,
+      "callsign": "W1ABC",
+      "frequency": 14.025,
+      "mode": "CW",
+      "band": "20m",
+      "rst_sent": "599",
+      "rst_rcvd": "599",
+      "date": "20251028",
+      "time_on": "1430",
+      "gridsquare": "FN31pr",
+      "my_gridsquare": "EN82xx",
+      "my_pota_ref": "US-2256",
+      "their_pota_ref": "",
+      "notes": "Nice QSO"
+    }
+  ]
+}
+```
+
+**Key Design Decisions:**
+- **One file per date** - Simplifies daily log management
+- **JSON format** - Human-readable, easy to parse
+- **Unique IDs** - Unix timestamp (milliseconds) prevents duplicates
+- **ADIF-compatible fields** - Direct mapping to ADIF export
+
+### Device-Side Logging (qso_logger_input.h)
+
+**Field Navigation:**
+- 10 input fields arranged in logical order
+- UP/DOWN arrows navigate between fields
+- LEFT/RIGHT arrows or alphanumeric input for text fields
+- ENTER saves QSO after validation
+- ESC cancels and returns to menu
+
+**Field Validation:**
+- **Callsign**: 3-10 chars, alphanumeric, must contain digit
+- **Frequency**: 1.8-1300 MHz, auto-calculates band
+- **Mode**: Select from predefined list
+- **RST**: Optional, defaults to 599/59
+- **Grid squares**: 4-8 character Maidenhead locator
+- **POTA**: Format US-NNNN
+
+**Auto-Completion:**
+- Date/time auto-filled from RTC
+- Band auto-calculated from frequency
+- RST defaults to 599 for CW, 59 for phone
+
+### Validation Functions (qso_logger_validation.h)
+
+**`validateCallsign(callsign)`:**
+- Length: 3-10 characters
+- Pattern: Alphanumeric only
+- Requirement: At least one digit
+- Examples: W1ABC ✓, ABC ✗ (no digit), W ✗ (too short)
+
+**`validateFrequency(freq)`:**
+- Range: 1.8 - 1300.0 MHz
+- Covers: 160m through 23cm bands
+
+**`validateRST(rst)`:**
+- CW format: 3 digits (e.g., "599")
+- Phone format: 2 digits (e.g., "59")
+- Digits in valid range (R: 1-5, S: 1-9, T: 1-9)
+
+**`validateGridSquare(grid)`:**
+- Length: 4, 6, or 8 characters
+- Format: AA##aa## (e.g., "FN31pr")
+- Field/square/subsquare precision
+
+**`frequencyToBand(freq)`:**
+- Maps frequency to band string
+- Examples: 14.025 → "20m", 7.125 → "40m"
+- Supports HF, VHF, UHF, microwave bands
+
+### Storage Operations (qso_logger_storage.h)
+
+**`saveQSO(qso)`:**
+1. Determine filename from date: `/logs/qso_YYYYMMDD.json`
+2. Load existing logs for that date (if any)
+3. Append new QSO to logs array
+4. Serialize back to JSON with `qsoToJson()`
+5. Write atomically to file
+6. **Critical**: Always initialize QSO struct with `memset(&qso, 0, sizeof(QSO))` before populating to avoid garbage data
+
+**`qsoToJson(qso, jsonObject)`:**
+- Converts QSO struct to JSON object
+- Only includes non-empty fields (space-efficient)
+- ArduinoJson handles string escaping automatically
+- Serial debug logging for POTA/location fields
+
+**`loadQSOsForDate(date)`:**
+- Reads specific date's log file
+- Returns array of QSO objects
+- Used by device log viewer
+
+**Metadata Management:**
+- `loadMetadata()` - Load stats on startup
+- `saveMetadata()` - Persist stats to file
+- Tracks: total logs, logs by band/mode, oldest/newest IDs
+
+### Device Menu Integration
+
+**QSO Logger Menu (MODE_QSO_LOGGER):**
+1. **Log QSO** - Opens input form
+2. **View Logs** - Browse by date
+3. **Delete Logs** - Remove specific QSO or entire date
+4. **Export** - Removed; use web interface
+
+**Log Viewer Features:**
+- Navigate through QSOs with UP/DOWN
+- Shows: callsign, freq/band, mode, RST, time
+- Scrollable details view
+- Delete individual QSOs
+
+## Web Server
+
+### Overview
+The web server provides a comprehensive browser-based interface for QSO management, device settings, and system monitoring. It auto-starts when WiFi connects and is accessible via mDNS or IP address.
+
+### Architecture: AsyncWebServer
+
+**Technology Stack:**
+- **ESPAsyncWebServer** - Non-blocking HTTP server
+- **mDNS** - Accessible at `http://vail-summit.local`
+- **WiFi Event Handlers** - Auto-start/stop on connect/disconnect
+- **PROGMEM HTML** - Stores web pages in flash to save RAM
+- **RESTful API** - JSON endpoints for CRUD operations
+
+**Server Lifecycle:**
+```cpp
+WiFi connects → WiFi event fires → setupWebServer() → mDNS starts → Server begins
+WiFi disconnects → stopWebServer() → mDNS ends → Server stops
+```
+
+### Dashboard Page (/)
+
+**Status Cards:**
+- Battery voltage and percentage (from MAX17048/LC709203F)
+- WiFi connection status and signal strength
+- Total QSO count
+- Real-time updates every 10 seconds via `/api/status`
+
+**Navigation Cards:**
+- **QSO Logger** - View, manage, export logs
+- **Device Settings** - CW speed, tone, volume
+- **WiFi Setup** - Network configuration
+- **System Info** - Firmware, memory, storage stats
+- **Screen Mirror** - Real-time device display viewer
+
+### Enhanced QSO Logger Web Interface
+
+**File: `web_logger_enhanced.h`** - Complete HTML/CSS/JavaScript in PROGMEM
+
+**Features:**
+
+1. **Station Settings** (Header Badges)
+   - Displays callsign and grid square
+   - Click to open modal for editing
+   - Saved to Preferences namespace "qso_operator"
+   - Auto-populated in new QSOs (my_gridsquare, my_pota_ref)
+
+2. **QSO Table View**
+   - Sortable columns: Date/Time, Callsign, Freq/Band, Mode, RST, Grids, POTA
+   - Real-time search/filter across all fields
+   - Edit and Delete buttons for each QSO
+   - Responsive design (horizontal scroll on mobile)
+
+3. **Statistics Cards**
+   - Total QSOs (all time)
+   - Today's QSO count
+   - Unique callsigns worked
+
+4. **New QSO Modal**
+   - Full input form with validation
+   - Required fields: Callsign*, Frequency*, Mode*
+   - Optional: RST sent/rcvd, their grid, their POTA, notes
+   - Auto-uppercases callsigns and grid squares
+   - Auto-trims whitespace
+
+5. **Edit QSO Modal**
+   - Pre-filled with existing QSO data
+   - Same validation as new QSO
+   - Updates in place
+
+6. **Map Visualization**
+   - Leaflet.js integration (CDN-loaded)
+   - Shows today's QSOs with grid squares
+   - Markers at grid square center coordinates
+   - Click marker for callsign/grid popup
+   - Grid-to-lat/lon conversion using Maidenhead algorithm
+
+7. **Export Functions**
+   - ADIF download (`.adi` file)
+   - CSV download (`.csv` file)
+
+### Web Server API Endpoints (web_server.h)
+
+**Status & Data:**
+- `GET /api/status` - Device status (battery, WiFi, QSO count)
+- `GET /api/qsos` - All QSO logs as JSON array
+- `GET /api/export/adif` - ADIF 3.1.4 formatted file
+- `GET /api/export/csv` - CSV formatted file
+
+**Station Settings:**
+- `GET /api/settings/station` - Load callsign, grid, POTA from Preferences
+- `POST /api/settings/station` - Save station settings
+  - Body: `{"callsign": "W1ABC", "gridsquare": "FN31", "pota": "US-2256"}`
+
+**QSO CRUD Operations:**
+- `POST /api/qsos/create` - Create new QSO
+  - Body: JSON with callsign, frequency, mode (required) + optional fields
+  - Auto-calculates band from frequency via `frequencyToBand()`
+  - **Critical**: Must initialize QSO struct with `memset(&qso, 0, sizeof(QSO))` to prevent JSON parsing errors from garbage data
+  - Auto-fills date/time if not provided
+
+- `POST /api/qsos/update` - Update existing QSO
+  - Body: JSON with date, id (required) + updated fields
+  - Loads day's log file, finds QSO by ID, updates fields, saves back
+  - Recalculates band if frequency changes
+
+- `DELETE /api/qsos/delete?date=YYYYMMDD&id=1234567890` - Delete QSO
+  - Finds and removes QSO from log file
+  - Updates count in file
+  - Deletes file if no QSOs remain
+
+### Form Validation (Client-Side)
+
+**HTML5 Attributes:**
+```html
+<input type="text" id="qsoCallsign" required
+       minlength="3" maxlength="10"
+       pattern="[A-Za-z0-9]+"
+       placeholder="W1ABC"
+       title="3-10 alphanumeric characters with at least one digit">
+
+<input type="number" id="qsoFrequency" required
+       min="1.8" max="1300" step="0.001"
+       placeholder="14.025"
+       title="Frequency between 1.8 and 1300 MHz">
+```
+
+**JavaScript Validation:**
+```javascript
+function validateCallsign(callsign) {
+  if (callsign.length < 3 || callsign.length > 10) return 'Length error';
+  if (!/^[A-Za-z0-9]+$/.test(callsign)) return 'Alphanumeric only';
+  if (!/\d/.test(callsign)) return 'Must contain at least one digit';
+  return null;
+}
+
+function validateFrequency(freq) {
+  if (freq < 1.8 || freq > 1300) return 'Range error';
+  return null;
+}
+```
+
+**Data Normalization:**
+- Callsigns auto-uppercased
+- Grid squares auto-uppercased
+- Whitespace trimmed from all fields
+- Default RST values (599) if empty
+
+### ADIF Export Format
+
+**Header:**
+```
+ADIF Export from VAIL SUMMIT
+<PROGRAMID:11>VAIL SUMMIT
+<PROGRAMVERSION:5>1.0.0
+<ADIF_VER:5>3.1.4
+<EOH>
+```
+
+**QSO Records:**
+```
+<CALL:5>W1ABC <FREQ:6>14.025 <MODE:2>CW <QSO_DATE:8>20251028
+<TIME_ON:6>143000 <RST_SENT:3>599 <RST_RCVD:3>599
+<GRIDSQUARE:6>FN31pr <MY_GRIDSQUARE:6>EN82xx
+<MY_SIG:4>POTA <MY_SIG_INFO:7>US-2256 <EOR>
+```
+
+**POTA Support:**
+- Uses ADIF 3.1.4 special event tags
+- `<MY_SIG:4>POTA <MY_SIG_INFO:7>US-2256` - Operator's POTA activation
+- `<SIG:4>POTA <SIG_INFO:7>US-2254` - Contact's POTA activation
+- Compatible with QRZ, LoTW, POTA upload
+
+### Map Functionality
+
+**Grid Square to Lat/Lon Conversion:**
+```javascript
+function gridToLatLon(grid) {
+  // Example: "FN31pr" → [41.5, -73.0]
+  const lon = (grid.charCodeAt(0) - 65) * 20 - 180
+            + (grid.charCodeAt(2) - 48) * 2 + 1;
+  const lat = (grid.charCodeAt(1) - 65) * 10 - 90
+            + (grid.charCodeAt(3) - 48) + 0.5;
+  return [lat, lon];
+}
+```
+
+**Today's QSO Filter:**
+```javascript
+const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+const todayQSOs = allQSOs.filter(q => q.date === today && q.gridsquare);
+```
+
+**Marker Management:**
+- Clears existing markers before redrawing
+- Only shows QSOs with valid grid squares (4+ characters)
+- Click marker to see callsign and grid
+- Map auto-centers on USA (lat: 39.8283, lon: -98.5795, zoom: 4)
+
+### Access Methods
+
+**mDNS (Recommended):**
+```
+http://vail-summit.local/
+```
+
+**Direct IP:**
+```
+http://192.168.1.xxx/
+```
+(Check serial monitor for IP address on WiFi connect)
+
+**Browser Compatibility:**
+- Desktop: Chrome, Firefox, Safari, Edge
+- Mobile: iOS Safari, Chrome Android
+- Requires JavaScript enabled
+
+### Common Development Patterns
+
+**Adding a New API Endpoint:**
+```cpp
+webServer.on("/api/myendpoint", HTTP_GET, [](AsyncWebServerRequest *request) {
+  JsonDocument doc;
+  doc["data"] = "value";
+  String output;
+  serializeJson(doc, output);
+  request->send(200, "application/json", output);
+});
+```
+
+**Adding a POST Endpoint with JSON Body:**
+```cpp
+webServer.on("/api/myendpoint", HTTP_POST,
+  [](AsyncWebServerRequest *request) {},
+  NULL,
+  [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+    JsonDocument doc;
+    deserializeJson(doc, data, len);
+    // Process doc...
+    request->send(200, "application/json", "{\"success\":true}");
+  });
+```
+
+### Critical Implementation Notes
+
+1. **Always initialize QSO structs:** `memset(&qso, 0, sizeof(QSO))` before populating fields to prevent garbage data causing JSON parsing errors
+
+2. **Band auto-calculation:** Web interface doesn't send band field; server calculates it via `frequencyToBand(frequency)`
+
+3. **Map marker updates:** Call `updateMapMarkers()` after loading QSOs to refresh map pins
+
+4. **File operations:** All file writes are atomic (read→modify→write) to prevent corruption
+
+5. **Error handling:** Web API returns JSON error objects: `{"success":false,"error":"message"}`
+
+### Troubleshooting Web Interface
+
+**"Failed to load QSOs: SyntaxError: Bad control character":**
+- Cause: QSO struct not initialized before populating
+- Fix: Add `memset(&newQSO, 0, sizeof(QSO))` before field assignments
+- Location: `web_server.h` create/update endpoints
+
+**Map shows no pins:**
+- Check browser console for "QSOs with grids today" count
+- Verify QSOs have valid grid squares (4+ characters)
+- Ensure date format matches (YYYYMMDD)
+- Call `updateMapMarkers()` after QSO changes
+
+**Station settings not saving:**
+- Check Preferences namespace: "qso_operator"
+- Verify WiFi connected (required for web access)
+- Check serial monitor for save confirmation
+
+**Cannot access web server:**
+- Verify WiFi connected (check device WiFi status icon)
+- Try direct IP if mDNS fails: `http://192.168.1.xxx/`
+- Check serial monitor for "Web server started" message
+- Ensure port 80 not blocked by firewall

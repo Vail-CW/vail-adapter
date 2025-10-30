@@ -10,9 +10,10 @@
 #include <Adafruit_ST7789.h>
 #include "config.h"
 #include <Fonts/FreeSansBold12pt7b.h>
+#include "mirror_display.h"  // For MirroredST7789 class
 
 // Forward declarations from main file
-extern Adafruit_ST7789 tft;
+extern MirroredST7789 tft;
 extern int currentSelection;
 
 // Menu mode enum - must match main file
@@ -34,7 +35,13 @@ enum MenuMode {
   MODE_VOLUME_SETTINGS,
   MODE_CALLSIGN_SETTINGS,
   MODE_VAIL_REPEATER,
-  MODE_BLUETOOTH
+  MODE_BLUETOOTH,
+  MODE_TOOLS_MENU,
+  MODE_QSO_LOGGER_MENU,
+  MODE_QSO_LOG_ENTRY,
+  MODE_QSO_VIEW_LOGS,
+  MODE_QSO_STATISTICS,
+  MODE_QSO_LOGGER_SETTINGS
 };
 
 extern MenuMode currentMode;
@@ -56,22 +63,27 @@ void drawCWSettingsUI(Adafruit_ST7789& tft);
 void drawVolumeDisplay(Adafruit_ST7789& tft);
 void drawCallsignUI(Adafruit_ST7789& tft);
 void drawVailUI(Adafruit_ST7789& tft);
+void drawToolsMenu(Adafruit_ST7789& tft);
+void drawQSOLoggerMenu(Adafruit_ST7789& tft);
+void drawQSOLogEntryUI(Adafruit_ST7789& tft);
+void drawQSOViewLogsUI(Adafruit_ST7789& tft);
+void drawQSOStatisticsUI(Adafruit_ST7789& tft);
 
 // Menu Options and Icons
 String mainMenuOptions[MENU_ITEMS] = {
   "Training",
   "Games",
+  "Tools",
   "Settings",
-  "WiFi",
-  "Bluetooth"
+  "WiFi"
 };
 
 String mainMenuIcons[MENU_ITEMS] = {
   "T",  // Training
   "G",  // Games
+  "L",  // Tools (Logger)
   "S",  // Settings
-  "W",  // WiFi
-  "B"   // Bluetooth
+  "W"   // WiFi
 };
 
 // Training submenu
@@ -112,6 +124,32 @@ String settingsMenuIcons[SETTINGS_MENU_ITEMS] = {
   "C",  // CW Settings
   "V",  // Volume
   "G"   // General
+};
+
+// Tools submenu
+#define TOOLS_MENU_ITEMS 1
+String toolsMenuOptions[TOOLS_MENU_ITEMS] = {
+  "QSO Logger"
+};
+
+String toolsMenuIcons[TOOLS_MENU_ITEMS] = {
+  "Q"   // QSO Logger
+};
+
+// QSO Logger submenu
+#define QSO_LOGGER_MENU_ITEMS 4
+String qsoLoggerMenuOptions[QSO_LOGGER_MENU_ITEMS] = {
+  "New Log Entry",
+  "View Logs",
+  "Statistics",
+  "Logger Settings"
+};
+
+String qsoLoggerMenuIcons[QSO_LOGGER_MENU_ITEMS] = {
+  "N",  // New Log Entry
+  "V",  // View Logs
+  "S",  // Statistics
+  "L"   // Logger Settings
 };
 
 /*
@@ -157,6 +195,18 @@ void drawHeader() {
     title = "GENERAL";
   } else if (currentMode == MODE_VAIL_REPEATER) {
     title = "VAIL CHAT";
+  } else if (currentMode == MODE_TOOLS_MENU) {
+    title = "TOOLS";
+  } else if (currentMode == MODE_QSO_LOGGER_MENU) {
+    title = "QSO LOGGER";
+  } else if (currentMode == MODE_QSO_LOG_ENTRY) {
+    title = "NEW LOG";
+  } else if (currentMode == MODE_QSO_VIEW_LOGS) {
+    title = "VIEW LOGS";
+  } else if (currentMode == MODE_QSO_STATISTICS) {
+    title = "STATISTICS";
+  } else if (currentMode == MODE_QSO_LOGGER_SETTINGS) {
+    title = "LOGGER SETTINGS";
   }
 
   tft.setCursor(10, 27); // Left-justified
@@ -302,7 +352,8 @@ void drawMenu() {
 
   // Draw footer (only for menu modes)
   if (currentMode == MODE_MAIN_MENU || currentMode == MODE_TRAINING_MENU ||
-      currentMode == MODE_GAMES_MENU || currentMode == MODE_SETTINGS_MENU) {
+      currentMode == MODE_GAMES_MENU || currentMode == MODE_SETTINGS_MENU ||
+      currentMode == MODE_TOOLS_MENU || currentMode == MODE_QSO_LOGGER_MENU) {
     drawFooter();
   }
 
@@ -315,6 +366,16 @@ void drawMenu() {
     drawMenuItems(gamesMenuOptions, gamesMenuIcons, GAMES_MENU_ITEMS);
   } else if (currentMode == MODE_SETTINGS_MENU) {
     drawMenuItems(settingsMenuOptions, settingsMenuIcons, SETTINGS_MENU_ITEMS);
+  } else if (currentMode == MODE_TOOLS_MENU) {
+    drawMenuItems(toolsMenuOptions, toolsMenuIcons, TOOLS_MENU_ITEMS);
+  } else if (currentMode == MODE_QSO_LOGGER_MENU) {
+    drawMenuItems(qsoLoggerMenuOptions, qsoLoggerMenuIcons, QSO_LOGGER_MENU_ITEMS);
+  } else if (currentMode == MODE_QSO_LOG_ENTRY) {
+    drawQSOLogEntryUI(tft);
+  } else if (currentMode == MODE_QSO_VIEW_LOGS) {
+    drawQSOViewLogsUI(tft);
+  } else if (currentMode == MODE_QSO_STATISTICS) {
+    drawQSOStatisticsUI(tft);
   } else if (currentMode == MODE_HEAR_IT_TYPE_IT) {
     drawHearItTypeItUI(tft);
   } else if (currentMode == MODE_PRACTICE) {
