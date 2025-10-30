@@ -143,7 +143,7 @@
 // ============================================
 // Menu Configuration
 // ============================================
-#define MENU_ITEMS      5
+#define MENU_ITEMS      6
 #define MENU_START_Y    55
 #define MENU_ITEM_HEIGHT 35
 #define MENU_TEXT_SIZE  2

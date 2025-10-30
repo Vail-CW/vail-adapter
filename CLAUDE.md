@@ -46,12 +46,14 @@ arduino-cli monitor -p COM<X> --config baudrate=115200
 The system operates as a state machine with different modes (`MenuMode` enum in morse_trainer_menu.ino:32-44). Each mode has its own input handler and UI renderer. The main loop delegates to the appropriate mode handler based on `currentMode`.
 
 **Key modes:**
-- `MODE_MAIN_MENU` / `MODE_TRAINING_MENU` / `MODE_SETTINGS_MENU` / `MODE_GAMES_MENU`: Menu navigation
+- `MODE_MAIN_MENU` / `MODE_TRAINING_MENU` / `MODE_SETTINGS_MENU` / `MODE_GAMES_MENU` / `MODE_RADIO_MENU`: Menu navigation
 - `MODE_HEAR_IT_TYPE_IT`: Receive training (type what you hear)
 - `MODE_PRACTICE`: Practice oscillator with paddle keying
 - `MODE_CW_ACADEMY_TRACK_SELECT` / `MODE_CW_ACADEMY_SESSION_SELECT` / `MODE_CW_ACADEMY_PRACTICE_TYPE_SELECT` / `MODE_CW_ACADEMY_MESSAGE_TYPE_SELECT`: CW Academy curriculum navigation
 - `MODE_CW_ACADEMY_COPY_PRACTICE`: CW Academy copy practice (listen and type)
 - `MODE_MORSE_SHOOTER`: Arcade-style game where you shoot falling letters by sending their morse code
+- `MODE_RADIO_OUTPUT`: Key external ham radios via 3.5mm jack outputs
+- `MODE_CW_MEMORIES`: Store and playback CW message memories (placeholder)
 - `MODE_VAIL_REPEATER`: Internet morse repeater via WebSocket
 - `MODE_WIFI_SETTINGS` / `MODE_CW_SETTINGS` / `MODE_VOLUME_SETTINGS` / `MODE_CALLSIGN_SETTINGS`: Configuration screens
 
@@ -68,6 +70,8 @@ Each major feature is isolated in its own header file with state, UI drawing, in
 - **`training_practice.h`**: Practice oscillator with iambic keyer logic and real-time morse decoding
 - **`training_cwa.h`**: CW Academy curriculum with 16-session progression (Session 1-10: character introduction, Session 11-13: QSO practice, Session 14-16: on-air prep)
 - **`game_morse_shooter.h`**: Arcade game with falling letters, iambic keyer input, laser shooting, and score tracking
+- **`radio_output.h`**: Radio keying output for external ham radios (Summit Keyer and Radio Keyer modes)
+- **`radio_cw_memories.h`**: CW message memories for playback (placeholder for future implementation)
 - **`settings_wifi.h`**: WiFi scanning, connection, credential storage
 - **`settings_cw.h`**: CW speed, tone frequency, key type settings
 - **`settings_volume.h`**: Volume adjustment and persistence
@@ -786,6 +790,170 @@ Potential improvements documented in `MORSE_SHOOTER_README.md`:
 - Multiple letter types (different colors/values)
 - Boss battles (send longer phrases)
 - Leaderboard persistence
+
+## Radio Mode
+
+### Overview
+The Radio Mode provides integration with external ham radios via 3.5mm jack outputs. It allows keying a connected radio using the Summit's paddle inputs (physical or capacitive touch) with two distinct operating modes.
+
+### Architecture: `radio_output.h`
+
+**Radio Mode Types:**
+```cpp
+enum RadioMode {
+  RADIO_MODE_SUMMIT_KEYER,   // Summit does the keying logic, outputs straight key format
+  RADIO_MODE_RADIO_KEYER     // Passthrough dit/dah contacts to radio's internal keyer
+};
+```
+
+**Output Pins:**
+- **DIT output**: GPIO 18 (A0) - `RADIO_KEY_DIT_PIN`
+- **DAH output**: GPIO 17 (A1) - `RADIO_KEY_DAH_PIN`
+- **Format**: 3.5mm TRS jack (Tip = Dit, Ring = Dah, Sleeve = GND)
+- **Logic**: Active HIGH (pin goes HIGH when keying)
+
+**Hardware Interface:**
+- Resistor + transistor driver circuit on both output lines (same design as standard Vail adapters)
+- Transistors pull radio keying inputs to ground when activated
+- Tested and working with external radios
+- **CRITICAL**: Direct GPIO-to-radio connection may damage equipment - always use driver circuit
+
+### Summit Keyer Mode
+
+In Summit Keyer mode, the device performs all keying logic internally and outputs a straight key format signal:
+
+**Straight Key:**
+- DIT pin outputs key-down/key-up timing
+- DAH pin remains LOW
+- Timing follows physical paddle presses directly
+
+**Iambic (A or B):**
+- Summit's iambic keyer generates dit/dah elements with proper timing
+- DIT pin outputs composite keyed signal (straight key format)
+- DAH pin remains LOW
+- Timing based on configured WPM speed (`cwSpeed`)
+- Full memory paddle support (squeeze keying)
+
+**No Audio Output:**
+- Radio output mode does not play sidetone through Summit's speaker
+- External radio provides sidetone
+
+### Radio Keyer Mode
+
+In Radio Keyer mode, the device passes paddle contacts directly to the radio, letting the radio's internal keyer handle timing:
+
+**Straight Key:**
+- DIT pin mirrors DIT paddle state (HIGH when pressed)
+- DAH pin remains LOW
+
+**Iambic:**
+- DIT pin mirrors DIT paddle state
+- DAH pin mirrors DAH paddle state
+- Radio's internal keyer interprets squeeze keying and timing
+- Radio's WPM setting controls speed (Summit's WPM setting ignored)
+
+### Radio Output UI
+
+The Radio Output screen displays three configurable settings:
+
+1. **Speed (WPM)**: 5-40 WPM
+   - Only affects Summit Keyer mode
+   - Ignored in Radio Keyer mode (radio controls speed)
+   - Shares global `cwSpeed` setting with Practice mode
+
+2. **Key Type**: Straight / Iambic A / Iambic B
+   - Determines paddle input interpretation
+   - Affects both Summit Keyer and Radio Keyer modes
+   - Shares global `cwKeyType` setting
+
+3. **Radio Mode**: Summit Keyer / Radio Keyer
+   - Toggles between internal and external keying logic
+   - Persisted in Preferences namespace "radio"
+
+**Navigation:**
+- UP/DOWN: Select setting
+- LEFT/RIGHT: Adjust value
+- ESC: Exit to Radio menu
+
+### Input Sources
+
+Radio Output accepts input from three sources simultaneously (OR logic):
+
+1. **Physical Paddle** (GPIO 6 for DIT, GPIO 9 for DAH)
+2. **Capacitive Touch** (GPIO 8 for DIT, GPIO 5 for DAH)
+3. Both checked every loop iteration for responsive keying
+
+### Main Loop Integration
+
+**Update Function:**
+```cpp
+if (currentMode == MODE_RADIO_OUTPUT) {
+  updateRadioOutput();  // Called every loop iteration (1ms delay)
+}
+```
+
+**Performance Considerations:**
+- I2C keyboard polling slowed to 50ms (same as Practice mode)
+- Status icon updates disabled during Radio Output mode
+- No display updates during keying to maximize timing accuracy
+
+### State Management
+
+**Preferences:**
+- Namespace: "radio"
+- Stored value: `radioMode` (int)
+- Loaded on startup via `loadRadioSettings()`
+- Saved immediately when changed
+
+**Keyer State (Summit Keyer mode only):**
+- `radioKeyerActive`: Currently sending element
+- `radioInSpacing`: In inter-element gap
+- `radioDitMemory` / `radioDahMemory`: Memory paddles for squeeze keying
+- `radioDitDuration`: Calculated from `cwSpeed` using PARIS method
+
+### CW Memories (Placeholder)
+
+The **CW Memories** menu option is currently a placeholder for future implementation:
+
+**Planned Features:**
+- Store up to 8-10 CW message memories
+- Playback stored messages via radio output
+- Common contest exchanges, CQ calls, 73, etc.
+- Integration with both Summit Keyer and Radio Keyer modes
+
+**Current Implementation:**
+- Displays "Coming Soon..." placeholder screen
+- ESC returns to Radio menu
+- No storage or playback functionality yet
+
+### Use Cases
+
+**Contest Operation:**
+- Summit Keyer mode for consistent sending at configured speed
+- Memory messages for exchanges (future)
+- Physical paddle for flexibility
+
+**Casual QSOs:**
+- Radio Keyer mode to use radio's built-in keyer settings
+- Capacitive touch pads for portable operation
+- Radio provides sidetone and QSK
+
+**Training Aid:**
+- Practice sending at various speeds
+- Compare Summit Keyer vs. Radio Keyer behavior
+- Use with actual radio for on-air confidence
+
+### Implementation Notes
+
+1. **No Tone Output:** The `updateRadioOutput()` function does not call `startTone()` or `beep()` - the external radio provides audio sidetone.
+
+2. **Timing Priority:** Main loop delay reduced to 1ms during Radio Output mode for precise timing.
+
+3. **Output Safety:** GPIO pins configured as OUTPUT with initial LOW state. Always use external driver circuitry.
+
+4. **Settings Sharing:** Speed and Key Type are shared with Practice mode via global `cwSpeed` and `cwKeyType` variables. Changes in Radio Output affect Practice mode and vice versa.
+
+5. **State Cleanup:** When exiting Radio Output mode, both output pins are set LOW to ensure radio is not left keyed.
 
 ## Common Development Patterns
 

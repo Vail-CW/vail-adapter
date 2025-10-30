@@ -28,6 +28,9 @@ enum MenuMode {
   MODE_CW_ACADEMY_COPY_PRACTICE,
   MODE_GAMES_MENU,
   MODE_MORSE_SHOOTER,
+  MODE_RADIO_MENU,
+  MODE_RADIO_OUTPUT,
+  MODE_CW_MEMORIES,
   MODE_SETTINGS_MENU,
   MODE_WIFI_SETTINGS,
   MODE_CW_SETTINGS,
@@ -67,11 +70,14 @@ void drawQSOLoggerMenu(Adafruit_ST7789& tft);
 void drawQSOLogEntryUI(Adafruit_ST7789& tft);
 void drawQSOViewLogsUI(Adafruit_ST7789& tft);
 void drawQSOStatisticsUI(Adafruit_ST7789& tft);
+void drawRadioOutputUI(Adafruit_ST7789& tft);
+void drawCWMemoriesUI(Adafruit_ST7789& tft);
 
 // Menu Options and Icons
 String mainMenuOptions[MENU_ITEMS] = {
   "Training",
   "Games",
+  "Radio",
   "Tools",
   "Settings",
   "WiFi"
@@ -80,6 +86,7 @@ String mainMenuOptions[MENU_ITEMS] = {
 String mainMenuIcons[MENU_ITEMS] = {
   "T",  // Training
   "G",  // Games
+  "R",  // Radio
   "L",  // Tools (Logger)
   "S",  // Settings
   "W"   // WiFi
@@ -151,6 +158,18 @@ String qsoLoggerMenuIcons[QSO_LOGGER_MENU_ITEMS] = {
   "L"   // Logger Settings
 };
 
+// Radio submenu
+#define RADIO_MENU_ITEMS 2
+String radioMenuOptions[RADIO_MENU_ITEMS] = {
+  "Radio Output",
+  "CW Memories"
+};
+
+String radioMenuIcons[RADIO_MENU_ITEMS] = {
+  "O",  // Radio Output
+  "M"   // CW Memories
+};
+
 /*
  * Draw header bar with title and status icons
  */
@@ -182,6 +201,12 @@ void drawHeader() {
     title = "GAMES";
   } else if (currentMode == MODE_MORSE_SHOOTER) {
     title = "MORSE SHOOTER";
+  } else if (currentMode == MODE_RADIO_MENU) {
+    title = "RADIO";
+  } else if (currentMode == MODE_RADIO_OUTPUT) {
+    title = "RADIO OUTPUT";
+  } else if (currentMode == MODE_CW_MEMORIES) {
+    title = "CW MEMORIES";
   } else if (currentMode == MODE_SETTINGS_MENU) {
     title = "SETTINGS";
   } else if (currentMode == MODE_WIFI_SETTINGS) {
@@ -351,8 +376,9 @@ void drawMenu() {
 
   // Draw footer (only for menu modes)
   if (currentMode == MODE_MAIN_MENU || currentMode == MODE_TRAINING_MENU ||
-      currentMode == MODE_GAMES_MENU || currentMode == MODE_SETTINGS_MENU ||
-      currentMode == MODE_TOOLS_MENU || currentMode == MODE_QSO_LOGGER_MENU) {
+      currentMode == MODE_GAMES_MENU || currentMode == MODE_RADIO_MENU ||
+      currentMode == MODE_SETTINGS_MENU || currentMode == MODE_TOOLS_MENU ||
+      currentMode == MODE_QSO_LOGGER_MENU) {
     drawFooter();
   }
 
@@ -363,6 +389,8 @@ void drawMenu() {
     drawMenuItems(trainingMenuOptions, trainingMenuIcons, TRAINING_MENU_ITEMS);
   } else if (currentMode == MODE_GAMES_MENU) {
     drawMenuItems(gamesMenuOptions, gamesMenuIcons, GAMES_MENU_ITEMS);
+  } else if (currentMode == MODE_RADIO_MENU) {
+    drawMenuItems(radioMenuOptions, radioMenuIcons, RADIO_MENU_ITEMS);
   } else if (currentMode == MODE_SETTINGS_MENU) {
     drawMenuItems(settingsMenuOptions, settingsMenuIcons, SETTINGS_MENU_ITEMS);
   } else if (currentMode == MODE_TOOLS_MENU) {
@@ -391,6 +419,10 @@ void drawMenu() {
     drawCWACopyPracticeUI(tft);
   } else if (currentMode == MODE_MORSE_SHOOTER) {
     drawMorseShooterUI(tft);
+  } else if (currentMode == MODE_RADIO_OUTPUT) {
+    drawRadioOutputUI(tft);
+  } else if (currentMode == MODE_CW_MEMORIES) {
+    drawCWMemoriesUI(tft);
   } else if (currentMode == MODE_WIFI_SETTINGS) {
     drawWiFiUI(tft);
   } else if (currentMode == MODE_CW_SETTINGS) {

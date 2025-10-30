@@ -57,6 +57,8 @@ void startCallsignSettings(Adafruit_ST7789& tft);
 void startVailRepeater(Adafruit_ST7789& tft);
 void connectToVail(String channel);
 void startMorseShooter(Adafruit_ST7789& tft);
+void startRadioOutput(Adafruit_ST7789& tft);  // Radio Output initialization
+int handleRadioOutputInput(char key, Adafruit_ST7789& tft);  // Radio Output input handler
 void initLogEntry();  // QSO Logger initialization
 int handleQSOLogEntryInput(char key, Adafruit_ST7789& tft);  // QSO log entry input handler
 void startViewLogs(Adafruit_ST7789& tft);  // QSO view logs initialization
@@ -143,18 +145,24 @@ void selectMenuItem() {
       drawMenu();
 
     } else if (currentSelection == 2) {
+      // Radio
+      currentMode = MODE_RADIO_MENU;
+      currentSelection = 0;
+      drawMenu();
+
+    } else if (currentSelection == 3) {
       // Tools
       currentMode = MODE_TOOLS_MENU;
       currentSelection = 0;
       drawMenu();
 
-    } else if (currentSelection == 3) {
+    } else if (currentSelection == 4) {
       // Settings
       currentMode = MODE_SETTINGS_MENU;
       currentSelection = 0;
       drawMenu();
 
-    } else if (currentSelection == 4) {
+    } else if (currentSelection == 5) {
       // WiFi (Vail Repeater)
       if (WiFi.status() != WL_CONNECTED) {
         // Not connected to WiFi
@@ -228,6 +236,20 @@ void selectMenuItem() {
       // General Settings
       currentMode = MODE_CALLSIGN_SETTINGS;
       startCallsignSettings(tft);
+    }
+
+  } else if (currentMode == MODE_RADIO_MENU) {
+    selectedItem = radioMenuOptions[currentSelection];
+
+    // Handle radio menu selections
+    if (currentSelection == 0) {
+      // Radio Output
+      currentMode = MODE_RADIO_OUTPUT;
+      startRadioOutput(tft);
+    } else if (currentSelection == 1) {
+      // CW Memories (placeholder)
+      currentMode = MODE_CW_MEMORIES;
+      drawMenu();
     }
 
   } else if (currentMode == MODE_TOOLS_MENU) {
@@ -537,13 +559,43 @@ void handleKeyPress(char key) {
     return;
   }
 
-  // Menu navigation (for MAIN_MENU, TRAINING_MENU, GAMES_MENU, SETTINGS_MENU, TOOLS_MENU, QSO_LOGGER_MENU)
+  // Handle Radio Output mode
+  if (currentMode == MODE_RADIO_OUTPUT) {
+    int result = handleRadioOutputInput(key, tft);
+    if (result == -1) {
+      // Exit to Radio menu
+      currentMode = MODE_RADIO_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    } else if (result == 2) {
+      // Redraw requested
+      drawRadioOutputUI(tft);
+    }
+    return;
+  }
+
+  // Handle CW Memories mode (placeholder)
+  if (currentMode == MODE_CW_MEMORIES) {
+    if (key == KEY_ESC) {
+      // Exit to Radio menu
+      currentMode = MODE_RADIO_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    }
+    return;
+  }
+
+  // Menu navigation (for MAIN_MENU, TRAINING_MENU, GAMES_MENU, RADIO_MENU, SETTINGS_MENU, TOOLS_MENU, QSO_LOGGER_MENU)
   if (currentMode == MODE_MAIN_MENU || currentMode == MODE_TRAINING_MENU ||
-      currentMode == MODE_GAMES_MENU || currentMode == MODE_SETTINGS_MENU ||
+      currentMode == MODE_GAMES_MENU || currentMode == MODE_RADIO_MENU ||
+      currentMode == MODE_SETTINGS_MENU ||
       currentMode == MODE_TOOLS_MENU || currentMode == MODE_QSO_LOGGER_MENU) {
     int maxItems = MENU_ITEMS;
     if (currentMode == MODE_TRAINING_MENU) maxItems = TRAINING_MENU_ITEMS;
     if (currentMode == MODE_GAMES_MENU) maxItems = GAMES_MENU_ITEMS;
+    if (currentMode == MODE_RADIO_MENU) maxItems = RADIO_MENU_ITEMS;
     if (currentMode == MODE_SETTINGS_MENU) maxItems = SETTINGS_MENU_ITEMS;
     if (currentMode == MODE_TOOLS_MENU) maxItems = TOOLS_MENU_ITEMS;
     if (currentMode == MODE_QSO_LOGGER_MENU) maxItems = QSO_LOGGER_MENU_ITEMS;
@@ -568,7 +620,8 @@ void handleKeyPress(char key) {
     }
     else if (key == KEY_ESC) {
       if (currentMode == MODE_TRAINING_MENU || currentMode == MODE_GAMES_MENU ||
-          currentMode == MODE_SETTINGS_MENU || currentMode == MODE_TOOLS_MENU) {
+          currentMode == MODE_RADIO_MENU || currentMode == MODE_SETTINGS_MENU ||
+          currentMode == MODE_TOOLS_MENU) {
         // Back to main menu
         currentMode = MODE_MAIN_MENU;
         currentSelection = 0;
@@ -605,6 +658,8 @@ void handleKeyPress(char key) {
         drawMenuItems(trainingMenuOptions, trainingMenuIcons, TRAINING_MENU_ITEMS);
       } else if (currentMode == MODE_GAMES_MENU) {
         drawMenuItems(gamesMenuOptions, gamesMenuIcons, GAMES_MENU_ITEMS);
+      } else if (currentMode == MODE_RADIO_MENU) {
+        drawMenuItems(radioMenuOptions, radioMenuIcons, RADIO_MENU_ITEMS);
       } else if (currentMode == MODE_SETTINGS_MENU) {
         drawMenuItems(settingsMenuOptions, settingsMenuIcons, SETTINGS_MENU_ITEMS);
       } else if (currentMode == MODE_TOOLS_MENU) {

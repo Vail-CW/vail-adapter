@@ -49,6 +49,10 @@
 // Connectivity
 #include "vail_repeater.h"
 
+// Radio modes
+#include "radio_output.h"
+#include "radio_cw_memories.h"
+
 // NTP Time
 #include "ntp_time.h"
 
@@ -192,6 +196,10 @@ void setup() {
   Serial.println("Loading CW settings...");
   loadCWSettings();
 
+  // Load radio settings from preferences
+  Serial.println("Loading radio settings...");
+  loadRadioSettings();
+
   // Load saved callsign
   Serial.println("Loading callsign...");
   loadSavedCallsign();
@@ -241,11 +249,12 @@ void setup() {
 
 void loop() {
 
-  // Update status periodically (NEVER during practice/games mode to avoid audio interference)
+  // Update status periodically (NEVER during practice/games/radio mode to avoid audio interference)
   static unsigned long lastStatusUpdate = 0;
   if (currentMode != MODE_PRACTICE &&
       currentMode != MODE_HEAR_IT_TYPE_IT &&
       currentMode != MODE_MORSE_SHOOTER &&
+      currentMode != MODE_RADIO_OUTPUT &&
       millis() - lastStatusUpdate > 5000) { // Update every 5 seconds
     updateStatus();
     // Redraw status icons with new data
@@ -279,9 +288,14 @@ void loop() {
     updateMorseShooterVisuals(tft);
   }
 
-  // Check for keyboard input (reduce I2C polling frequency during practice/game modes)
+  // Update Radio Output if in radio output mode
+  if (currentMode == MODE_RADIO_OUTPUT) {
+    updateRadioOutput();
+  }
+
+  // Check for keyboard input (reduce I2C polling frequency during practice/game/radio modes)
   static unsigned long lastKeyCheck = 0;
-  unsigned long keyCheckInterval = (currentMode == MODE_PRACTICE || currentMode == MODE_MORSE_SHOOTER) ? 50 : 10; // Slower polling in practice/game
+  unsigned long keyCheckInterval = (currentMode == MODE_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_RADIO_OUTPUT) ? 50 : 10; // Slower polling in practice/game/radio
 
   if (millis() - lastKeyCheck >= keyCheckInterval) {
     Wire.requestFrom(CARDKB_ADDR, 1);
@@ -301,6 +315,6 @@ void loop() {
     escPressCount = 0;
   }
 
-  // Minimal delay in practice, game, and vail modes for better audio/graphics performance
-  delay((currentMode == MODE_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_VAIL_REPEATER) ? 1 : 10);
+  // Minimal delay in practice, game, radio, and vail modes for better audio/graphics performance
+  delay((currentMode == MODE_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_VAIL_REPEATER) ? 1 : 10);
 }
