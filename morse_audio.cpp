@@ -190,9 +190,15 @@ void playMemoryClearedAnnouncement(uint8_t slotNumber) {
 
 const char* getKeyerTypeName(uint8_t keyerType) {
   switch (keyerType) {
-    case KEYER_STRAIGHT: return "Straight";
-    case KEYER_IAMBIC_A: return "Iambic A";
-    case KEYER_IAMBIC_B: return "Iambic B";
+    case 1: return "Straight";
+    case 2: return "Bug";
+    case 3: return "ElBug";
+    case 4: return "SingleDot";
+    case 5: return "Ultimatic";
+    case 6: return "Plain";
+    case 7: return "Iambic A";
+    case 8: return "Iambic B";
+    case 9: return "Keyahead";
     default: return "Unknown";
   }
 }
@@ -204,11 +210,39 @@ void playKeyerTypeCode(uint8_t keyerType) {
   uint16_t charSpace = ditDur * 3;
 
   switch (keyerType) {
-    case KEYER_STRAIGHT:
+    case 1:  // Straight
       // S = ... (dit dit dit)
       playMorseDit(); playMorseDit(); playMorseDit();
       break;
-    case KEYER_IAMBIC_A:
+    case 2:  // Bug
+      // B = -... (dah dit dit dit)
+      playMorseDah(); playMorseDit(); playMorseDit(); playMorseDit();
+      break;
+    case 3:  // ElBug
+      // EB = . -... (E then B)
+      // E = .
+      playMorseDit();
+      delay(charSpace - ditDur);  // Space between letters
+      // B = -...
+      playMorseDah(); playMorseDit(); playMorseDit(); playMorseDit();
+      break;
+    case 4:  // SingleDot
+      // SD = ... -.. (S then D)
+      // S = ...
+      playMorseDit(); playMorseDit(); playMorseDit();
+      delay(charSpace - ditDur);  // Space between letters
+      // D = -..
+      playMorseDah(); playMorseDit(); playMorseDit();
+      break;
+    case 5:  // Ultimatic
+      // U = ..- (dit dit dah)
+      playMorseDit(); playMorseDit(); playMorseDah();
+      break;
+    case 6:  // Plain
+      // P = .--. (dit dah dah dit)
+      playMorseDit(); playMorseDah(); playMorseDah(); playMorseDit();
+      break;
+    case 7:  // Iambic A
       // IA = .. .- (I then A)
       // I = ..
       playMorseDit(); playMorseDit();
@@ -216,13 +250,17 @@ void playKeyerTypeCode(uint8_t keyerType) {
       // A = .-
       playMorseDit(); playMorseDah();
       break;
-    case KEYER_IAMBIC_B:
+    case 8:  // Iambic B
       // IB = .. -... (I then B)
       // I = ..
       playMorseDit(); playMorseDit();
       delay(charSpace - ditDur);  // Space between letters
       // B = -...
       playMorseDah(); playMorseDit(); playMorseDit(); playMorseDit();
+      break;
+    case 9:  // Keyahead
+      // K = -.- (dah dit dah)
+      playMorseDah(); playMorseDit(); playMorseDah();
       break;
   }
 }

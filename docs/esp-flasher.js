@@ -20,6 +20,27 @@ class ESP32Flasher {
         ];
     }
 
+    async waitForNewPort(originalPorts, maxWaitMs = 10000) {
+        const startTime = Date.now();
+        this.log("Waiting for device to reconnect in bootloader mode...");
+
+        while (Date.now() - startTime < maxWaitMs) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            const currentPorts = await navigator.serial.getPorts();
+
+            // Find new port that wasn't in original list
+            const newPort = currentPorts.find(port => !originalPorts.includes(port));
+            if (newPort) {
+                this.log("✓ New port detected (device in bootloader mode)");
+                return newPort;
+            }
+        }
+
+        this.log("⚠️ New port not detected within timeout");
+        return null;
+    }
+
     async enterBootloaderMode() {
         if (!("serial" in navigator)) {
             this.log("Error: Web Serial API not supported. Please use Chrome, Edge, or Opera.");
@@ -42,8 +63,8 @@ class ESP32Flasher {
                 }
             }
 
-            this.log("Step 1: Triggering bootloader mode...");
-            this.log("Select your device in normal mode (e.g., COM31)");
+            this.log("Select your Vail Summit device");
+            const originalPorts = await navigator.serial.getPorts();
 
             // Select the device in normal mode
             const normalDevice = await navigator.serial.requestPort();
@@ -59,42 +80,41 @@ class ESP32Flasher {
                 }
             }
 
-            this.log("Opening port at 1200 baud to trigger bootloader...");
+            this.log("Performing 1200-bps touch reset to enter bootloader mode...");
 
             try {
                 await normalDevice.open({ baudRate: 1200 });
-                this.log("Closing port...");
+                await new Promise(resolve => setTimeout(resolve, 100));
                 await normalDevice.close();
-                this.log("✓ Bootloader trigger sent!");
+                this.log("✓ Reset signal sent");
             } catch (openErr) {
-                // If the port is locked by another application, inform the user but continue
-                this.log(`Note: ${openErr.message}`);
+                this.log(`Error: ${openErr.message}`);
                 this.log("⚠️ Port may be in use by another application (Arduino IDE?)");
-                this.log("If device is already in bootloader mode, proceed to Step 2");
-                this.log("Otherwise, close Arduino IDE and try again");
+                throw new Error("Failed to send reset signal. Close other applications and try again.");
             }
 
-            // Forget the device to fully release it
-            if (normalDevice.forget) {
-                try {
-                    this.log("Releasing port permissions...");
-                    await normalDevice.forget();
-                } catch (e) {
-                    // Ignore forget errors
-                }
+            // Wait for new port to appear
+            this.device = await this.waitForNewPort(originalPorts);
+
+            if (!this.device) {
+                this.log("⚠️ Device did not reconnect automatically");
+                this.log("Try manually entering bootloader mode:");
+                this.log("1. Hold BOOT button");
+                this.log("2. Press and release RESET");
+                this.log("3. Release BOOT");
+                this.log("4. Click 'Connect and Flash' below");
+
+                // Still allow proceeding with manual selection
+                this.bootloaderModeReady = true;
+                document.getElementById('enterBootloaderButton').style.display = 'none';
+                document.getElementById('connectButton').style.display = 'inline-block';
+                return true;
             }
 
-            // Wait for device to fully disconnect and reconnect
-            this.log("Waiting for device to reset...");
-            await new Promise(resolve => setTimeout(resolve, 3000));
-
-            this.log("✓ Ready for Step 2");
-            this.log("Device should now be in bootloader mode (new COM port)");
-            this.log("Click 'Step 2: Connect in Bootloader Mode' and select the NEW port");
-
+            this.log("✓ Device ready in bootloader mode");
             this.bootloaderModeReady = true;
 
-            // Show step 2 button
+            // Skip step 2, go directly to connect
             document.getElementById('enterBootloaderButton').style.display = 'none';
             document.getElementById('connectButton').style.display = 'inline-block';
 
@@ -102,13 +122,15 @@ class ESP32Flasher {
 
         } catch (err) {
             this.log(`Error: ${err.message}`);
-            this.log("You can still try Step 2 if device is in bootloader mode");
 
-            // Show step 2 button anyway
-            document.getElementById('enterBootloaderButton').style.display = 'none';
-            document.getElementById('connectButton').style.display = 'inline-block';
+            if (err.name === 'NotFoundError') {
+                this.log("No device selected");
+                return false;
+            }
 
-            return true; // Return true to allow proceeding
+            // Allow manual retry
+            this.log("Click button again to retry, or enter bootloader mode manually");
+            return false;
         }
     }
 
@@ -151,10 +173,10 @@ class ESP32Flasher {
 
         try {
             // Disconnect any existing connections first
-            if (this.device) {
+            if (this.transport) {
                 this.log("Closing existing connection...");
                 await this.disconnect();
-                await new Promise(resolve => setTimeout(resolve, 500)); // Wait for port to fully close
+                await new Promise(resolve => setTimeout(resolve, 500));
             }
 
             // Load esptool module if not already loaded
@@ -164,29 +186,13 @@ class ESP32Flasher {
                 this.log("Esptool-js loaded successfully");
             }
 
-            // First, check if we have any previously granted ports
-            const ports = await navigator.serial.getPorts();
-            this.log(`Found ${ports.length} previously granted port(s)`);
-
-            // Close all previously granted ports
-            for (const port of ports) {
-                if (port.readable || port.writable) {
-                    this.log("Closing a previously open port...");
-                    try {
-                        await port.close();
-                    } catch (e) {
-                        this.log(`Error closing port: ${e.message}`);
-                    }
-                }
+            // If we don't have a device from enterBootloaderMode, prompt for one
+            if (!this.device) {
+                this.log("Requesting device selection...");
+                this.device = await navigator.serial.requestPort();
+            } else {
+                this.log("Using previously detected device in bootloader mode");
             }
-
-            this.log("Select the device in BOOTLOADER mode (new COM port, e.g., COM32)");
-            this.log("Requesting serial port...");
-            // Don't filter by vendor ID - show all serial ports
-            // This allows selection even when not in bootloader mode
-            this.device = await navigator.serial.requestPort();
-
-            this.log(`Port selected. readable=${!!this.device.readable}, writable=${!!this.device.writable}`);
 
             // Check if port is already open and close it
             if (this.device.readable || this.device.writable) {
@@ -200,12 +206,8 @@ class ESP32Flasher {
                 }
             }
 
-            // Note: We skip the 1200 baud auto-bootloader trick because it causes
-            // the device to disconnect and the user has to re-select it.
-            // Instead, we rely on esptool's built-in bootloader entry via DTR/RTS.
-
-            // DO NOT open the port here - let Transport do it!
-            this.log("Initializing transport (will open port at 115200 baud)...");
+            // Initialize transport - this will open the port
+            this.log("Initializing transport (opening port at 115200 baud)...");
             this.transport = new this.esptoolModule.Transport(this.device, true);
 
             this.log("Creating ESPLoader...");
@@ -237,7 +239,7 @@ class ESP32Flasher {
 
         } catch (err) {
             this.log(`Connection error: ${err.message}`);
-            alert(`Failed to connect: ${err.message}\n\nTry:\n1. Refresh the page\n2. Unplug and replug the device\n3. Hold BOOT button while plugging in`);
+            alert(`Failed to connect: ${err.message}\n\nTry:\n1. Click 'Step 1' again to retry\n2. Manually enter bootloader mode (hold BOOT, press RESET)\n3. Make sure no other programs are using the port`);
             await this.disconnect();
             return false;
         }

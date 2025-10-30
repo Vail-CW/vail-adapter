@@ -2,3 +2,4 @@ build/
 case/adapter-case.stl
 pcb/pcb-backups
 .claude/
+build_output/

@@ -28,11 +28,15 @@ struct MenuHandlerState {
   unsigned long lastActivityTime;
 };
 
+// Function pointer type for flush callback
+typedef void (*FlushBounceCallback)();
+
 // Initialize menu handler
 void initMenuHandler(VailAdapter* adapterRef,
                      CWMemory* memoryRef,
                      RecordingState* recordingRef,
-                     PlaybackState* playbackRef);
+                     PlaybackState* playbackRef,
+                     FlushBounceCallback flushCallback = nullptr);
 
 // Get current menu state
 MenuHandlerState& getMenuState();

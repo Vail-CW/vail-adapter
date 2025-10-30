@@ -23,6 +23,7 @@ private:
     unsigned long lastPressDuration;  // Duration of the last completed press
     bool longPressNotified;  // Track if we've already notified about long press
     bool comboPressNotified;  // Track if we've already notified about combo press (0.5s)
+    bool midiSwitchNotified;  // Track if we've already notified about MIDI switch press (3s)
 
     // Double-click detection
     unsigned long lastReleaseTime;    // Time of last button release
@@ -44,6 +45,9 @@ public:
 
     // Check if current combo press has crossed 0.5-second threshold (only returns true once per press)
     bool isComboPress(unsigned long currentTime);
+
+    // Check if B1+B2 combo has crossed 3-second threshold for MIDI mode switch (only returns true once per press)
+    bool isMidiSwitchPress(unsigned long currentTime);
 
     // Get the duration of the last completed press (call after update() returns true)
     unsigned long getLastPressDuration();

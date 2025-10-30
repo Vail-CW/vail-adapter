@@ -15,6 +15,7 @@ ButtonDebouncer::ButtonDebouncer() {
     lastPressDuration = 0;
     longPressNotified = false;
     comboPressNotified = false;
+    midiSwitchNotified = false;
     lastReleaseTime = 0;
     lastReleasedButton = BTN_NONE;
     doubleClickDetected = false;
@@ -33,6 +34,7 @@ bool ButtonDebouncer::update(ButtonState newReading, unsigned long currentTime) 
             pressStartTime = currentTime;
             longPressNotified = false;
             comboPressNotified = false;
+            midiSwitchNotified = false;
         }
         else if (isPressed && debouncedState != BTN_NONE) {
             // Update max state if current state is "higher" (more buttons pressed)
@@ -100,6 +102,24 @@ bool ButtonDebouncer::isComboPress(unsigned long currentTime) {
     if ((currentTime - pressStartTime) >= 500) {
         comboPressNotified = true;
         return true;  // Crossed 0.5-second threshold
+    }
+
+    return false;
+}
+
+bool ButtonDebouncer::isMidiSwitchPress(unsigned long currentTime) {
+    if (!isPressed || midiSwitchNotified) {
+        return false;  // Not pressed or already notified
+    }
+
+    // Only trigger for B1+B2 combo
+    if (maxStateDuringPress != BTN_1_2) {
+        return false;  // Not the right combo
+    }
+
+    if ((currentTime - pressStartTime) >= 3000) {
+        midiSwitchNotified = true;
+        return true;  // Crossed 3-second threshold
     }
 
     return false;

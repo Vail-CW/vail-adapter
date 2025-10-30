@@ -249,7 +249,7 @@
             </div>
             <p>Make sure your Vail Summit is plugged in via USB.</p>
             <div class="info-box">
-                <strong>Note:</strong> The flasher will automatically put the device into bootloader mode. If this fails, you may need to manually enter bootloader mode by holding BOOT and pressing RESET.
+                <strong>Note:</strong> The flasher will automatically reset your device into bootloader mode (similar to Arduino IDE). If automatic bootloader entry fails, you can manually enter bootloader mode by holding BOOT and pressing RESET.
             </div>
         </div>
 
@@ -257,13 +257,13 @@
         <div class="flash-step">
             <div class="step-header">
                 <span class="step-badge">2</span>
-                <h3>Connect and Flash</h3>
+                <h3>Flash Firmware</h3>
             </div>
-            <p>Click Connect below and select your device from the list (it may appear as "USB Serial Device" or similar).</p>
+            <p>Click the buttons below in order. The process will automatically detect and reset your device into bootloader mode.</p>
 
             <div id="espFlasherContainer">
-                <button id="enterBootloaderButton" class="btn-primary">Step 1: Enter Bootloader Mode</button>
-                <button id="connectButton" class="btn-primary" style="display: none;">Step 2: Connect in Bootloader Mode</button>
+                <button id="enterBootloaderButton" class="btn-primary">Enter Bootloader Mode</button>
+                <button id="connectButton" class="btn-primary" style="display: none;">Connect and Flash</button>
                 <button id="disconnectButton" class="btn-secondary" style="display: none;">Disconnect</button>
                 <button id="programButton" class="btn-download" style="display: none;">Flash Firmware</button>
                 <button id="eraseButton" class="btn-secondary" style="display: none;">Erase Flash</button>
@@ -289,11 +289,11 @@
                 <span class="step-badge">3</span>
                 <h3>Complete!</h3>
             </div>
-            <p>Once flashing is complete:</p>
+            <p>Once flashing is complete, your device will automatically restart with the new firmware. If it doesn't restart automatically:</p>
             <ol>
                 <li><strong>Unplug</strong> your Vail Summit from USB</li>
                 <li><strong>Wait 2 seconds</strong></li>
-                <li><strong>Plug it back in</strong> to power it on with the new firmware</li>
+                <li><strong>Plug it back in</strong> to power it on</li>
                 <li>Follow the on-screen setup wizard to configure WiFi and preferences</li>
             </ol>
             <div class="success-message">

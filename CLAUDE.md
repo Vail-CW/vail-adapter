@@ -122,6 +122,35 @@ The central state machine that:
 - Controls radio output pins when HAS_RADIO_OUTPUT is defined
 - Persists settings to EEPROM
 
+**Keyer Mode Switching:**
+When switching keyer types (via MIDI PC or button menu), `HandleMIDI()` calls `Reset()` on the old keyer before switching to the new one. This ensures any held key state (e.g., from iambic mode) is properly cleared and transmission is ended before the new keyer instance is created. Additionally, the `flushBounceState()` function is called after mode switches to clear any stale input states from the Bounce debouncers, preventing "stuck key" bugs when switching modes with cables plugged in.
+
+**TRS Cable Detection (Straight Key Auto-Configuration):**
+The firmware includes automatic detection of TRS (Tip-Ring-Sleeve) mono cables used for straight keys:
+- **Boot-time detection** (vail-adapter.ino:99-107): During `setup()`, the DAH pin is checked 16 times. If continuously grounded, the `trs` flag is set.
+- **Hot-plug detection** (vail-adapter.ino:143-195): **ONLY active when already in Straight Key mode (keyer type 1)**. Every 500ms, the firmware checks if the physical DAH pin has been continuously grounded for 1+ second. This mode-conditional approach ensures:
+  - Detection only runs when user has intentionally switched to Straight Key mode
+  - No interference with paddle operation (different keyer mode)
+  - No conflict with radio mode features (DAH hold to toggle radio keyer mode)
+  - Capacitive touch inputs are not monitored for TRS detection
+  - If detected: Enables TRS mode and flushes bounce state
+- **User workflow for hot-plugging**:
+  1. Manually switch adapter to Straight Key mode (button menu: B3 long press, cycle to Straight Key, B2 long press to save)
+  2. Plug in TRS/mono cable
+  3. Wait 1 second → TRS mode auto-enables
+  4. DIT pin now used for straight key input, DAH pin ignored
+- **TRS mode behavior** (vail-adapter.ino:280-315): When `trs == true`:
+  - DIT pin (tip) is used as the straight key input via `PADDLE_STRAIGHT`
+  - DAH pin (ring, shorted to sleeve/ground) is ignored—`dah.update()` is called to maintain Bounce state but input is not processed
+  - Prevents spurious "DAH pressed" events from grounded cable
+- **Unplug detection**: If DAH pin stops being grounded while in TRS mode, the `trs` flag is cleared
+
+This system prevents the "stuck key" bug that occurred when:
+1. Switching from Iambic to Straight Key mode with a mono cable plugged in
+2. Hot-plugging a straight key cable after boot
+
+**Important**: TRS hot-plug detection will NEVER trigger during paddle operation (iambic/bug modes) because it only runs when the adapter is already in Straight Key mode. This eliminates all false positive scenarios.
+
 **Keyer System (keyers.cpp/h)**
 Nine keyer algorithms are implemented as separate classes inheriting from base `Keyer`:
 1. **Passthrough** (0) - Manual control, no automation
@@ -147,7 +176,8 @@ All keyers use the `Transmitter` interface to control output (BeginTx/EndTx), al
 - `morse_audio.cpp/h` - Morse code playback and audio feedback module
   - Morse code functions: `playMorseDit()`, `playMorseDah()`, `playMorseChar()`, `playMorseWord()`
   - Audio feedback: `playAdjustmentBeep()`, `playErrorTone()`, `playDescendingTones()`, `playRecordingCountdown()`
-  - Keyer announcements: `playKeyerTypeCode()` plays S/IA/IB identifiers
+  - Keyer announcements: `playKeyerTypeCode()` plays Morse identifiers for all 9 keyer types:
+    - S (Straight), B (Bug), EB (ElBug), SD (SingleDot), U (Ultimatic), P (Plain), IA (Iambic A), IB (Iambic B), K (Keyahead)
   - Initialized via `initMorseAudio(&adapter, PIEZO_PIN)`
 
 **CW Memory System (memory.cpp/h)**
@@ -180,6 +210,7 @@ The button system uses a resistor ladder network with ButtonDebouncer class prov
   - Quick press - Returns on button release
   - Long press - Fires after 2 seconds (once per press)
   - Combo press - Fires after 0.5 seconds for multi-button (once per press)
+  - MIDI switch press - Fires after 3 seconds for B1+B2 combo (once per press)
   - Double-click - Detects rapid press-release-press within 400ms window
 - **Max state tracking** - Records highest button combination during press
 
@@ -195,12 +226,15 @@ All button logic and menu state management has been extracted into a dedicated m
 - `MODE_NORMAL` - Default operation, quick press plays memories
 - `MODE_SPEED_SETTING` - Adjust WPM (5-40 range), B1=faster, B3=slower, B2 long press to save
 - `MODE_TONE_SETTING` - Adjust sidetone frequency (MIDI 43-85), B1=higher, B3=lower, B2 long press to save
-- `MODE_KEY_SETTING` - Cycle keyer types (Straight/Iambic A/Iambic B), B1=next, B3=prev, B2 long press to save
+- `MODE_KEY_SETTING` - Cycle through all 9 keyer types (1-9, excluding Passthrough), B1=next, B3=prev, B2 long press to save
+  - Available types: Straight (1), Bug (2), ElBug (3), SingleDot (4), Ultimatic (5), Plain (6), Iambic A (7), Iambic B (8), Keyahead (9)
+  - Each type announces itself via Morse code identifier when selected
 - `MODE_MEMORY_MANAGEMENT` - Record/playback/clear memory slots
 
 **State transition guards:**
 - Long press only enters settings modes from MODE_NORMAL
 - B1+B3 combo only toggles memory mode between NORMAL ↔ MEMORY_MANAGEMENT
+- B1+B2 3-second hold toggles between keyboard and MIDI output modes (ONLY in MODE_NORMAL, plays "KM" or "MM" in Morse)
 - Prevents cross-mode interference (e.g., can't enter speed mode from memory mode)
 - Each mode has dedicated button handlers for isolated functionality
 - 30-second timeout auto-saves and exits setting modes
@@ -218,9 +252,15 @@ See `MIDI_INTEGRATION_SPEC.md` for full protocol details. Key points:
 
 These are "Easter egg" features activated by specific input patterns:
 
-1. **Buzzer Disable**: Hold DIT for 5 seconds → toggles buzzer on/off (LED blinks slowly when disabled)
-2. **Radio Mode**: Press DAH 10 times within 500ms → toggles radio mode (LED blinks rapidly when active)
-3. **Radio Keyer Mode**: While in radio mode, hold DAH for 5 seconds → toggles radio keyer mode (direct radio keying vs. pass-through)
+1. **Keyboard/MIDI Mode Switch**: Hold B1+B2 for 3 seconds (in normal operation mode) → toggles between keyboard and MIDI output modes
+   - Keyboard → MIDI: plays "MM" in Morse
+   - MIDI → Keyboard: plays "KM" in Morse
+   - Only active in MODE_NORMAL (won't trigger during settings changes, memory management, or recording)
+   - Device still auto-switches from keyboard to MIDI mode when receiving MIDI control messages
+   - Default boot mode: Keyboard
+2. **Buzzer Disable**: Hold DIT for 5 seconds → toggles buzzer on/off (LED blinks slowly when disabled)
+3. **Radio Mode**: Press DAH 10 times within 500ms → toggles radio mode (LED blinks rapidly when active)
+4. **Radio Keyer Mode**: While in radio mode, hold DAH for 5 seconds → toggles radio keyer mode (direct radio keying vs. pass-through)
 
 Radio mode and radio keyer mode are independent concepts:
 - Radio mode enables radio output pins
@@ -357,6 +397,9 @@ The firmware has been refactored into a modular architecture for improved mainta
 - Quick press, long press, combo, and double-click logic
 - Timeout management for setting modes
 - Initialized via `initMenuHandler(&adapter, memorySlots, &recordingState, &playbackState)`
+
+**Double-Click Recording Priority:**
+In `updateMenuHandler()`, double-click detection is checked BEFORE quick press handling to prevent conflicts. When recording to a memory slot, any ongoing playback is explicitly stopped before starting the recording. This prevents the bug where double-clicking to re-record a slot would trigger playback (from the first click) before recording (from the double-click detection).
 
 ### Benefits of This Structure
 

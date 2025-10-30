@@ -652,6 +652,7 @@ break;
 break;
 case 0xC0:
 if (this->keyer) {
+this->keyer->Reset();  // Clear any held key state before switching
 this->keyer->Release();
 this->keyer = NULL;
 }

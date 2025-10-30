@@ -7,10 +7,9 @@
 
 #define SETTING_MODE_TIMEOUT 30000  // 30 seconds
 
-// Valid keyer types for cycling
-#define KEYER_STRAIGHT 1
-#define KEYER_IAMBIC_A 7
-#define KEYER_IAMBIC_B 8
+// Valid keyer types for cycling (1-9, skipping 0=Passthrough)
+#define KEYER_MIN 1
+#define KEYER_MAX 9
 
 // Module-level state
 static MenuHandlerState menuState = {
@@ -26,6 +25,7 @@ static VailAdapter* adapter = nullptr;
 static CWMemory* memorySlots = nullptr;
 static RecordingState* recordingState = nullptr;
 static PlaybackState* playbackState = nullptr;
+static FlushBounceCallback flushBounceCallback = nullptr;
 
 // ============================================================================
 // Initialization
@@ -34,11 +34,13 @@ static PlaybackState* playbackState = nullptr;
 void initMenuHandler(VailAdapter* adapterRef,
                      CWMemory* memoryRef,
                      RecordingState* recordingRef,
-                     PlaybackState* playbackRef) {
+                     PlaybackState* playbackRef,
+                     FlushBounceCallback flushCallback) {
   adapter = adapterRef;
   memorySlots = memoryRef;
   recordingState = recordingRef;
   playbackState = playbackRef;
+  flushBounceCallback = flushCallback;
 }
 
 MenuHandlerState& getMenuState() {
@@ -100,6 +102,11 @@ void applyTemporaryKeyerType(uint8_t keyerType) {
   event.byte2 = keyerType;
   event.byte3 = 0;
   adapter->HandleMIDI(event);
+
+  // Flush bounce state after mode change to prevent stuck keys
+  if (flushBounceCallback) {
+    flushBounceCallback();
+  }
 }
 
 // ============================================================================
@@ -200,28 +207,22 @@ static void handleQuickPressToneMode(ButtonState gestureDetected) {
 static void handleQuickPressKeyMode(ButtonState gestureDetected) {
   if (gestureDetected == BTN_1) {
     // Cycle to next keyer type (forward)
-    if (menuState.tempKeyerType == KEYER_STRAIGHT) {
-      menuState.tempKeyerType = KEYER_IAMBIC_A;
-    } else if (menuState.tempKeyerType == KEYER_IAMBIC_A) {
-      menuState.tempKeyerType = KEYER_IAMBIC_B;
-    } else {
-      menuState.tempKeyerType = KEYER_STRAIGHT;
+    menuState.tempKeyerType++;
+    if (menuState.tempKeyerType > KEYER_MAX) {
+      menuState.tempKeyerType = KEYER_MIN;  // Wrap around to beginning
     }
     applyTemporaryKeyerType(menuState.tempKeyerType);  // Apply so user can test
-    playKeyerTypeCode(menuState.tempKeyerType);  // Play Morse code identifier (S, IA, or IB)
+    playKeyerTypeCode(menuState.tempKeyerType);  // Play Morse code identifier
     Serial.print("  -> Keyer type changed to ");
     Serial.println(getKeyerTypeName(menuState.tempKeyerType));
   } else if (gestureDetected == BTN_3) {
     // Cycle to previous keyer type (backward)
-    if (menuState.tempKeyerType == KEYER_STRAIGHT) {
-      menuState.tempKeyerType = KEYER_IAMBIC_B;
-    } else if (menuState.tempKeyerType == KEYER_IAMBIC_A) {
-      menuState.tempKeyerType = KEYER_STRAIGHT;
-    } else {
-      menuState.tempKeyerType = KEYER_IAMBIC_A;
+    menuState.tempKeyerType--;
+    if (menuState.tempKeyerType < KEYER_MIN) {
+      menuState.tempKeyerType = KEYER_MAX;  // Wrap around to end
     }
     applyTemporaryKeyerType(menuState.tempKeyerType);  // Apply so user can test
-    playKeyerTypeCode(menuState.tempKeyerType);  // Play Morse code identifier (S, IA, or IB)
+    playKeyerTypeCode(menuState.tempKeyerType);  // Play Morse code identifier
     Serial.print("  -> Keyer type changed to ");
     Serial.println(getKeyerTypeName(menuState.tempKeyerType));
   }
@@ -345,11 +346,9 @@ static void handleLongPressNormalMode(ButtonState currentState, unsigned long cu
       if (adapter) {
         menuState.tempKeyerType = adapter->getCurrentKeyerType();
       }
-      // Ensure we're using a valid keyer type
-      if (menuState.tempKeyerType != KEYER_STRAIGHT &&
-          menuState.tempKeyerType != KEYER_IAMBIC_A &&
-          menuState.tempKeyerType != KEYER_IAMBIC_B) {
-        menuState.tempKeyerType = KEYER_IAMBIC_B;  // Default to Iambic B
+      // Ensure we're using a valid keyer type (1-9)
+      if (menuState.tempKeyerType < KEYER_MIN || menuState.tempKeyerType > KEYER_MAX) {
+        menuState.tempKeyerType = 8;  // Default to Iambic B
       }
       applyTemporaryKeyerType(menuState.tempKeyerType);  // Apply current keyer so user can test
       menuState.lastActivityTime = currentTime;  // Reset timeout timer
@@ -433,6 +432,11 @@ static void handleLongPressKeyMode(ButtonState currentState) {
     event.byte2 = menuState.tempKeyerType;
     event.byte3 = 0;
     adapter->HandleMIDI(event);
+
+    // Flush bounce state after final mode switch to prevent stuck keys
+    if (flushBounceCallback) {
+      flushBounceCallback();
+    }
 
     // Save to EEPROM
     saveSettingsToEEPROM(menuState.tempKeyerType, adapter->getDitDuration(), adapter->getTxNote());
@@ -565,6 +569,44 @@ void updateMenuHandler(unsigned long currentTime, ButtonDebouncer& buttonDebounc
     Serial.print("Button Gesture: ");
     Serial.print(buttonStateToString(gestureDetected));
 
+    // Check for double-click FIRST to trigger recording (before handling quick press)
+    bool isDoubleClick = buttonDebouncer.isDoubleClick();
+
+    if (isDoubleClick && menuState.currentMode == MODE_MEMORY_MANAGEMENT) {
+      // Only allow double-click recording in memory management mode
+      uint8_t slotNumber = 0;
+      if (gestureDetected == BTN_1) slotNumber = 0;
+      else if (gestureDetected == BTN_2) slotNumber = 1;
+      else if (gestureDetected == BTN_3) slotNumber = 2;
+      else return;  // Not a single button double-click
+
+      Serial.print(" [DOUBLE-CLICK]");
+      Serial.print(">>> DOUBLE-CLICK DETECTED on Button ");
+      Serial.print(slotNumber + 1);
+      Serial.println(" - Starting recording...");
+
+      // Stop any ongoing playback before starting recording
+      if (playbackState->isPlaying) {
+        Serial.println("Stopping playback before starting recording");
+        playbackState->stopPlayback();
+      }
+
+      // Play countdown: "doot, doot, dah" (3 beeps with the last one longer)
+      playRecordingCountdown();
+
+      // Start recording
+      startRecording(*recordingState, slotNumber);
+
+      // Switch to recording mode
+      if (slotNumber == 0) menuState.currentMode = MODE_RECORDING_MEMORY_1;
+      else if (slotNumber == 1) menuState.currentMode = MODE_RECORDING_MEMORY_2;
+      else if (slotNumber == 2) menuState.currentMode = MODE_RECORDING_MEMORY_3;
+
+      Serial.print("Entered recording mode for memory slot ");
+      Serial.println(slotNumber + 1);
+      return;  // Exit early - don't process as quick press
+    }
+
     if (duration >= 2000) {
       Serial.print(" [LONG PRESS - ");
       Serial.print(duration);
@@ -574,7 +616,7 @@ void updateMenuHandler(unsigned long currentTime, ButtonDebouncer& buttonDebounc
       Serial.print(duration);
       Serial.println("ms]");
 
-      // Handle quick presses based on current mode
+      // Handle quick presses based on current mode (only if NOT a double-click)
       switch (menuState.currentMode) {
         case MODE_SPEED_SETTING:
           handleQuickPressSpeedMode(gestureDetected);
@@ -599,34 +641,6 @@ void updateMenuHandler(unsigned long currentTime, ButtonDebouncer& buttonDebounc
         default:
           break;
       }
-    }
-
-    // Check for double-click to trigger recording
-    if (buttonDebouncer.isDoubleClick() && menuState.currentMode == MODE_MEMORY_MANAGEMENT) {
-      // Only allow double-click recording in memory management mode
-      uint8_t slotNumber = 0;
-      if (gestureDetected == BTN_1) slotNumber = 0;
-      else if (gestureDetected == BTN_2) slotNumber = 1;
-      else if (gestureDetected == BTN_3) slotNumber = 2;
-      else return;  // Not a single button double-click
-
-      Serial.print(">>> DOUBLE-CLICK DETECTED on Button ");
-      Serial.print(slotNumber + 1);
-      Serial.println(" - Starting recording...");
-
-      // Play countdown: "doot, doot, dah" (3 beeps with the last one longer)
-      playRecordingCountdown();
-
-      // Start recording
-      startRecording(*recordingState, slotNumber);
-
-      // Switch to recording mode
-      if (slotNumber == 0) menuState.currentMode = MODE_RECORDING_MEMORY_1;
-      else if (slotNumber == 1) menuState.currentMode = MODE_RECORDING_MEMORY_2;
-      else if (slotNumber == 2) menuState.currentMode = MODE_RECORDING_MEMORY_3;
-
-      Serial.print("Entered recording mode for memory slot ");
-      Serial.println(slotNumber + 1);
     }
   }
 
@@ -677,6 +691,40 @@ void updateMenuHandler(unsigned long currentTime, ButtonDebouncer& buttonDebounc
       }
     } else {
       Serial.println();
+    }
+  }
+
+  // Check for MIDI switch press threshold (3 seconds) - fires once while B1+B2 still held
+  // ONLY active in MODE_NORMAL to avoid conflicts with other modes
+  if (buttonDebouncer.isMidiSwitchPress(currentTime) && menuState.currentMode == MODE_NORMAL) {
+    Serial.print(">>> MIDI SWITCH PRESS DETECTED (3s B1+B2): ");
+
+    if (adapter) {
+      bool currentMode = adapter->KeyboardMode();
+
+      if (currentMode) {
+        // Currently in keyboard mode, switch to MIDI mode
+        Serial.println("Switching from Keyboard to MIDI mode");
+        midiEventPacket_t event;
+        event.header = 0x0B;
+        event.byte1 = 0xB0;
+        event.byte2 = 0;
+        event.byte3 = 0x00;  // 0x00 = MIDI mode (< 0x3f)
+        adapter->HandleMIDI(event);
+        playMorseChar('M');  // M
+        playMorseChar('M');  // M -> "MM" = MIDI Mode
+      } else {
+        // Currently in MIDI mode, switch to keyboard mode
+        Serial.println("Switching from MIDI to Keyboard mode");
+        midiEventPacket_t event;
+        event.header = 0x0B;
+        event.byte1 = 0xB0;
+        event.byte2 = 0;
+        event.byte3 = 0x7F;  // 0x7F = Keyboard mode (> 0x3f)
+        adapter->HandleMIDI(event);
+        playMorseChar('K');  // K
+        playMorseChar('M');  // M -> "KM" = Keyboard Mode
+      }
     }
   }
 

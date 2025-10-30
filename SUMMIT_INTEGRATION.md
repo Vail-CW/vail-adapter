@@ -52,16 +52,17 @@ vail-adapter/
 
 ### Vail Summit Flow (ESP32 Web Flasher)
 1. Select "Vail Summit"
-2. **Step 1: Enter Bootloader Mode**
-   - Click "Step 1: Enter Bootloader Mode"
-   - Select device in normal mode (e.g., COM31)
-   - Device automatically resets to bootloader mode (new COM port)
-3. **Step 2: Connect in Bootloader Mode**
-   - Click "Step 2: Connect in Bootloader Mode"
-   - Select device in bootloader mode (e.g., COM32)
-4. Click "Flash Firmware"
-5. Wait for automatic flashing process with progress indicators
-6. Unplug and replug device to boot new firmware
+2. **Enter Bootloader Mode**
+   - Click "Enter Bootloader Mode"
+   - Select your device when prompted
+   - Flasher performs 1200-bps touch reset (like Arduino IDE)
+   - Waits for device to reconnect in bootloader mode (automatic)
+3. **Connect and Flash**
+   - Click "Connect and Flash"
+   - Connects to the bootloader port automatically
+   - Click "Flash Firmware" to begin
+4. Wait for automatic flashing process with progress indicators
+5. Device automatically resets with new firmware (or manually unplug/replug if needed)
 
 ## Technical Implementation
 
@@ -71,24 +72,27 @@ The Summit updater uses **esptool-js** for web-based ESP32 flashing:
 
 - **Library**: `esptool-js@0.4.1` loaded dynamically via CDN
 - **Transport**: Web Serial API (Chrome/Edge/Opera only)
-- **Two-Step Process**:
-  - **Step 1**: Trigger bootloader mode via 1200 baud reset
-  - **Step 2**: Connect and flash in bootloader mode
+- **Bootloader Entry Process** (like Arduino IDE):
+  1. User selects device in normal mode
+  2. Open port at 1200 baud and close (triggers TinyUSB bootloader reset)
+  3. Wait for device to disconnect and reconnect as new port
+  4. Automatically detect new bootloader port
 - **Flashing Process**:
-  1. Connect to serial port at 115200 baud
-  2. Initialize ESPLoader
+  1. Connect to bootloader port at 115200 baud
+  2. Initialize ESPLoader and detect chip
   3. Download firmware files from GitHub (as binary strings)
   4. Flash bootloader (0x0), partitions (0x8000), and app (0x10000)
   5. Display real-time progress for each file
-  6. User unplugs/replugs device to boot new firmware
+  6. Automatically reset device to boot new firmware
 
 ### Key Implementation Details
 
 - **Binary Data Conversion**: Firmware files converted from ArrayBuffer to binary strings for esptool-js compatibility
 - **MD5 Verification**: Disabled to avoid format issues (flash still validated by esptool)
 - **Dark Mode UI**: Flash log styled to match site theme
-- **Port Management**: Automatic detection and cleanup of previously opened ports
-- **Error Handling**: Graceful handling of port-in-use scenarios with clear user guidance
+- **Automatic Port Detection**: Uses Web Serial API's `getPorts()` to track and detect new bootloader port after 1200 baud reset
+- **TinyUSB Compatible**: Works with ESP32-S3's TinyUSB upload mode (same method as Arduino IDE)
+- **Error Handling**: Graceful handling of port-in-use scenarios with fallback to manual bootloader entry
 
 ### Files
 

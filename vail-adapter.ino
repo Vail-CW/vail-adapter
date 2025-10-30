@@ -13,13 +13,18 @@
 #include "menu_handler.h"
 
 bool trs = false;
+unsigned long dahGroundedStartTime = 0;  // Track how long DAH has been grounded
+bool dahWasGroundedLastCheck = false;    // Previous state for edge detection
+unsigned long lastTrsCheckTime = 0;      // Last time we checked for TRS
+const unsigned long TRS_DETECTION_THRESHOLD = 1000;  // 1 second of continuous grounding = TRS cable
+const unsigned long TRS_CHECK_INTERVAL = 500;        // Check every 500ms
 
 Bounce dit = Bounce();
 Bounce dah = Bounce();
-Bounce key = Bounce(); 
+Bounce key = Bounce();
 TouchBounce qt_dit = TouchBounce();
 TouchBounce qt_dah = TouchBounce();
-TouchBounce qt_key = TouchBounce(); 
+TouchBounce qt_key = TouchBounce();
 
 VailAdapter adapter = VailAdapter(PIEZO_PIN);
 
@@ -78,8 +83,8 @@ void setup() {
   loadMemoriesFromEEPROM(memorySlots);
   // Connect recording state to adapter for key capture
   adapter.setRecordingState(&recordingState);
-  // Initialize menu handler
-  initMenuHandler(&adapter, memorySlots, &recordingState, &playbackState);
+  // Initialize menu handler with flush callback
+  initMenuHandler(&adapter, memorySlots, &recordingState, &playbackState, flushBounceState);
 #endif
 
   Serial.print("Adapter settings loaded - Keyer: "); Serial.print(adapter.getCurrentKeyerType());
@@ -102,13 +107,25 @@ void setup() {
   }
 }
 
+void flushBounceState() {
+  // Flush the Bounce state by updating multiple times without processing
+  // This clears any stale "pressed" states after mode changes
+  for (int i = 0; i < 3; i++) {
+    dit.update();
+    dah.update();
+    key.update();
+    delay(5);
+  }
+  Serial.println("Flushed Bounce state for dit/dah/key inputs");
+}
+
 void setLED() {
-  bool finalLedState = false; 
+  bool finalLedState = false;
 
   if (adapter.isRadioModeActive()) {
-    finalLedState = (millis() % 400 < 200); 
+    finalLedState = (millis() % 400 < 200);
   } else if (!adapter.isBuzzerEnabled()) {
-    finalLedState = (millis() % 2000 < 1000); 
+    finalLedState = (millis() % 2000 < 1000);
   } else {
     finalLedState = adapter.KeyboardMode();
   }
@@ -121,6 +138,60 @@ void loop() {
 
   setLED();
   adapter.Tick(currentTime);
+
+  // Check for TRS cable hot-plug detection (every 500ms)
+  // ONLY active when already in Straight Key mode (keyer type 1)
+  // This requires user to manually switch to Straight Key mode before hot-plugging
+  if (currentTime - lastTrsCheckTime >= TRS_CHECK_INTERVAL) {
+    lastTrsCheckTime = currentTime;
+
+    // Only check for TRS if we're in Straight Key mode (keyer type 1)
+    bool inStraightKeyMode = (adapter.getCurrentKeyerType() == 1);
+
+    if (inStraightKeyMode && !trs) {
+      // Check if DAH pin is currently grounded (physical pin only, not capacitive)
+      bool dahIsGrounded = (digitalRead(DAH_PIN) == LOW);
+
+      if (dahIsGrounded) {
+        if (!dahWasGroundedLastCheck) {
+          // DAH just became grounded - start timer
+          dahGroundedStartTime = currentTime;
+          dahWasGroundedLastCheck = true;
+        } else {
+          // DAH has been continuously grounded - check duration
+          unsigned long groundedDuration = currentTime - dahGroundedStartTime;
+          if (groundedDuration >= TRS_DETECTION_THRESHOLD) {
+            // TRS cable detected! DAH has been continuously grounded for 1+ second
+            trs = true;
+            Serial.println("TRS CABLE DETECTED (hot-plug): DAH pin grounded while in Straight Key mode");
+            Serial.println("Enabling TRS mode: DIT pin will be used for straight key input, DAH pin ignored");
+
+            // Flush bounce state to clear any pending transitions
+            flushBounceState();
+
+            Serial.println("TRS mode active. Straight key input via DIT pin.");
+          }
+        }
+      } else {
+        dahWasGroundedLastCheck = false;
+        dahGroundedStartTime = 0;
+      }
+    } else if (trs) {
+      // If we're in TRS mode, check if cable was unplugged
+      bool dahIsGrounded = (digitalRead(DAH_PIN) == LOW);
+      if (!dahIsGrounded) {
+        // DAH is no longer grounded - cable unplugged
+        Serial.println("TRS cable unplugged (DAH no longer grounded)");
+        trs = false;
+        dahWasGroundedLastCheck = false;
+        dahGroundedStartTime = 0;
+      }
+    } else {
+      // Not in straight key mode and not in TRS mode - reset detection state
+      dahWasGroundedLastCheck = false;
+      dahGroundedStartTime = 0;
+    }
+  }
 
 #ifdef BUTTON_PIN
   MenuHandlerState& menuState = getMenuState();
@@ -212,36 +283,40 @@ void loop() {
   }
 
   if (trs) {
-      // If DAH pin is grounded (TRS), this suggests a straight key might be plugged in
-      // where DIT line (tip) is the key and DAH line (ring) is shorted to GND (sleeve).
-      // The current Bounce objects 'dit' and 'dah' are still attached to their original pins.
-      // If your TRS straight key uses the DIT_PIN for keying and grounds DAH_PIN:
-      // You might want to only read the 'dit' object as a straight key when trs is true.
-      // if (dit.update()) {
-      //    adapter.ProcessPaddleInput(PADDLE_STRAIGHT, !dit.read(), false);
-      // }
-      // And then skip the separate DIT/DAH paddle processing below if trs == true.
-      // This part depends on your exact TRS wiring and desired behavior.
-      // For now, assuming all inputs are polled and 'trs' is just an indicator.
-  }
-
-  if (dit.update()) {
-    adapter.ProcessPaddleInput(PADDLE_DIT, !dit.read(), false);
+    // TRS mode: DAH pin is grounded (ring shorted to sleeve)
+    // DIT pin (tip) is the actual straight key input
+    // Only process DIT as straight key, ignore DAH completely
+    if (dit.update()) {
+      adapter.ProcessPaddleInput(PADDLE_STRAIGHT, !dit.read(), false);
 #ifdef BUTTON_PIN
-    // Reset activity timer on CW key activity in setting modes
-    if (menuState.currentMode != MODE_NORMAL) {
-      menuState.lastActivityTime = currentTime;
-    }
+      // Reset activity timer on CW key activity in setting modes
+      if (menuState.currentMode != MODE_NORMAL) {
+        menuState.lastActivityTime = currentTime;
+      }
 #endif
-  }
-  if (dah.update()) {
-    adapter.ProcessPaddleInput(PADDLE_DAH, !dah.read(), false);
+    }
+    // Update DAH to keep Bounce state current, but don't process it
+    dah.update();
+  } else {
+    // Normal paddle mode: process both DIT and DAH separately
+    if (dit.update()) {
+      adapter.ProcessPaddleInput(PADDLE_DIT, !dit.read(), false);
 #ifdef BUTTON_PIN
-    // Reset activity timer on CW key activity in setting modes
-    if (menuState.currentMode != MODE_NORMAL) {
-      menuState.lastActivityTime = currentTime;
-    }
+      // Reset activity timer on CW key activity in setting modes
+      if (menuState.currentMode != MODE_NORMAL) {
+        menuState.lastActivityTime = currentTime;
+      }
 #endif
+    }
+    if (dah.update()) {
+      adapter.ProcessPaddleInput(PADDLE_DAH, !dah.read(), false);
+#ifdef BUTTON_PIN
+      // Reset activity timer on CW key activity in setting modes
+      if (menuState.currentMode != MODE_NORMAL) {
+        menuState.lastActivityTime = currentTime;
+      }
+#endif
+    }
   }
 
   if (qt_key.update()) {
