@@ -181,6 +181,109 @@ All user settings are stored in ESP32 Preferences (non-volatile flash storage):
 
 Settings are loaded on startup and saved immediately when changed.
 
+## WiFi Configuration and AP Mode
+
+### WiFi Connectivity Modes
+
+The device supports two WiFi modes for flexible connectivity:
+
+**Station (STA) Mode:**
+- Default mode - connects to existing WiFi networks
+- Auto-connects to saved networks on startup (tries all 3 slots in order)
+- Web server accessible via mDNS at `http://vail-summit.local` or device IP
+- Supports up to 3 saved network credentials
+
+**Access Point (AP) Mode:**
+- Creates its own WiFi network for direct connection
+- Useful when no WiFi available or for initial setup
+- SSID format: `VAIL-SUMMIT-XXXXXX` (XXXXXX = chip ID in hex)
+- Default password: `vailsummit`
+- IP address: `192.168.4.1` (standard ESP32 AP address)
+- mDNS not available in AP mode (use IP address only)
+
+### Entering AP Mode
+
+**From Device:**
+1. Navigate to Settings → WiFi Setup
+2. Press 'A' key to enable AP mode
+3. Device creates WiFi network and starts web server
+4. Screen shows network name, password, and IP address
+
+**Connecting to AP:**
+1. On phone/laptop, connect to `VAIL-SUMMIT-XXXXXX` WiFi network
+2. Enter password: `vailsummit`
+3. Open browser to `http://192.168.4.1/`
+4. Access web interface for device configuration
+
+### Automatic AP Mode Exit
+
+When connecting to a WiFi network from AP mode (via web or device):
+
+1. **Device automatically:**
+   - Stops AP mode and web server
+   - Connects to the selected WiFi network
+   - Saves credentials to preferences
+   - Shows "Connected!" message for 2 seconds
+   - Returns to main menu
+   - Web server restarts in Station mode (via WiFi event handler)
+
+2. **User experience:**
+   - Web interface shows success modal: "Check Your Device"
+   - Phone loses connection to AP (expected behavior)
+   - Device is now accessible on the new WiFi network at its assigned IP
+
+3. **Error handling:**
+   - If connection fails, AP mode automatically restarts
+   - User can try again without manual intervention
+
+### Web Server Behavior
+
+**WiFi Event Handler (vail-summit.ino:182-190):**
+- Automatically starts web server when WiFi connects (Station mode)
+- Automatically stops web server when WiFi disconnects
+- `setupWebServer()` detects AP vs Station mode and configures accordingly
+
+**AP Mode Web Server:**
+- Starts automatically when `startAPMode()` is called
+- Skips mDNS setup (not supported in AP mode)
+- Accessible only via IP address: `http://192.168.4.1/`
+- Stops automatically when AP mode exits
+
+**Station Mode Web Server:**
+- Starts via WiFi event handler on connection
+- Includes mDNS responder: `http://vail-summit.local/`
+- Accessible via mDNS or IP address
+- Stops via WiFi event handler on disconnection
+
+### WiFi Settings Module (settings_wifi.h)
+
+**State Machine:**
+```cpp
+enum WiFiSettingsState {
+  WIFI_STATE_SCANNING,        // Scanning for networks
+  WIFI_STATE_NETWORK_LIST,    // Showing available networks
+  WIFI_STATE_PASSWORD_INPUT,  // Entering password
+  WIFI_STATE_CONNECTING,      // Attempting connection
+  WIFI_STATE_CONNECTED,       // Successfully connected
+  WIFI_STATE_ERROR,          // Connection failed
+  WIFI_STATE_RESET_CONFIRM,  // Confirming credential reset
+  WIFI_STATE_AP_MODE         // Access Point mode active
+};
+```
+
+**Key Functions:**
+- `startAPMode()` - Creates AP, starts web server
+- `stopAPMode()` - Stops AP, returns to Station mode
+- `connectToWiFi(ssid, password)` - Handles connection with automatic AP exit
+- `scanNetworks()` - Scans for available WiFi networks
+- `saveWiFiCredentials()` - Stores up to 3 network credentials
+- `autoConnectWiFi()` - Tries saved networks on startup
+
+**Tracking Variables:**
+- `isAPMode` - Global flag for AP mode state
+- `connectedFromAPMode` - Tracks if connection made from AP mode
+- `connectionSuccessTime` - Timestamp for auto-exit timer
+
 ## Hardware Interfaces
 
 ### Display (ST7789V via SPI)

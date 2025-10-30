@@ -17,7 +17,9 @@ enum WiFiSettingsState {
   WIFI_STATE_PASSWORD_INPUT,
   WIFI_STATE_CONNECTING,
   WIFI_STATE_CONNECTED,
-  WIFI_STATE_ERROR
+  WIFI_STATE_ERROR,
+  WIFI_STATE_RESET_CONFIRM,
+  WIFI_STATE_AP_MODE
 };
 
 // WiFi network info
@@ -38,6 +40,10 @@ unsigned long lastBlink = 0;
 bool cursorVisible = true;
 String statusMessage = "";
 Preferences wifiPrefs;
+bool isAPMode = false;  // Track if device is in AP mode
+String apPassword = "vailsummit";  // Default AP password
+bool connectedFromAPMode = false;  // Track if connection was made from AP mode
+unsigned long connectionSuccessTime = 0;  // Time when connection succeeded
 
 // Forward declarations
 void startWiFiSettings(Adafruit_ST7789 &display);
@@ -46,11 +52,16 @@ int handleWiFiInput(char key, Adafruit_ST7789 &display);
 void scanNetworks();
 void drawNetworkList(Adafruit_ST7789 &display);
 void drawPasswordInput(Adafruit_ST7789 &display);
+void drawResetConfirmation(Adafruit_ST7789 &display);
+void drawAPModeScreen(Adafruit_ST7789 &display);
 void connectToWiFi(String ssid, String password);
 void saveWiFiCredentials(String ssid, String password);
 int loadAllWiFiCredentials(String ssids[3], String passwords[3]);
 bool loadWiFiCredentials(String &ssid, String &password);
 void autoConnectWiFi();
+void resetWiFiSettings();
+void startAPMode();
+void stopAPMode();
 
 // Start WiFi settings mode
 void startWiFiSettings(Adafruit_ST7789 &display) {
@@ -162,6 +173,12 @@ void drawWiFiUI(Adafruit_ST7789 &display) {
     display.setCursor(40, 130);
     display.print(statusMessage);
   }
+  else if (wifiState == WIFI_STATE_RESET_CONFIRM) {
+    drawResetConfirmation(display);
+  }
+  else if (wifiState == WIFI_STATE_AP_MODE) {
+    drawAPModeScreen(display);
+  }
 
   // Draw footer instructions
   display.setTextSize(1);
@@ -169,13 +186,17 @@ void drawWiFiUI(Adafruit_ST7789 &display) {
   String footerText = "";
 
   if (wifiState == WIFI_STATE_NETWORK_LIST) {
-    footerText = "*=Saved  Up/Down:Select  Enter:Connect  ESC:Back";
+    footerText = "Up/Down  Enter:Connect  A:AP Mode  R:Reset";
   } else if (wifiState == WIFI_STATE_PASSWORD_INPUT) {
     footerText = "Type password  Enter: Connect  ESC: Cancel";
   } else if (wifiState == WIFI_STATE_CONNECTED) {
     footerText = "Press ESC to return";
   } else if (wifiState == WIFI_STATE_ERROR) {
     footerText = "Enter: Rescan  ESC: Return";
+  } else if (wifiState == WIFI_STATE_RESET_CONFIRM) {
+    footerText = "Y: Yes, erase all  N: Cancel";
+  } else if (wifiState == WIFI_STATE_AP_MODE) {
+    footerText = "A: Disable AP Mode  ESC: Return";
   }
 
   int16_t x1, y1;
@@ -286,6 +307,78 @@ void drawNetworkList(Adafruit_ST7789 &display) {
   }
 }
 
+// Draw reset confirmation screen
+void drawResetConfirmation(Adafruit_ST7789 &display) {
+  display.setTextSize(2);
+  display.setTextColor(ST77XX_RED);
+
+  int16_t x1, y1;
+  uint16_t w, h;
+  display.getTextBounds("Reset WiFi?", 0, 0, &x1, &y1, &w, &h);
+  int centerX = (SCREEN_WIDTH - w) / 2;
+  display.setCursor(centerX, 70);
+  display.print("Reset WiFi?");
+
+  // Warning box
+  display.drawRect(20, 100, SCREEN_WIDTH - 40, 80, ST77XX_YELLOW);
+  display.fillRect(22, 102, SCREEN_WIDTH - 44, 76, 0x1800);  // Dark red background
+
+  display.setTextSize(1);
+  display.setTextColor(ST77XX_WHITE);
+  display.setCursor(30, 110);
+  display.print("This will erase ALL saved");
+  display.setCursor(30, 125);
+  display.print("WiFi network credentials.");
+  display.setCursor(30, 145);
+  display.print("This action cannot be");
+  display.setCursor(30, 160);
+  display.print("undone.");
+}
+
+// Draw AP mode screen
+void drawAPModeScreen(Adafruit_ST7789 &display) {
+  display.setTextSize(2);
+  display.setTextColor(ST77XX_GREEN);
+
+  int16_t x1, y1;
+  uint16_t w, h;
+  display.getTextBounds("AP Mode Active", 0, 0, &x1, &y1, &w, &h);
+  int centerX = (SCREEN_WIDTH - w) / 2;
+  display.setCursor(centerX, 60);
+  display.print("AP Mode Active");
+
+  // Info box
+  display.drawRect(10, 90, SCREEN_WIDTH - 20, 110, ST77XX_CYAN);
+  display.fillRect(12, 92, SCREEN_WIDTH - 24, 106, 0x0841);  // Dark blue background
+
+  display.setTextSize(1);
+  display.setTextColor(ST77XX_WHITE);
+  display.setCursor(20, 100);
+  display.print("Network Name (SSID):");
+
+  display.setTextSize(2);
+  display.setTextColor(ST77XX_CYAN);
+  display.setCursor(20, 115);
+  display.print(WiFi.softAPSSID());
+
+  display.setTextSize(1);
+  display.setTextColor(ST77XX_WHITE);
+  display.setCursor(20, 145);
+  display.print("Password:");
+
+  display.setTextSize(2);
+  display.setTextColor(ST77XX_CYAN);
+  display.setCursor(20, 160);
+  display.print(apPassword);
+
+  display.setTextSize(1);
+  display.setTextColor(ST77XX_WHITE);
+  display.setCursor(20, 185);
+  display.print("Connect and browse to:");
+  display.setCursor(20, 198);
+  display.print("http://192.168.4.1");
+}
+
 // Draw password input screen
 void drawPasswordInput(Adafruit_ST7789 &display) {
   display.setTextSize(1);
@@ -388,6 +481,21 @@ int handleWiFiInput(char key, Adafruit_ST7789 &display) {
       }
       return 1;
     }
+    else if (key == 'r' || key == 'R') {
+      // Show reset confirmation
+      wifiState = WIFI_STATE_RESET_CONFIRM;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawWiFiUI(display);
+      return 1;
+    }
+    else if (key == 'a' || key == 'A') {
+      // Enable AP mode
+      startAPMode();
+      wifiState = WIFI_STATE_AP_MODE;
+      beep(TONE_SELECT, BEEP_MEDIUM);
+      drawWiFiUI(display);
+      return 2;
+    }
     else if (key == KEY_ESC) {
       return -1;  // Exit WiFi settings
     }
@@ -433,6 +541,15 @@ int handleWiFiInput(char key, Adafruit_ST7789 &display) {
     }
   }
   else if (wifiState == WIFI_STATE_CONNECTED || wifiState == WIFI_STATE_ERROR) {
+    // Auto-exit after 2 seconds if connected from AP mode
+    if (wifiState == WIFI_STATE_CONNECTED && connectedFromAPMode) {
+      if (millis() - connectionSuccessTime >= 2000) {
+        Serial.println("Auto-exiting WiFi settings after successful AP mode connection");
+        connectedFromAPMode = false;  // Reset flag
+        return -1;  // Exit WiFi settings to main menu
+      }
+    }
+
     if (key == KEY_ESC) {
       return -1;  // Exit WiFi settings
     }
@@ -454,6 +571,67 @@ int handleWiFiInput(char key, Adafruit_ST7789 &display) {
       return 2;
     }
   }
+  else if (wifiState == WIFI_STATE_RESET_CONFIRM) {
+    if (key == 'y' || key == 'Y') {
+      // Confirm reset - erase all WiFi credentials
+      resetWiFiSettings();
+      beep(TONE_ERROR, BEEP_LONG);
+
+      // Show confirmation message
+      wifiState = WIFI_STATE_ERROR;
+      statusMessage = "WiFi settings erased";
+      drawWiFiUI(display);
+      delay(2000);
+
+      // Rescan networks
+      wifiState = WIFI_STATE_SCANNING;
+      drawWiFiUI(display);
+      scanNetworks();
+
+      if (networkCount > 0) {
+        wifiState = WIFI_STATE_NETWORK_LIST;
+      } else {
+        wifiState = WIFI_STATE_ERROR;
+        statusMessage = "No networks found. Try again?";
+      }
+
+      drawWiFiUI(display);
+      return 2;
+    }
+    else if (key == 'n' || key == 'N' || key == KEY_ESC) {
+      // Cancel reset, back to network list
+      wifiState = WIFI_STATE_NETWORK_LIST;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawWiFiUI(display);
+      return 1;
+    }
+  }
+  else if (wifiState == WIFI_STATE_AP_MODE) {
+    if (key == 'a' || key == 'A') {
+      // Disable AP mode and return to network list
+      stopAPMode();
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+
+      // Rescan networks
+      wifiState = WIFI_STATE_SCANNING;
+      drawWiFiUI(display);
+      scanNetworks();
+
+      if (networkCount > 0) {
+        wifiState = WIFI_STATE_NETWORK_LIST;
+      } else {
+        wifiState = WIFI_STATE_ERROR;
+        statusMessage = "No networks found. Try again?";
+      }
+
+      drawWiFiUI(display);
+      return 2;
+    }
+    else if (key == KEY_ESC) {
+      // Exit WiFi settings but keep AP mode active
+      return -1;
+    }
+  }
 
   return 0;
 }
@@ -462,6 +640,22 @@ int handleWiFiInput(char key, Adafruit_ST7789 &display) {
 void connectToWiFi(String ssid, String password) {
   Serial.print("Connecting to: ");
   Serial.println(ssid);
+
+  // If we were in AP mode, stop it first
+  bool wasInAPMode = isAPMode;
+  if (isAPMode) {
+    Serial.println("Stopping AP mode before connecting to WiFi...");
+    // Stop web server if running
+    extern bool webServerRunning;
+    extern void stopWebServer();
+    if (webServerRunning) {
+      stopWebServer();
+    }
+
+    WiFi.softAPdisconnect(true);
+    isAPMode = false;
+    delay(100);
+  }
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid.c_str(), password.c_str());
@@ -484,10 +678,24 @@ void connectToWiFi(String ssid, String password) {
 
     // Save credentials
     saveWiFiCredentials(ssid, password);
+
+    // If we were in AP mode, set flag to auto-exit after showing success
+    if (wasInAPMode) {
+      Serial.println("Connection successful from AP mode - will return to main menu");
+      connectedFromAPMode = true;
+      connectionSuccessTime = millis();
+      // The WiFi event handler will start the web server automatically
+    }
   } else {
     Serial.println("Connection failed!");
     wifiState = WIFI_STATE_ERROR;
     statusMessage = "Failed to connect";
+
+    // If we were in AP mode and connection failed, restart AP mode
+    if (wasInAPMode) {
+      Serial.println("Connection failed - restarting AP mode...");
+      startAPMode();
+    }
   }
 }
 
@@ -642,6 +850,103 @@ void autoConnectWiFi() {
   }
 
   Serial.println("Could not connect to any saved network");
+}
+
+// Reset WiFi settings - erase all saved credentials
+void resetWiFiSettings() {
+  Serial.println("Resetting WiFi settings...");
+
+  wifiPrefs.begin("wifi", false);
+
+  // Clear all saved network credentials
+  wifiPrefs.putString("ssid1", "");
+  wifiPrefs.putString("pass1", "");
+  wifiPrefs.putString("ssid2", "");
+  wifiPrefs.putString("pass2", "");
+  wifiPrefs.putString("ssid3", "");
+  wifiPrefs.putString("pass3", "");
+
+  wifiPrefs.end();
+
+  // Disconnect from current network
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+
+  Serial.println("All WiFi credentials erased");
+}
+
+// Start AP mode - create access point for direct connection
+void startAPMode() {
+  Serial.println("Starting AP mode...");
+
+  // Disconnect from any existing network
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  delay(100);
+
+  // Generate unique SSID based on chip ID
+  uint32_t chipId = 0;
+  for(int i=0; i<17; i=i+8) {
+    chipId |= ((ESP.getEfuseMac() >> (40 - i)) & 0xff) << i;
+  }
+  String apSSID = "VAIL-SUMMIT-" + String(chipId, HEX);
+  apSSID.toUpperCase();
+
+  // Start AP mode
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(apSSID.c_str(), apPassword.c_str());
+
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP Mode started. SSID: ");
+  Serial.println(apSSID);
+  Serial.print("Password: ");
+  Serial.println(apPassword);
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+
+  isAPMode = true;
+
+  // Start web server for AP mode
+  extern bool webServerRunning;
+  extern void setupWebServer();
+  if (!webServerRunning) {
+    Serial.println("Starting web server for AP mode...");
+    setupWebServer();
+  }
+}
+
+// Stop AP mode and switch back to station mode
+void stopAPMode() {
+  Serial.println("Stopping AP mode...");
+
+  // Stop web server if running in AP mode
+  extern bool webServerRunning;
+  extern void stopWebServer();
+  if (webServerRunning) {
+    Serial.println("Stopping web server for AP mode...");
+    stopWebServer();
+  }
+
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_OFF);
+  delay(100);
+  WiFi.mode(WIFI_STA);
+
+  isAPMode = false;
+
+  Serial.println("AP mode stopped");
+}
+
+// Check if web server should be running in AP mode
+void updateAPModeWebServer() {
+  extern bool webServerRunning;
+  extern void setupWebServer();
+  extern void stopWebServer();
+
+  if (isAPMode && !webServerRunning) {
+    Serial.println("Starting web server for AP mode...");
+    setupWebServer();
+  }
 }
 
 #endif // SETTINGS_WIFI_H
