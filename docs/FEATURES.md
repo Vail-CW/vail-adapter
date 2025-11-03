@@ -400,15 +400,21 @@ The decoder maintains a circular buffer of the last 30 timing samples and uses *
 - Dit/Dah boundary: 2 × dit length
 - Dah/Space boundary: 5 × Farnsworth dit length
 - Noise threshold: 10ms (filters glitches)
+- **Word gap stability:** fditLen locked to ditLen for consistent word detection (prevents threshold drift)
 
 ### Integration with Practice Mode
 
 **Real-Time Decoding:**
 - Enabled by default in practice mode
 - Press 'D' key to toggle display on/off
-- Shows decoded text (4-5 lines, word-wrapped, scrolling)
-- Displays detected WPM with color coding (green = matches configured, yellow = different)
+- Modern card-style UI with three info panels:
+  - **SET WPM** (cyan badge): Configured speed
+  - **ACTUAL** (green badge): Detected WPM with color coding (green = matches, yellow = different)
+  - **KEY TYPE** (yellow badge): Straight/Iambic A/Iambic B
+- Decoder display shows 2 lines of decoded text (17 chars per line, size 3 font)
 - Supports 9 prosigns: AR, AS, BK, BT, CT, HH, SK, SN, SOS (displayed as `<AR>`, etc.)
+- Hovering colored badges for visual hierarchy
+- Arrow keys adjust speed (up/down) and key type (left/right)
 
 **Timing Capture:**
 - **Straight Key:** Measures tone-on and silence durations directly
@@ -425,10 +431,11 @@ The decoder maintains a circular buffer of the last 30 timing samples and uses *
 - Full redraw avoided during practice for best audio performance
 
 **Auto-Flush Logic:**
-- Character boundary detection: 2.5 dits of silence triggers automatic flush
-- Manual timeout backup: 7 dits (word gap) if auto-flush missed
+- Character boundary detection: 2.5 dits of silence triggers automatic flush (in `addTiming()`)
+- Backup timeout: Word gap duration (7 dits) for mid-character abandonment (in `updatePracticeOscillator()`)
 - Prevents premature character splitting due to timing jitter
 - Ensures real-time character display without waiting for next element
+- Character overflow protection: Auto-clears after 34 characters (17 chars × 2 lines)
 
 ### Performance
 
