@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## IMPORTANT: DO NOT COMPILE
+
+**NEVER** run compilation commands (arduino-cli compile, etc.) for this project. The user will always handle compilation themselves. Do not check for compilation or build the project under any circumstances.
+
 ## Project Overview
 
 VAIL SUMMIT is a portable morse code training device built on the ESP32-S3 Feather platform with an LCD display and modern UI. It's designed for ham radio operators to practice receiving and sending morse code. Input comes from a CardKB I2C keyboard, iambic paddle, and capacitive touch pads. The device includes training modes, settings management, WiFi connectivity to the Vail internet morse repeater, and extensive hardware integration (battery monitoring, I2S audio).

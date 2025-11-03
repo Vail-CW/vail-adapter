@@ -11,12 +11,16 @@
 #include "settings_cw.h"
 #include "morse_decoder_adaptive.h"
 
+// Forward declaration of drawHeader (defined in menu_ui.h)
+void drawHeader();
+
 // Practice mode state
 bool practiceActive = false;
 bool ditPressed = false;
 bool dahPressed = false;
 bool lastDitPressed = false;
 bool lastDahPressed = false;
+unsigned long practiceStartupTime = 0;  // Track startup time for input delay
 
 // Iambic keyer state
 unsigned long ditDahTimer = 0;
@@ -65,6 +69,12 @@ void startPracticeMode(Adafruit_ST7789 &display) {
   inSpacing = false;
   ditMemory = false;
   dahMemory = false;
+  practiceStartupTime = millis();  // Record startup time for input delay
+
+  // Clear any lingering touch sensor state
+  touchRead(TOUCH_DIT_PIN);
+  touchRead(TOUCH_DAH_PIN);
+  delay(50);
 
   // Disable WiFi to prevent audio interference
   if (WiFi.status() == WL_CONNECTED) {
@@ -87,8 +97,9 @@ void startPracticeMode(Adafruit_ST7789 &display) {
   ditCount = 0;
   dahCount = 0;
 
-  // Reset decoder
+  // Reset decoder and clear any buffered state
   decoder.reset();
+  decoder.flush();  // Clear any pending timings
   decoder.setWPM(cwSpeed);
   decodedText = "";
   decodedMorse = "";
@@ -100,16 +111,24 @@ void startPracticeMode(Adafruit_ST7789 &display) {
 
   // Setup decoder callbacks
   decoder.messageCallback = [](String morse, String text) {
-    decodedMorse += morse;
-    decodedText += text;
+    // Process each character in the decoded text individually
+    for (int i = 0; i < text.length(); i++) {
+      // Check if adding this character would exceed our 34-char limit
+      if (decodedText.length() >= 34) {
+        // Clear everything and start fresh
+        decodedText = "";
+        decodedMorse = "";
+      }
 
-    // Limit text length (keep last 200 characters)
-    if (decodedText.length() > 200) {
-      decodedText = decodedText.substring(decodedText.length() - 200);
+      // Add the character
+      decodedText += text[i];
     }
-    if (decodedMorse.length() > 300) {
-      decodedMorse = decodedMorse.substring(decodedMorse.length() - 300);
+
+    // Also track morse pattern
+    if (decodedMorse.length() + morse.length() > 100) {
+      decodedMorse = "";  // Clear morse if it gets too long
     }
+    decodedMorse += morse;
 
     needsUIUpdate = true;
 
@@ -117,7 +136,8 @@ void startPracticeMode(Adafruit_ST7789 &display) {
     Serial.print(text);
     Serial.print(" (");
     Serial.print(morse);
-    Serial.println(")");
+    Serial.print(") -> Total length: ");
+    Serial.println(decodedText.length());
   };
 
   decoder.speedCallback = [](float wpm, float fwpm) {
@@ -126,6 +146,10 @@ void startPracticeMode(Adafruit_ST7789 &display) {
     Serial.println(" WPM");
   };
 
+  // Draw header with correct "PRACTICE" title
+  drawHeader();
+
+  // Draw practice UI
   drawPracticeUI(display);
 
   Serial.println("Practice mode started with decoding enabled");
@@ -145,171 +169,332 @@ void startPracticeMode(Adafruit_ST7789 &display) {
 
 // Draw practice UI
 void drawPracticeUI(Adafruit_ST7789 &display) {
-  // Clear screen (preserve header)
-  display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
+  // Clear screen but preserve top bar (0-40)
+  display.fillRect(0, 40, SCREEN_WIDTH, SCREEN_HEIGHT - 40, COLOR_BACKGROUND);
 
-  // Title
+  // Modern card-style info display (3 equal cards)
+  const int CARD_Y = 55;  // Increased to add more space below header
+  const int CARD_HEIGHT = 50;
+  const int CARD_SPACING = 4;
+  const int CARD_WIDTH = (SCREEN_WIDTH - (4 * CARD_SPACING)) / 3;
+
+  // Variables for text bounds
+  int16_t x1, y1;
+  uint16_t w, h;
+
+  // Get detected WPM for card 2
+  float detectedWPM = decoder.getWPM();
+
+  // Card 1: Set Speed
+  int card1X = CARD_SPACING;
+
+  // Card background (draw first)
+  display.fillRoundRect(card1X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 6, 0x2104);  // Dark gray
+  display.drawRoundRect(card1X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 6, 0x4A49);  // Light border
+
+  // Title badge for Card 1 (draw on top to hover over card)
+  display.fillRoundRect(card1X + 5, CARD_Y - 7, 60, 14, 4, ST77XX_CYAN);
+  display.setTextSize(1);
+  display.setTextColor(ST77XX_BLACK);
+  display.setCursor(card1X + 10, CARD_Y - 5);
+  display.print("SET WPM");
+
+  // Speed value (centered)
   display.setTextSize(2);
   display.setTextColor(ST77XX_CYAN);
-  display.setCursor(55, 50);
-  display.print("PRACTICE");
+  String speedStr = String(cwSpeed);
+  display.getTextBounds(speedStr, 0, 0, &x1, &y1, &w, &h);
+  display.setCursor(card1X + (CARD_WIDTH - w) / 2, CARD_Y + 20);
+  display.print(speedStr);
 
-  // Display current settings (compact row)
+  // Card 2: Detected Speed
+  int card2X = card1X + CARD_WIDTH + CARD_SPACING;
+
+  // Clear the entire card area first to remove old overlapping text
+  display.fillRect(card2X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, COLOR_BACKGROUND);
+
+  // Card background (draw first)
+  display.fillRoundRect(card2X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 6, 0x2104);
+  display.drawRoundRect(card2X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 6, 0x4A49);
+
+  // Title badge for Card 2 (draw on top to hover over card)
+  display.fillRoundRect(card2X + 5, CARD_Y - 7, 50, 14, 4, ST77XX_GREEN);
   display.setTextSize(1);
-  display.setTextColor(ST77XX_WHITE);
-  display.setCursor(10, 75);
-  display.print("Speed:");
-  display.setTextColor(ST77XX_GREEN);
-  display.print(cwSpeed);
-  display.setTextColor(0x7BEF);  // Gray
-  display.print(" WPM");
+  display.setTextColor(ST77XX_BLACK);
+  display.setCursor(card2X + 10, CARD_Y - 5);
+  display.print("ACTUAL");
 
-  // Show detected speed (always show if decoding enabled)
-  float detectedWPM = decoder.getWPM();
-  if (showDecoding && detectedWPM > 0) {
-    if (abs(detectedWPM - cwSpeed) > 1.0f) {
+  // WPM value (centered, color-coded)
+  display.setTextSize(2);
+  if (detectedWPM > 0) {
+    if (abs(detectedWPM - cwSpeed) > 2) {
       display.setTextColor(ST77XX_YELLOW);  // Yellow if different
     } else {
       display.setTextColor(ST77XX_GREEN);  // Green if same
     }
-    display.print(" -> ");
-    display.print(detectedWPM, 1);
+    String detStr = String(detectedWPM, 1);
+    display.getTextBounds(detStr, 0, 0, &x1, &y1, &w, &h);
+    display.setCursor(card2X + (CARD_WIDTH - w) / 2, CARD_Y + 20);
+    display.print(detStr);
+  } else {
+    display.setTextColor(0x7BEF);
+    display.setCursor(card2X + (CARD_WIDTH - 12) / 2, CARD_Y + 20);
+    display.print("--");
   }
 
-  display.setTextColor(ST77XX_WHITE);
-  display.setCursor(200, 75);
-  display.print("Tone:");
-  display.setTextColor(ST77XX_GREEN);
-  display.print(cwTone);
+  // Card 3: Key Type
+  int card3X = card2X + CARD_WIDTH + CARD_SPACING;
 
-  // Decoded text area (if enabled)
+  // Card background (draw first)
+  display.fillRoundRect(card3X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 6, 0x2104);
+  display.drawRoundRect(card3X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 6, 0x4A49);
+
+  // Title badge for Card 3 (draw on top to hover over card)
+  display.fillRoundRect(card3X + 5, CARD_Y - 7, 62, 14, 4, ST77XX_YELLOW);
+  display.setTextSize(1);
+  display.setTextColor(ST77XX_BLACK);
+  display.setCursor(card3X + 10, CARD_Y - 5);
+  display.print("KEY TYPE");
+
+  // Key type value (centered)
+  display.setTextSize(1);
+  display.setTextColor(ST77XX_YELLOW);
+  String keyStr;
+  if (cwKeyType == KEY_STRAIGHT) {
+    keyStr = "Straight";
+  } else if (cwKeyType == KEY_IAMBIC_A) {
+    keyStr = "Iambic A";
+  } else {
+    keyStr = "Iambic B";
+  }
+  display.getTextBounds(keyStr, 0, 0, &x1, &y1, &w, &h);
+  display.setCursor(card3X + (CARD_WIDTH - w) / 2, CARD_Y + 22);
+  display.print(keyStr);
+
+  // Decoded text area (if enabled) - modernized 2-line display
   if (showDecoding) {
+    // Add space between cards and decoder box
+    const int DECODER_Y = 115;  // Increased to add more spacing between cards and decoder
+    const int DECODER_HEIGHT = 70;
+
+    // Clear any potential stray characters from previous renders first
+    display.fillRect(0, DECODER_Y, SCREEN_WIDTH, DECODER_HEIGHT, COLOR_BACKGROUND);
+
+    // Draw rounded rect background for decoder
+    display.fillRoundRect(5, DECODER_Y, SCREEN_WIDTH - 10, DECODER_HEIGHT, 8, 0x1082);  // Dark gray background
+    display.drawRoundRect(5, DECODER_Y, SCREEN_WIDTH - 10, DECODER_HEIGHT, 8, 0x4A49);  // Light gray border
+
+    // Title badge
+    display.fillRoundRect(15, DECODER_Y - 7, 80, 14, 4, ST77XX_CYAN);
     display.setTextSize(1);
-    display.setTextColor(0x7BEF);  // Gray
-    display.setCursor(10, 95);
-    display.print("Decoded Text:");
+    display.setTextColor(ST77XX_BLACK);
+    display.setCursor(20, DECODER_Y - 5);
+    display.print("DECODER");
 
-    // Show decoded text (larger area now, 4-5 lines)
-    display.setTextSize(2);
+    // Show decoded text (2 lines, size 3 for modern look)
+    display.setTextSize(3);
     display.setTextColor(ST77XX_WHITE);
+    display.setTextWrap(false);  // Disable automatic text wrapping
 
-    // Calculate how much text fits (approx 26 chars per line at size 2)
-    int charsPerLine = 26;
-    int maxLines = 5;  // More lines available without morse display
-    int maxChars = charsPerLine * maxLines;
+    // STRICT: 17 chars per line, 2 lines max = 34 chars total
+    const int CHARS_PER_LINE = 17;
+    const int MAX_LINES = 2;
+    const int MAX_TOTAL_CHARS = 34;  // Absolute maximum
+    const int LINE1_Y = DECODER_Y + 17;  // Adjusted for new decoder position
+    const int LINE2_Y = DECODER_Y + 43;  // Adjusted for new decoder position
+    const int TEXT_X = 15;
 
-    int textStartIdx = max(0, (int)decodedText.length() - maxChars);
-    String displayText = decodedText.substring(textStartIdx);
-
-    // Word wrap: split into lines
-    int yPos = 110;  // Start higher without morse display
-    int xPos = 10;
-    String currentLine = "";
-
-    for (int i = 0; i < (int)displayText.length() && yPos < 195; i++) {
-      char c = displayText[i];
-      currentLine += c;
-
-      if (c == ' ' || i == (int)displayText.length() - 1) {
-        // Check if line exceeds width
-        if (currentLine.length() >= charsPerLine) {
-          display.setCursor(xPos, yPos);
-          display.print(currentLine);
-          currentLine = "";
-          yPos += 20;
-        }
-      }
+    // Enforce absolute maximum - truncate if needed
+    String safeText = decodedText;
+    if (safeText.length() > MAX_TOTAL_CHARS) {
+      safeText = safeText.substring(safeText.length() - MAX_TOTAL_CHARS);
     }
 
-    // Print remaining
-    if (currentLine.length() > 0 && yPos < 195) {
-      display.setCursor(xPos, yPos);
-      display.print(currentLine);
+    // Extract exactly the last 34 chars (or less if shorter)
+    int textLen = safeText.length();
+
+    // Line 1: Show last N characters that fit (up to 17)
+    if (textLen > 0) {
+      String line1;
+      if (textLen <= CHARS_PER_LINE) {
+        // All text fits on line 1
+        line1 = safeText;
+      } else {
+        // Text spans both lines - line 1 gets chars 0-16 of the last 34
+        line1 = safeText.substring(0, CHARS_PER_LINE);
+      }
+
+      Serial.print("Line 1 [");
+      Serial.print(TEXT_X);
+      Serial.print(",");
+      Serial.print(LINE1_Y);
+      Serial.print("]: '");
+      Serial.print(line1);
+      Serial.print("' (");
+      Serial.print(line1.length());
+      Serial.println(" chars)");
+
+      display.setCursor(TEXT_X, LINE1_Y);
+      display.print(line1);
+    }
+
+    // Line 2: Show overflow (chars 17-33)
+    if (textLen > CHARS_PER_LINE) {
+      String line2 = safeText.substring(CHARS_PER_LINE);  // Everything after char 17
+
+      Serial.print("Line 2: '");
+      Serial.print(line2);
+      Serial.print("' (");
+      Serial.print(line2.length());
+      Serial.println(" chars)");
+
+      // Clear the line 2 area specifically before rendering
+      // Line 2 is at y=138, text size 3 = ~24 pixels high
+      display.fillRect(6, LINE2_Y - 2, 308, 24, 0x1082);
+
+      // Render line 2 at fixed position - use multiple setCursor calls
+      display.setCursor(TEXT_X, LINE2_Y);
+      delay(1);  // Small delay to ensure cursor position takes
+      display.setCursor(TEXT_X, LINE2_Y);
+      display.print(line2);
     }
   } else {
     // Decoding disabled message
+    const int DECODER_Y = 115;
     display.setTextSize(1);
     display.setTextColor(0x7BEF);  // Gray
-    display.setCursor(50, 125);
+    display.setCursor(70, DECODER_Y + 30);  // Centered vertically in decoder area
     display.print("Press D to enable decoding");
   }
 
-  // Draw footer instructions
-  display.setTextSize(1);
+  // Draw footer instructions (updated with arrow key hints)
+  display.setTextSize(2);  // Increased from 1 to 2
   display.setTextColor(COLOR_WARNING);
-  String footerText = showDecoding ? "D:Hide Decode  ESC:Exit" : "D:Show Decode  ESC:Exit";
 
-  int16_t x1, y1;
-  uint16_t w, h;
-  display.getTextBounds(footerText, 0, 0, &x1, &y1, &w, &h);
-  int centerX = (SCREEN_WIDTH - w) / 2;
-  display.setCursor(centerX, SCREEN_HEIGHT - 12);
-  display.print(footerText);
+  // Split into two lines for better readability
+  if (showDecoding) {
+    String line1 = "\x18\x19:Speed \x1B\x1A:Key";
+    String line2 = "D:Hide ESC:Exit";
+
+    int16_t fx1, fy1;
+    uint16_t fw, fh;
+    display.getTextBounds(line1, 0, 0, &fx1, &fy1, &fw, &fh);
+    int fcenterX = (SCREEN_WIDTH - fw) / 2;
+    display.setCursor(fcenterX, SCREEN_HEIGHT - 32);  // Moved up from -28
+    display.print(line1);
+
+    display.getTextBounds(line2, 0, 0, &fx1, &fy1, &fw, &fh);
+    fcenterX = (SCREEN_WIDTH - fw) / 2;
+    display.setCursor(fcenterX, SCREEN_HEIGHT - 16);  // Moved up from -12
+    display.print(line2);
+  } else {
+    // When decoder is hidden, show single line
+    String footerText = "D:Show  ESC:Exit";
+    int16_t fx1, fy1;
+    uint16_t fw, fh;
+    display.getTextBounds(footerText, 0, 0, &fx1, &fy1, &fw, &fh);
+    int fcenterX = (SCREEN_WIDTH - fw) / 2;
+    display.setCursor(fcenterX, SCREEN_HEIGHT - 24);  // Moved up from -20
+    display.print(footerText);
+  }
 }
 
 // Draw only the decoded text area (for real-time updates without full redraw)
 void drawDecodedTextOnly(Adafruit_ST7789 &display) {
   if (!showDecoding) return;
 
-  // Also update the WPM display
-  display.fillRect(95, 75, 100, 10, COLOR_BACKGROUND);  // Clear WPM area
+  // Update the ACTUAL WPM card (Card 2)
+  const int CARD_Y = 55;  // Match updated position
+  const int CARD_HEIGHT = 50;
+  const int CARD_SPACING = 4;
+  const int CARD_WIDTH = (SCREEN_WIDTH - (4 * CARD_SPACING)) / 3;
+  int card2X = CARD_SPACING + CARD_WIDTH + CARD_SPACING;
+
   float detectedWPM = decoder.getWPM();
+
+  // Clear just the number area of card 2
+  display.fillRect(card2X + 5, CARD_Y + 10, CARD_WIDTH - 10, 35, 0x2104);
+
+  display.setTextSize(2);
   if (detectedWPM > 0) {
-    display.setTextSize(1);
-    if (abs(detectedWPM - cwSpeed) > 1.0f) {
+    if (abs(detectedWPM - cwSpeed) > 2) {
       display.setTextColor(ST77XX_YELLOW);  // Yellow if different
     } else {
       display.setTextColor(ST77XX_GREEN);  // Green if same
     }
-    display.setCursor(95, 75);
-    display.print(" -> ");
-    display.print(detectedWPM, 1);
+    String detStr = String(detectedWPM, 1);
+    int16_t x1, y1;
+    uint16_t w, h;
+    display.getTextBounds(detStr, 0, 0, &x1, &y1, &w, &h);
+    display.setCursor(card2X + (CARD_WIDTH - w) / 2, CARD_Y + 20);
+    display.print(detStr);
+  } else {
+    display.setTextColor(0x7BEF);
+    display.setCursor(card2X + (CARD_WIDTH - 12) / 2, CARD_Y + 20);
+    display.print("--");
   }
 
-  // Clear decoded text area only (from y=95 to y=200)
-  display.fillRect(0, 95, SCREEN_WIDTH, 105, COLOR_BACKGROUND);
+  // Decoder box positioning (matches drawPracticeUI)
+  const int DECODER_Y = 115;  // Match updated position
+  const int DECODER_HEIGHT = 70;
 
-  display.setTextSize(1);
-  display.setTextColor(0x7BEF);  // Gray
-  display.setCursor(10, 95);
-  display.print("Decoded Text:");
+  // Clear the entire content area inside the decoder box
+  display.fillRect(6, DECODER_Y + 10, 308, 58, 0x1082);  // Clear entire text area
 
-  // Show decoded text (larger area now, 4-5 lines)
-  display.setTextSize(2);
+  // Show decoded text (2 lines, size 3 for modern look)
+  display.setTextSize(3);
   display.setTextColor(ST77XX_WHITE);
+  display.setTextWrap(false);  // Disable automatic text wrapping
 
-  // Calculate how much text fits (approx 26 chars per line at size 2)
-  int charsPerLine = 26;
-  int maxLines = 5;  // More lines available without morse display
-  int maxChars = charsPerLine * maxLines;
+  // STRICT: 17 chars per line, 2 lines max = 34 chars total
+  const int CHARS_PER_LINE = 17;
+  const int MAX_TOTAL_CHARS = 34;  // Absolute maximum
+  const int LINE1_Y = DECODER_Y + 17;  // Match drawPracticeUI
+  const int LINE2_Y = DECODER_Y + 43;  // Match drawPracticeUI
+  const int TEXT_X = 15;
 
-  int textStartIdx = max(0, (int)decodedText.length() - maxChars);
-  String displayText = decodedText.substring(textStartIdx);
-
-  // Word wrap: split into lines
-  int yPos = 110;  // Start higher without morse display
-  int xPos = 10;
-  String currentLine = "";
-
-  for (int i = 0; i < (int)displayText.length() && yPos < 195; i++) {
-    char c = displayText[i];
-    currentLine += c;
-
-    if (c == ' ' || i == (int)displayText.length() - 1) {
-      // Check if line exceeds width
-      if (currentLine.length() >= charsPerLine) {
-        display.setCursor(xPos, yPos);
-        display.print(currentLine);
-        currentLine = "";
-        yPos += 20;
-      }
-    }
+  // Enforce absolute maximum - truncate if needed
+  String safeText = decodedText;
+  if (safeText.length() > MAX_TOTAL_CHARS) {
+    safeText = safeText.substring(safeText.length() - MAX_TOTAL_CHARS);
   }
 
-  // Print remaining
-  if (currentLine.length() > 0 && yPos < 195) {
-    display.setCursor(xPos, yPos);
-    display.print(currentLine);
+  // Extract exactly the last 34 chars (or less if shorter)
+  int textLen = safeText.length();
+
+  // Line 1: Show last N characters that fit (up to 17)
+  if (textLen > 0) {
+    String line1;
+    if (textLen <= CHARS_PER_LINE) {
+      // All text fits on line 1
+      line1 = safeText;
+    } else {
+      // Text spans both lines - line 1 gets chars 0-16 of the last 34
+      line1 = safeText.substring(0, CHARS_PER_LINE);
+    }
+
+    display.setCursor(TEXT_X, LINE1_Y);
+    display.print(line1);
+
+    // CRITICAL: Reset text wrapping state after line 1
+    // The display library may have advanced the cursor, so we need to
+    // ensure a clean state before attempting line 2
+    display.setTextWrap(false);
+  }
+
+  // Line 2: Show overflow (chars 17-33)
+  if (textLen > CHARS_PER_LINE) {
+    String line2 = safeText.substring(CHARS_PER_LINE);  // Everything after char 17
+
+    // Clear the line 2 area specifically before rendering
+    // Line 2 is at y=138, text size 3 = ~24 pixels high
+    display.fillRect(6, LINE2_Y - 2, 308, 24, 0x1082);
+
+    // Render line 2 at fixed position - use multiple setCursor calls
+    display.setCursor(TEXT_X, LINE2_Y);
+    delay(1);  // Small delay to ensure cursor position takes
+    display.setCursor(TEXT_X, LINE2_Y);
+    display.print(line2);
   }
 }
 
@@ -359,6 +544,58 @@ int handlePracticeInput(char key, Adafruit_ST7789 &display) {
     beep(TONE_MENU_NAV, BEEP_SHORT);
     return 1;
   }
+  else if (key == KEY_UP) {
+    // Increase speed
+    if (cwSpeed < WPM_MAX) {
+      cwSpeed++;
+      ditDuration = DIT_DURATION(cwSpeed);
+      decoder.setWPM(cwSpeed);
+      saveCWSettings();  // Save to preferences
+      drawPracticeUI(display);
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      return 1;
+    }
+  }
+  else if (key == KEY_DOWN) {
+    // Decrease speed
+    if (cwSpeed > WPM_MIN) {
+      cwSpeed--;
+      ditDuration = DIT_DURATION(cwSpeed);
+      decoder.setWPM(cwSpeed);
+      saveCWSettings();  // Save to preferences
+      drawPracticeUI(display);
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      return 1;
+    }
+  }
+  else if (key == KEY_LEFT) {
+    // Cycle key type backward: Iambic B -> Iambic A -> Straight -> Iambic B
+    if (cwKeyType == KEY_IAMBIC_B) {
+      cwKeyType = KEY_IAMBIC_A;
+    } else if (cwKeyType == KEY_IAMBIC_A) {
+      cwKeyType = KEY_STRAIGHT;
+    } else {
+      cwKeyType = KEY_IAMBIC_B;
+    }
+    saveCWSettings();  // Save to preferences
+    drawPracticeUI(display);
+    beep(TONE_MENU_NAV, BEEP_SHORT);
+    return 1;
+  }
+  else if (key == KEY_RIGHT) {
+    // Cycle key type forward: Straight -> Iambic A -> Iambic B -> Straight
+    if (cwKeyType == KEY_STRAIGHT) {
+      cwKeyType = KEY_IAMBIC_A;
+    } else if (cwKeyType == KEY_IAMBIC_A) {
+      cwKeyType = KEY_IAMBIC_B;
+    } else {
+      cwKeyType = KEY_STRAIGHT;
+    }
+    saveCWSettings();  // Save to preferences
+    drawPracticeUI(display);
+    beep(TONE_MENU_NAV, BEEP_SHORT);
+    return 1;
+  }
 
   return 0;
 }
@@ -367,11 +604,13 @@ int handlePracticeInput(char key, Adafruit_ST7789 &display) {
 void updatePracticeOscillator() {
   if (!practiceActive) return;
 
+  // Ignore all input for first 1000ms to prevent startup glitches
+  if (millis() - practiceStartupTime < 1000) {
+    return;
+  }
+
   // Check for decoder timeout (flush if no activity for word gap duration)
-  // The decoder auto-flushes on character gaps (2.5 dits), but we need a backup
-  // timeout to flush if the user stops keying mid-character or after a character
-  // without enough silence to trigger the auto-flush (e.g., released paddles but
-  // silence duration not yet captured). Use word gap (7 dits) as safety timeout.
+  // This is a backup to flush any buffered data if user stops keying mid-character
   if (showDecoding && lastElementTime > 0 && !ditPressed && !dahPressed) {
     unsigned long timeSinceLastElement = millis() - lastElementTime;
     float wordGapDuration = MorseWPM::wordGap(decoder.getWPM());
