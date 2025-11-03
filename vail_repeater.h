@@ -240,8 +240,10 @@ void connectToVail(String channel) {
   // Set event handler first
   webSocket.onEvent(webSocketEvent);
 
-  // Enable debug output and heartbeat
-  webSocket.enableHeartbeat(15000, 3000, 2);
+  // Enable aggressive heartbeat to prevent disconnections
+  // Parameters: ping interval (10s), pong timeout (5s), max retries (3)
+  // Aggressive settings prevent Cloud Run and load balancer timeouts
+  webSocket.enableHeartbeat(10000, 5000, 3);
 
   // Set subprotocol using extra headers (WebSocketsClient method)
   webSocket.setExtraHeaders("Sec-WebSocket-Protocol: json.vail.woozle.org");
@@ -398,8 +400,8 @@ void processReceivedMessage(String jsonPayload) {
 
   JsonArray durations = doc["Duration"];
   if (durations.size() > 0) {
-    // Check if this is our own message echoed back (within 100ms tolerance)
-    if (abs(msg.timestamp - lastTxTimestamp) < 100) {
+    // Check if this is our own message echoed back (within 2000ms tolerance for network round-trip)
+    if (abs(msg.timestamp - lastTxTimestamp) < 2000) {
       Serial.println("Ignoring echo of our own transmission");
       return;
     }
@@ -509,8 +511,9 @@ void sendVailMessage(std::vector<uint16_t> durations, int64_t timestamp) {
 void updateVailRepeater(Adafruit_ST7789 &display) {
   webSocket.loop();
 
-  // Send keepalive every 30 seconds
-  if (vailState == VAIL_CONNECTED && (millis() - lastKeepaliveTime > 30000)) {
+  // Send keepalive every 15 seconds (aggressive keepalive prevents Cloud Run and load balancer timeouts)
+  // This matches the web repeater's 15s interval for optimal connection stability
+  if (vailState == VAIL_CONNECTED && (millis() - lastKeepaliveTime > 15000)) {
     sendKeepalive();
     lastKeepaliveTime = millis();
   }

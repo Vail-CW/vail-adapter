@@ -111,9 +111,10 @@ protected:
       ditLen = weightedAverage(ditLengths);
     }
 
-    if (!fditLengths.empty()) {
-      fditLen = weightedAverage(fditLengths);
-    }
+    // Lock fditLen to ditLen for consistent word gap detection
+    // This prevents the threshold from changing based on pause timing
+    // and gives stable word gap detection at 5 * ditLen
+    fditLen = ditLen;
 
     // Update thresholds
     updateThresholds();

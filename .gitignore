@@ -1,0 +1,13 @@
+# IDE and editor directories
+.claude/
+.vscode/
+.idea/
+
+# Build artifacts
+*.bin
+*.elf
+*.hex
+
+# OS files
+.DS_Store
+Thumbs.db
