@@ -26,6 +26,8 @@ enum MenuMode {
   MODE_CW_ACADEMY_PRACTICE_TYPE_SELECT,
   MODE_CW_ACADEMY_MESSAGE_TYPE_SELECT,
   MODE_CW_ACADEMY_COPY_PRACTICE,
+  MODE_CW_ACADEMY_SENDING_PRACTICE,
+  MODE_CW_ACADEMY_QSO_PRACTICE,
   MODE_GAMES_MENU,
   MODE_MORSE_SHOOTER,
   MODE_RADIO_MENU,
@@ -59,6 +61,8 @@ void drawCWASessionSelectUI(Adafruit_ST7789& tft);
 void drawCWAPracticeTypeSelectUI(Adafruit_ST7789& tft);
 void drawCWAMessageTypeSelectUI(Adafruit_ST7789& tft);
 void drawCWACopyPracticeUI(Adafruit_ST7789& tft);
+void drawCWASendingPracticeUI(Adafruit_ST7789& tft);
+void drawCWAQSOPracticeUI(Adafruit_ST7789& tft);
 void drawMorseShooterUI(Adafruit_ST7789& tft);
 void drawWiFiUI(Adafruit_ST7789& tft);
 void drawCWSettingsUI(Adafruit_ST7789& tft);
@@ -196,6 +200,12 @@ void drawHeader() {
   } else if (currentMode == MODE_CW_ACADEMY_PRACTICE_TYPE_SELECT) {
     title = "CW ACADEMY";
   } else if (currentMode == MODE_CW_ACADEMY_MESSAGE_TYPE_SELECT) {
+    title = "CW ACADEMY";
+  } else if (currentMode == MODE_CW_ACADEMY_COPY_PRACTICE) {
+    title = "CW ACADEMY";
+  } else if (currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE) {
+    title = "CW ACADEMY";
+  } else if (currentMode == MODE_CW_ACADEMY_QSO_PRACTICE) {
     title = "CW ACADEMY";
   } else if (currentMode == MODE_GAMES_MENU) {
     title = "GAMES";
@@ -417,6 +427,10 @@ void drawMenu() {
     drawCWAMessageTypeSelectUI(tft);
   } else if (currentMode == MODE_CW_ACADEMY_COPY_PRACTICE) {
     drawCWACopyPracticeUI(tft);
+  } else if (currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE) {
+    drawCWASendingPracticeUI(tft);
+  } else if (currentMode == MODE_CW_ACADEMY_QSO_PRACTICE) {
+    drawCWAQSOPracticeUI(tft);
   } else if (currentMode == MODE_MORSE_SHOOTER) {
     drawMorseShooterUI(tft);
   } else if (currentMode == MODE_RADIO_OUTPUT) {

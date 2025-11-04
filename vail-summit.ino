@@ -254,6 +254,7 @@ void loop() {
   static unsigned long lastStatusUpdate = 0;
   if (currentMode != MODE_PRACTICE &&
       currentMode != MODE_HEAR_IT_TYPE_IT &&
+      currentMode != MODE_CW_ACADEMY_SENDING_PRACTICE &&
       currentMode != MODE_MORSE_SHOOTER &&
       currentMode != MODE_RADIO_OUTPUT &&
       millis() - lastStatusUpdate > 5000) { // Update every 5 seconds
@@ -276,6 +277,11 @@ void loop() {
     }
   }
 
+  // Update CW Academy sending practice (paddle input processing)
+  if (currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE) {
+    updateCWASendingPractice();
+  }
+
   // Update Vail repeater if in Vail mode
   if (currentMode == MODE_VAIL_REPEATER) {
     updateVailRepeater(tft);
@@ -296,7 +302,7 @@ void loop() {
 
   // Check for keyboard input (reduce I2C polling frequency during practice/game/radio modes)
   static unsigned long lastKeyCheck = 0;
-  unsigned long keyCheckInterval = (currentMode == MODE_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_RADIO_OUTPUT) ? 50 : 10; // Slower polling in practice/game/radio
+  unsigned long keyCheckInterval = (currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_RADIO_OUTPUT) ? 50 : 10; // Slower polling in practice/game/radio
 
   if (millis() - lastKeyCheck >= keyCheckInterval) {
     Wire.requestFrom(CARDKB_ADDR, 1);
@@ -317,5 +323,5 @@ void loop() {
   }
 
   // Minimal delay in practice, game, radio, and vail modes for better audio/graphics performance
-  delay((currentMode == MODE_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_VAIL_REPEATER) ? 1 : 10);
+  delay((currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_VAIL_REPEATER) ? 1 : 10);
 }

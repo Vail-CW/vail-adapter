@@ -34,6 +34,8 @@ int handleCWASessionSelectInput(char key, Adafruit_ST7789& tft);
 int handleCWAPracticeTypeSelectInput(char key, Adafruit_ST7789& tft);
 int handleCWAMessageTypeSelectInput(char key, Adafruit_ST7789& tft);
 int handleCWACopyPracticeInput(char key, Adafruit_ST7789& tft);
+int handleCWASendingPracticeInput(char key, Adafruit_ST7789& tft);
+int handleCWAQSOPracticeInput(char key, Adafruit_ST7789& tft);
 int handleMorseShooterInput(char key, Adafruit_ST7789& tft);
 
 void drawHearItTypeItUI(Adafruit_ST7789& tft);
@@ -49,7 +51,9 @@ void playCurrentCallsign();
 void startPracticeMode(Adafruit_ST7789& tft);
 void startCWAcademy(Adafruit_ST7789& tft);
 void startCWACopyPractice(Adafruit_ST7789& tft);
-void startCWACopyRound();
+void startCWACopyRound(Adafruit_ST7789& tft);
+void startCWASendingPractice(Adafruit_ST7789& tft);
+void startCWAQSOPractice(Adafruit_ST7789& tft);
 void startWiFiSettings(Adafruit_ST7789& tft);
 void startCWSettings(Adafruit_ST7789& tft);
 void initVolumeSettings(Adafruit_ST7789& tft);
@@ -448,6 +452,10 @@ void handleKeyPress(char key) {
     } else if (result == 2) {
       // Redraw requested
       drawCWAPracticeTypeSelectUI(tft);
+    } else if (result == 3) {
+      // Start QSO practice (sessions 11-13)
+      currentMode = MODE_CW_ACADEMY_QSO_PRACTICE;
+      startCWAQSOPractice(tft);
     }
     return;
   }
@@ -465,10 +473,14 @@ void handleKeyPress(char key) {
       currentMode = MODE_CW_ACADEMY_COPY_PRACTICE;
       startCWACopyPractice(tft);
       delay(1000);  // Brief pause before first round
-      startCWACopyRound();
+      startCWACopyRound(tft);
     } else if (result == 2) {
       // Redraw requested
       drawCWAMessageTypeSelectUI(tft);
+    } else if (result == 3) {
+      // Start sending practice mode
+      currentMode = MODE_CW_ACADEMY_SENDING_PRACTICE;
+      startCWASendingPractice(tft);
     }
     return;
   }
@@ -484,6 +496,36 @@ void handleKeyPress(char key) {
     } else if (result == 2) {
       // Redraw requested
       drawCWACopyPracticeUI(tft);
+    }
+    return;
+  }
+
+  // Handle CW Academy sending practice mode
+  if (currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE) {
+    int result = handleCWASendingPracticeInput(key, tft);
+    if (result == -1) {
+      // Exit to message type selection
+      currentMode = MODE_CW_ACADEMY_MESSAGE_TYPE_SELECT;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawCWAMessageTypeSelectUI(tft);
+    } else if (result == 2) {
+      // Redraw requested
+      drawCWASendingPracticeUI(tft);
+    }
+    return;
+  }
+
+  // Handle CW Academy QSO practice mode
+  if (currentMode == MODE_CW_ACADEMY_QSO_PRACTICE) {
+    int result = handleCWAQSOPracticeInput(key, tft);
+    if (result == -1) {
+      // Exit to practice type selection (since QSO practice bypasses message type)
+      currentMode = MODE_CW_ACADEMY_PRACTICE_TYPE_SELECT;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawCWAPracticeTypeSelectUI(tft);
+    } else if (result == 2) {
+      // Redraw requested
+      drawCWAQSOPracticeUI(tft);
     }
     return;
   }
