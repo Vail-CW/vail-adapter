@@ -12,6 +12,7 @@
 
 // WiFi settings state machine
 enum WiFiSettingsState {
+  WIFI_STATE_CURRENT_CONNECTION,  // Show current connection status
   WIFI_STATE_SCANNING,
   WIFI_STATE_NETWORK_LIST,
   WIFI_STATE_PASSWORD_INPUT,
@@ -44,12 +45,14 @@ bool isAPMode = false;  // Track if device is in AP mode
 String apPassword = "vailsummit";  // Default AP password
 bool connectedFromAPMode = false;  // Track if connection was made from AP mode
 unsigned long connectionSuccessTime = 0;  // Time when connection succeeded
+String failedSSID = "";  // Track SSID that failed to connect (for password retry)
 
 // Forward declarations
 void startWiFiSettings(Adafruit_ST7789 &display);
 void drawWiFiUI(Adafruit_ST7789 &display);
 int handleWiFiInput(char key, Adafruit_ST7789 &display);
 void scanNetworks();
+void drawCurrentConnection(Adafruit_ST7789 &display);
 void drawNetworkList(Adafruit_ST7789 &display);
 void drawPasswordInput(Adafruit_ST7789 &display);
 void drawResetConfirmation(Adafruit_ST7789 &display);
@@ -65,22 +68,30 @@ void stopAPMode();
 
 // Start WiFi settings mode
 void startWiFiSettings(Adafruit_ST7789 &display) {
-  wifiState = WIFI_STATE_SCANNING;
   selectedNetwork = 0;
   passwordInput = "";
-  statusMessage = "Scanning for networks...";
 
-  drawWiFiUI(display);
-  scanNetworks();
-
-  if (networkCount > 0) {
-    wifiState = WIFI_STATE_NETWORK_LIST;
+  // Check if already connected to WiFi
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("Already connected to WiFi - showing current connection");
+    wifiState = WIFI_STATE_CURRENT_CONNECTION;
+    drawWiFiUI(display);
   } else {
-    wifiState = WIFI_STATE_ERROR;
-    statusMessage = "No networks found. Try again?";
-  }
+    // Not connected, scan for networks
+    wifiState = WIFI_STATE_SCANNING;
+    statusMessage = "Scanning for networks...";
+    drawWiFiUI(display);
+    scanNetworks();
 
-  drawWiFiUI(display);
+    if (networkCount > 0) {
+      wifiState = WIFI_STATE_NETWORK_LIST;
+    } else {
+      wifiState = WIFI_STATE_ERROR;
+      statusMessage = "No networks found. Try again?";
+    }
+
+    drawWiFiUI(display);
+  }
 }
 
 // Scan for WiFi networks
@@ -127,12 +138,82 @@ void scanNetworks() {
   }
 }
 
+// Draw current connection status
+void drawCurrentConnection(Adafruit_ST7789 &display) {
+  display.setTextSize(2);
+  display.setTextColor(ST77XX_GREEN);
+
+  int16_t x1, y1;
+  uint16_t w, h;
+  display.getTextBounds("WiFi Connected", 0, 0, &x1, &y1, &w, &h);
+  int centerX = (SCREEN_WIDTH - w) / 2;
+  display.setCursor(centerX, 60);
+  display.print("WiFi Connected");
+
+  // Info box
+  display.drawRect(10, 90, SCREEN_WIDTH - 20, 110, ST77XX_CYAN);
+  display.fillRect(12, 92, SCREEN_WIDTH - 24, 106, 0x0841);  // Dark blue background
+
+  // Network name
+  display.setTextSize(1);
+  display.setTextColor(ST77XX_WHITE);
+  display.setCursor(20, 100);
+  display.print("Network:");
+
+  display.setTextSize(2);
+  display.setTextColor(ST77XX_CYAN);
+  display.setCursor(20, 115);
+  String ssid = WiFi.SSID();
+  if (ssid.length() > 18) {
+    ssid = ssid.substring(0, 15) + "...";
+  }
+  display.print(ssid);
+
+  // IP Address
+  display.setTextSize(1);
+  display.setTextColor(ST77XX_WHITE);
+  display.setCursor(20, 145);
+  display.print("IP Address:");
+
+  display.setTextSize(1);
+  display.setTextColor(ST77XX_CYAN);
+  display.setCursor(20, 160);
+  display.print(WiFi.localIP().toString());
+
+  // Signal strength
+  display.setTextColor(ST77XX_WHITE);
+  display.setCursor(20, 180);
+  display.print("Signal: ");
+
+  int rssi = WiFi.RSSI();
+  int bars = map(rssi, -100, -40, 1, 4);
+  bars = constrain(bars, 1, 4);
+
+  // Draw signal bars
+  for (int b = 0; b < 4; b++) {
+    int barHeight = (b + 1) * 3;
+    int barX = 70 + b * 5;
+    if (b < bars) {
+      display.fillRect(barX, 185 - barHeight, 4, barHeight, ST77XX_GREEN);
+    } else {
+      display.drawRect(barX, 185 - barHeight, 4, barHeight, 0x4208);
+    }
+  }
+
+  display.setCursor(95, 180);
+  display.print(rssi);
+  display.print(" dBm");
+}
+
 // Draw WiFi UI based on current state
 void drawWiFiUI(Adafruit_ST7789 &display) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
-  if (wifiState == WIFI_STATE_SCANNING) {
+  if (wifiState == WIFI_STATE_CURRENT_CONNECTION) {
+    drawCurrentConnection(display);
+  }
+  else if (wifiState == WIFI_STATE_SCANNING) {
     display.setTextSize(2);
     display.setTextColor(ST77XX_CYAN);
     display.setCursor(40, 100);
@@ -185,14 +266,21 @@ void drawWiFiUI(Adafruit_ST7789 &display) {
   display.setTextColor(COLOR_WARNING);
   String footerText = "";
 
-  if (wifiState == WIFI_STATE_NETWORK_LIST) {
+  if (wifiState == WIFI_STATE_CURRENT_CONNECTION) {
+    footerText = "C: Change Networks  ESC: Return";
+  } else if (wifiState == WIFI_STATE_NETWORK_LIST) {
     footerText = "Up/Down  Enter:Connect  A:AP Mode  R:Reset";
   } else if (wifiState == WIFI_STATE_PASSWORD_INPUT) {
     footerText = "Type password  Enter: Connect  ESC: Cancel";
   } else if (wifiState == WIFI_STATE_CONNECTED) {
     footerText = "Press ESC to return";
   } else if (wifiState == WIFI_STATE_ERROR) {
-    footerText = "Enter: Rescan  ESC: Return";
+    // Check if we can offer password retry
+    if (failedSSID.length() > 0 && statusMessage.indexOf("password") >= 0) {
+      footerText = "P: Retry Password  Enter: Rescan  ESC: Return";
+    } else {
+      footerText = "Enter: Rescan  ESC: Return";
+    }
   } else if (wifiState == WIFI_STATE_RESET_CONFIRM) {
     footerText = "Y: Yes, erase all  N: Cancel";
   } else if (wifiState == WIFI_STATE_AP_MODE) {
@@ -446,7 +534,30 @@ int handleWiFiInput(char key, Adafruit_ST7789 &display) {
     drawPasswordInput(display);
   }
 
-  if (wifiState == WIFI_STATE_NETWORK_LIST) {
+  if (wifiState == WIFI_STATE_CURRENT_CONNECTION) {
+    if (key == 'c' || key == 'C') {
+      // User wants to change networks - scan and show network list
+      wifiState = WIFI_STATE_SCANNING;
+      statusMessage = "Scanning for networks...";
+      beep(TONE_SELECT, BEEP_MEDIUM);
+      drawWiFiUI(display);
+      scanNetworks();
+
+      if (networkCount > 0) {
+        wifiState = WIFI_STATE_NETWORK_LIST;
+      } else {
+        wifiState = WIFI_STATE_ERROR;
+        statusMessage = "No networks found. Try again?";
+      }
+
+      drawWiFiUI(display);
+      return 2;
+    }
+    else if (key == KEY_ESC) {
+      return -1;  // Exit WiFi settings
+    }
+  }
+  else if (wifiState == WIFI_STATE_NETWORK_LIST) {
     if (key == KEY_UP) {
       if (selectedNetwork > 0) {
         selectedNetwork--;
@@ -464,8 +575,31 @@ int handleWiFiInput(char key, Adafruit_ST7789 &display) {
       }
     }
     else if (key == KEY_ENTER || key == KEY_ENTER_ALT) {
-      // Check if network requires password
-      if (networks[selectedNetwork].encrypted) {
+      // Check if this network is already saved
+      String savedSSIDs[3];
+      String savedPasswords[3];
+      int savedCount = loadAllWiFiCredentials(savedSSIDs, savedPasswords);
+
+      bool isSaved = false;
+      String savedPassword = "";
+      for (int j = 0; j < savedCount; j++) {
+        if (networks[selectedNetwork].ssid == savedSSIDs[j]) {
+          isSaved = true;
+          savedPassword = savedPasswords[j];
+          break;
+        }
+      }
+
+      if (isSaved) {
+        // Network is saved, connect using saved password
+        Serial.println("Network is saved - connecting with saved credentials");
+        wifiState = WIFI_STATE_CONNECTING;
+        beep(TONE_SELECT, BEEP_MEDIUM);
+        drawWiFiUI(display);
+        connectToWiFi(networks[selectedNetwork].ssid, savedPassword);
+        return 2;
+      } else if (networks[selectedNetwork].encrypted) {
+        // Not saved and encrypted - prompt for password
         wifiState = WIFI_STATE_PASSWORD_INPUT;
         passwordInput = "";
         cursorVisible = true;
@@ -551,10 +685,39 @@ int handleWiFiInput(char key, Adafruit_ST7789 &display) {
     }
 
     if (key == KEY_ESC) {
+      failedSSID = "";  // Clear failed SSID
       return -1;  // Exit WiFi settings
+    }
+    else if (wifiState == WIFI_STATE_ERROR && (key == 'p' || key == 'P')) {
+      // Retry password if available
+      if (failedSSID.length() > 0 && statusMessage.indexOf("password") >= 0) {
+        Serial.println("Retrying password entry for failed network");
+
+        // Find the failed network in the network list
+        int failedNetworkIndex = -1;
+        for (int i = 0; i < networkCount; i++) {
+          if (networks[i].ssid == failedSSID) {
+            failedNetworkIndex = i;
+            break;
+          }
+        }
+
+        if (failedNetworkIndex >= 0) {
+          selectedNetwork = failedNetworkIndex;
+          wifiState = WIFI_STATE_PASSWORD_INPUT;
+          passwordInput = "";
+          cursorVisible = true;
+          lastBlink = millis();
+          beep(TONE_SELECT, BEEP_MEDIUM);
+          failedSSID = "";  // Clear failed SSID
+          drawWiFiUI(display);
+          return 2;
+        }
+      }
     }
     else if (wifiState == WIFI_STATE_ERROR && (key == KEY_ENTER || key == KEY_ENTER_ALT)) {
       // Rescan networks on ENTER when in error state
+      failedSSID = "";  // Clear failed SSID
       wifiState = WIFI_STATE_SCANNING;
       statusMessage = "Scanning for networks...";
       drawWiFiUI(display);
@@ -689,7 +852,27 @@ void connectToWiFi(String ssid, String password) {
   } else {
     Serial.println("Connection failed!");
     wifiState = WIFI_STATE_ERROR;
-    statusMessage = "Failed to connect";
+
+    // Track failed SSID for potential password retry
+    failedSSID = ssid;
+
+    // Check if this was a saved network (might have wrong password)
+    String savedSSIDs[3];
+    String savedPasswords[3];
+    int savedCount = loadAllWiFiCredentials(savedSSIDs, savedPasswords);
+    bool wasSaved = false;
+    for (int j = 0; j < savedCount; j++) {
+      if (ssid == savedSSIDs[j]) {
+        wasSaved = true;
+        break;
+      }
+    }
+
+    if (wasSaved) {
+      statusMessage = "Connection failed. Wrong password?";
+    } else {
+      statusMessage = "Failed to connect";
+    }
 
     // If we were in AP mode and connection failed, restart AP mode
     if (wasInAPMode) {
