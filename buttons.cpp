@@ -175,12 +175,12 @@ ButtonState getButtonState(int analogValue) {
     else if (analogValue >= 661 && analogValue <= 705) {
         return BTN_1;
     }
-    // Buttons 1+3: 798-842 (measured: 820)
-    else if (analogValue >= 798 && analogValue <= 842) {
+    // Buttons 1+3: 815-821 (measured: 820)
+    else if (analogValue >= 815 && analogValue <= 821) {
         return BTN_1_3;
     }
-    // Buttons 1+2: 808-900 (measured: 830)
-    else if (analogValue >= 808 && analogValue <= 900) {
+    // Buttons 1+2: 826-835 (measured: 830)
+    else if (analogValue >= 826 && analogValue <= 835) {
         return BTN_1_2;
     }
 

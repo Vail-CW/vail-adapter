@@ -248,9 +248,16 @@ public:
     }
 
     virtual int nextTx() {
-        int key = this->queue.shift();
-        if (key != -1) {
-            return key;
+        // Try to get from queue, but only if paddle is still pressed
+        while (true) {
+            int key = this->queue.shift();
+            if (key == -1) {
+                break;  // Queue empty, fall back to parent logic
+            }
+            if (this->keyPressed[key]) {
+                return key;  // Paddle still pressed, use it
+            }
+            // Paddle was released before transmission, discard and try next
         }
         return ElBugKeyer::nextTx();
     }
