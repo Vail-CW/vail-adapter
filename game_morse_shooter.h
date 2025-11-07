@@ -11,6 +11,7 @@
 #include "config.h"
 #include "morse_code.h"
 #include "i2s_audio.h"
+#include "morse_decoder_adaptive.h"
 
 // ============================================
 // Game Constants
@@ -39,9 +40,6 @@ struct FallingLetter {
 };
 
 struct MorseInputBuffer {
-  String pattern;          // Current morse pattern being entered
-  unsigned long lastInputTime;  // Last dit/dah input time
-  unsigned long lastReleaseTime; // When paddles were last released
   bool ditPressed;
   bool dahPressed;
 
@@ -70,9 +68,20 @@ bool gameOver = false;
 bool gamePaused = false;
 int highScore = 0;
 
-// Morse timing - use device CW settings
-#define GAME_ELEMENT_TIMEOUT 500 // ms before pattern is considered complete
-#define GAME_LETTER_TIMEOUT 1200  // ms before resetting pattern (longer for easier play)
+// Decoder state
+MorseDecoderAdaptive shooterDecoder(20, 20, 30);  // Initial 20 WPM, buffer size 30
+String shooterDecodedText = "";
+unsigned long shooterLastStateChangeTime = 0;
+bool shooterLastToneState = false;
+unsigned long shooterLastElementTime = 0;  // Track last element for timeout flush
+
+// Settings mode state
+bool inShooterSettings = false;
+int shooterSettingsSelection = 0;  // 0=Speed, 1=Tone, 2=Key Type, 3=Save & Return
+
+// Forward declarations for settings
+void drawShooterSettings(Adafruit_ST7789& tft);
+int handleShooterSettingsInput(char key, Adafruit_ST7789& tft);
 
 /*
  * Initialize a falling letter (with collision avoidance)
@@ -118,9 +127,6 @@ void resetGame() {
   }
 
   // Reset morse input
-  morseInput.pattern = "";
-  morseInput.lastInputTime = 0;
-  morseInput.lastReleaseTime = 0;
   morseInput.ditPressed = false;
   morseInput.dahPressed = false;
   morseInput.keyerActive = false;
@@ -130,6 +136,15 @@ void resetGame() {
   morseInput.ditMemory = false;
   morseInput.dahMemory = false;
   morseInput.elementStartTime = 0;
+
+  // Reset decoder state
+  shooterDecoder.reset();
+  shooterDecoder.flush();
+  shooterDecoder.setWPM(cwSpeed);
+  shooterDecodedText = "";
+  shooterLastStateChangeTime = 0;
+  shooterLastToneState = false;
+  shooterLastElementTime = 0;
 
   // Reset game variables
   gameScore = 0;
@@ -272,15 +287,15 @@ void drawHUD(Adafruit_ST7789& tft) {
   tft.setCursor(50, 62);
   tft.print(gameLives);
 
-  // Morse input display (bottom, above ground)
-  if (morseInput.pattern.length() > 0) {
+  // Decoded text display (bottom, above ground)
+  if (shooterDecodedText.length() > 0) {
     tft.setTextSize(2);
     tft.setTextColor(ST77XX_CYAN, COLOR_BACKGROUND);
     tft.setCursor(10, GROUND_Y + 10);
-    tft.print(morseInput.pattern);
+    tft.print(shooterDecodedText);
     tft.print("   ");  // Clear extra space
   } else {
-    // Clear morse input area when empty
+    // Clear decoded text area when empty
     tft.fillRect(10, GROUND_Y + 10, 100, 20, COLOR_BACKGROUND);
   }
 }
@@ -326,85 +341,69 @@ void spawnFallingLetter() {
 }
 
 /*
- * Check morse input and try to shoot matching letter
+ * Check decoded text and try to shoot matching letter
  */
 bool checkMorseShoot(Adafruit_ST7789& tft) {
-  if (morseInput.pattern.length() == 0) {
+  if (shooterDecodedText.length() == 0) {
     return false;
   }
 
-  // Find which letter matches the current pattern
-  for (int i = 0; i < CHARSET_SIZE; i++) {
-    const char* expectedPattern = getMorseCode(SHOOTER_CHARSET[i]);
-    if (expectedPattern != nullptr && morseInput.pattern.equals(expectedPattern)) {
-      // Found matching pattern! Now find matching falling letter
-      for (int j = 0; j < MAX_FALLING_LETTERS; j++) {
-        if (fallingLetters[j].active && fallingLetters[j].letter == SHOOTER_CHARSET[i]) {
-          // HIT!
-          int targetX = (int)fallingLetters[j].x;
-          int targetY = (int)fallingLetters[j].y;
+  // Get the last decoded character
+  char decodedChar = shooterDecodedText[shooterDecodedText.length() - 1];
 
-          // Remove letter FIRST (before any redraw)
-          fallingLetters[j].active = false;
+  // Convert to uppercase if needed
+  if (decodedChar >= 'a' && decodedChar <= 'z') {
+    decodedChar = decodedChar - 'a' + 'A';
+  }
 
-          // Draw laser and explosion
-          drawLaserShot(tft, targetX, targetY);
-          beep(1200, 50);  // Laser sound
-          delay(100);
-          drawExplosion(tft, targetX, targetY);
-          beep(1000, 100);  // Explosion sound
-          delay(150);
+  // Find matching falling letter
+  for (int j = 0; j < MAX_FALLING_LETTERS; j++) {
+    if (fallingLetters[j].active && fallingLetters[j].letter == decodedChar) {
+      // HIT!
+      int targetX = (int)fallingLetters[j].x;
+      int targetY = (int)fallingLetters[j].y;
 
-          // Clean up - clear everything between header and ground, then redraw
-          tft.fillRect(0, 42, SCREEN_WIDTH, GROUND_Y - 42, COLOR_BACKGROUND);  // Clear play area
+      // Remove letter FIRST (before any redraw)
+      fallingLetters[j].active = false;
 
-          // Redraw all game elements (shot letter won't be drawn since it's inactive)
-          drawGroundScenery(tft);
-          drawFallingLetters(tft);  // Redraw remaining letters only
+      // Draw laser and explosion
+      drawLaserShot(tft, targetX, targetY);
+      beep(1200, 50);  // Laser sound
+      delay(100);
+      drawExplosion(tft, targetX, targetY);
+      beep(1000, 100);  // Explosion sound
+      delay(150);
 
-          // Add score
-          gameScore += 10;
+      // Clean up - clear everything between header and ground, then redraw
+      tft.fillRect(0, 42, SCREEN_WIDTH, GROUND_Y - 42, COLOR_BACKGROUND);  // Clear play area
 
-          // Update high score
-          if (gameScore > highScore) {
-            highScore = gameScore;
-          }
+      // Redraw all game elements (shot letter won't be drawn since it's inactive)
+      drawGroundScenery(tft);
+      drawFallingLetters(tft);  // Redraw remaining letters only
 
-          // Clear morse input
-          morseInput.pattern = "";
-          return true;
-        }
+      // Add score
+      gameScore += 10;
+
+      // Update high score
+      if (gameScore > highScore) {
+        highScore = gameScore;
       }
 
-      // Correct morse code but no matching letter falling
-      beep(600, 100);  // Miss sound
-      morseInput.pattern = "";
-      return false;
+      // Clear decoded text
+      shooterDecodedText = "";
+      return true;
     }
   }
 
-  // Invalid morse pattern - check if it could be a prefix of a valid pattern
-  bool couldBeValid = false;
-  for (int i = 0; i < CHARSET_SIZE; i++) {
-    const char* pattern = getMorseCode(SHOOTER_CHARSET[i]);
-    if (pattern != nullptr && String(pattern).startsWith(morseInput.pattern)) {
-      couldBeValid = true;
-      break;
-    }
-  }
-
-  if (!couldBeValid) {
-    // Invalid pattern - reset
-    beep(400, 50);  // Error beep
-    morseInput.pattern = "";
-  }
-
+  // Decoded character but no matching letter falling - clear text
+  beep(600, 100);  // Miss sound
+  shooterDecodedText = "";
   return false;
 }
 
 /*
- * Read paddle input and build morse pattern
- * Proper iambic keyer implementation (same as practice mode)
+ * Read paddle input and decode morse using adaptive decoder
+ * Supports both straight key and iambic keying
  */
 void updateMorseInputFast(Adafruit_ST7789& tft) {
   morseInput.ditPressed = (digitalRead(DIT_PIN) == LOW) || (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
@@ -412,51 +411,110 @@ void updateMorseInputFast(Adafruit_ST7789& tft) {
 
   unsigned long now = millis();
   MorseTiming timing(cwSpeed);
+  bool toneOn = isTonePlaying();
 
-  bool isKeying = morseInput.ditPressed || morseInput.dahPressed || morseInput.keyerActive || morseInput.inSpacing;
+  // Check for decoder timeout (flush if no activity for word gap duration)
+  // Using word gap (7 dits) instead of character gap (3 dits) for more forgiving timing
+  if (shooterLastElementTime > 0 && !morseInput.ditPressed && !morseInput.dahPressed && !morseInput.keyerActive) {
+    unsigned long timeSinceLastElement = now - shooterLastElementTime;
+    float wordGapDuration = MorseWPM::wordGap(shooterDecoder.getWPM());
 
-  // Track when keying stops (transition from active to idle)
-  static bool wasKeyingLastTime = false;
-  if (isKeying) {
-    wasKeyingLastTime = true;
-  } else if (wasKeyingLastTime) {
-    // Just stopped keying - mark the time
-    morseInput.lastReleaseTime = now;
-    wasKeyingLastTime = false;
-  }
+    // Flush buffered data after word gap silence (more forgiving for straight key)
+    if (timeSinceLastElement > wordGapDuration) {
+      shooterDecoder.flush();
+      shooterLastElementTime = 0;  // Reset timeout
 
-  // Check for pattern completion timeout when completely idle
-  if (morseInput.pattern.length() > 0 && !isKeying) {
-    if ((now - morseInput.lastReleaseTime) > GAME_LETTER_TIMEOUT) {
-      // Pattern complete - check for match
-      checkMorseShoot(tft);
-      morseInput.pattern = "";
+      // Check for shot after flush
+      if (shooterDecodedText.length() > 0) {
+        checkMorseShoot(tft);
+      }
     }
   }
 
-  // IAMBIC KEYER STATE MACHINE (same as practice mode)
+  // STRAIGHT KEY MODE
+  if (cwKeyType == KEY_STRAIGHT) {
+    // Use DIT pin as straight key
+    if (morseInput.ditPressed && !toneOn) {
+      // Tone starting
+      if (shooterLastToneState == false) {
+        // Send silence duration to decoder (negative)
+        if (shooterLastStateChangeTime > 0) {
+          float silenceDuration = now - shooterLastStateChangeTime;
+          if (silenceDuration > 0) {
+            shooterDecoder.addTiming(-silenceDuration);
+          }
+        }
+        shooterLastStateChangeTime = now;
+        shooterLastToneState = true;
+      }
+      startTone(cwTone);
+    }
+    else if (morseInput.ditPressed && toneOn) {
+      // Tone continuing
+      continueTone(cwTone);
+    }
+    else if (!morseInput.ditPressed && toneOn) {
+      // Tone stopping
+      if (shooterLastToneState == true) {
+        // Send tone duration to decoder (positive)
+        float toneDuration = now - shooterLastStateChangeTime;
+        if (toneDuration > 0) {
+          shooterDecoder.addTiming(toneDuration);
+          shooterLastElementTime = now;  // Update timeout tracker
+        }
+        shooterLastStateChangeTime = now;
+        shooterLastToneState = false;
+      }
+      stopTone();
+    }
+    return;
+  }
+
+  // IAMBIC KEYER MODE (Mode A or B)
 
   // If not actively sending or spacing, check for new input
   if (!morseInput.keyerActive && !morseInput.inSpacing) {
     if (morseInput.ditPressed || morseInput.ditMemory) {
       // Start sending dit
+      if (shooterLastToneState == false) {
+        // Send silence duration to decoder
+        if (shooterLastStateChangeTime > 0) {
+          float silenceDuration = now - shooterLastStateChangeTime;
+          if (silenceDuration > 0) {
+            shooterDecoder.addTiming(-silenceDuration);
+          }
+        }
+        shooterLastStateChangeTime = now;
+        shooterLastToneState = true;
+      }
+
       morseInput.keyerActive = true;
       morseInput.sendingDit = true;
       morseInput.sendingDah = false;
       morseInput.inSpacing = false;
       morseInput.elementStartTime = now;
-      morseInput.pattern += ".";
       startTone(cwTone);
       morseInput.ditMemory = false;
     }
     else if (morseInput.dahPressed || morseInput.dahMemory) {
       // Start sending dah
+      if (shooterLastToneState == false) {
+        // Send silence duration to decoder
+        if (shooterLastStateChangeTime > 0) {
+          float silenceDuration = now - shooterLastStateChangeTime;
+          if (silenceDuration > 0) {
+            shooterDecoder.addTiming(-silenceDuration);
+          }
+        }
+        shooterLastStateChangeTime = now;
+        shooterLastToneState = true;
+      }
+
       morseInput.keyerActive = true;
       morseInput.sendingDit = false;
       morseInput.sendingDah = true;
       morseInput.inSpacing = false;
       morseInput.elementStartTime = now;
-      morseInput.pattern += "-";
       startTone(cwTone);
       morseInput.dahMemory = false;
     }
@@ -486,7 +544,17 @@ void updateMorseInputFast(Adafruit_ST7789& tft) {
 
     // Check if element is complete
     if (now - morseInput.elementStartTime >= elementDuration) {
-      // Element complete, stop tone and start spacing
+      // Element complete, send tone duration to decoder
+      if (shooterLastToneState == true) {
+        float toneDuration = now - shooterLastStateChangeTime;
+        if (toneDuration > 0) {
+          shooterDecoder.addTiming(toneDuration);
+          shooterLastElementTime = now;  // Update timeout tracker
+        }
+        shooterLastStateChangeTime = now;
+        shooterLastToneState = false;
+      }
+
       stopTone();
       morseInput.keyerActive = false;
       morseInput.sendingDit = false;
@@ -510,11 +578,190 @@ void updateMorseInputFast(Adafruit_ST7789& tft) {
     }
 
     // Wait for element gap duration
-    if (now - morseInput.elementStartTime >= timing.elementGap) {
+    if (now - morseInput.elementStartTime >= timing.ditDuration) {
       morseInput.inSpacing = false;
       // Ready to send next element if memory is set or paddle still pressed
     }
   }
+}
+
+/*
+ * Draw shooter settings screen
+ */
+void drawShooterSettings(Adafruit_ST7789& tft) {
+  tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
+
+  // Title
+  tft.setTextSize(2);
+  tft.setTextColor(ST77XX_CYAN);
+  tft.setCursor(80, 50);
+  tft.print("SETTINGS");
+
+  // Settings menu items
+  int yPos = 75;
+  int spacing = 32;
+
+  // Option 0: Speed
+  tft.setTextSize(2);
+  if (shooterSettingsSelection == 0) {
+    tft.setTextColor(ST77XX_BLACK, ST77XX_CYAN);  // Highlighted
+  } else {
+    tft.setTextColor(ST77XX_WHITE, COLOR_BACKGROUND);
+  }
+  tft.setCursor(20, yPos);
+  tft.print("Speed: ");
+  tft.print(cwSpeed);
+  tft.print(" WPM   ");
+
+  // Option 1: Tone
+  yPos += spacing;
+  if (shooterSettingsSelection == 1) {
+    tft.setTextColor(ST77XX_BLACK, ST77XX_CYAN);
+  } else {
+    tft.setTextColor(ST77XX_WHITE, COLOR_BACKGROUND);
+  }
+  tft.setCursor(20, yPos);
+  tft.print("Tone: ");
+  tft.print(cwTone);
+  tft.print(" Hz   ");
+
+  // Option 2: Key Type
+  yPos += spacing;
+  if (shooterSettingsSelection == 2) {
+    tft.setTextColor(ST77XX_BLACK, ST77XX_CYAN);
+  } else {
+    tft.setTextColor(ST77XX_WHITE, COLOR_BACKGROUND);
+  }
+  tft.setCursor(20, yPos);
+  tft.print("Key: ");
+  if (cwKeyType == KEY_STRAIGHT) {
+    tft.print("Straight  ");
+  } else if (cwKeyType == KEY_IAMBIC_A) {
+    tft.print("Iambic A  ");
+  } else {
+    tft.print("Iambic B  ");
+  }
+
+  // Option 3: Save & Return
+  yPos += spacing + 5;
+  if (shooterSettingsSelection == 3) {
+    tft.setTextColor(ST77XX_BLACK, ST77XX_GREEN);
+  } else {
+    tft.setTextColor(ST77XX_GREEN, COLOR_BACKGROUND);
+  }
+  tft.setCursor(50, yPos);
+  tft.print("SAVE & PLAY");
+
+  // Instructions (moved higher to avoid overlap)
+  tft.setTextSize(1);
+  tft.setTextColor(COLOR_WARNING, COLOR_BACKGROUND);
+  tft.setCursor(20, 195);
+  tft.print("\x18\x19:Select  \x1B\x1A:Change  ENTER:OK");
+}
+
+/*
+ * Handle shooter settings input
+ */
+int handleShooterSettingsInput(char key, Adafruit_ST7789& tft) {
+  if (key == KEY_UP) {
+    shooterSettingsSelection--;
+    if (shooterSettingsSelection < 0) shooterSettingsSelection = 3;
+    drawShooterSettings(tft);
+    beep(TONE_MENU_NAV, BEEP_SHORT);
+    return 1;
+  }
+  else if (key == KEY_DOWN) {
+    shooterSettingsSelection++;
+    if (shooterSettingsSelection > 3) shooterSettingsSelection = 0;
+    drawShooterSettings(tft);
+    beep(TONE_MENU_NAV, BEEP_SHORT);
+    return 1;
+  }
+  else if (key == KEY_LEFT) {
+    if (shooterSettingsSelection == 0) {
+      // Decrease speed
+      if (cwSpeed > WPM_MIN) {
+        cwSpeed--;
+        drawShooterSettings(tft);
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+      }
+    }
+    else if (shooterSettingsSelection == 1) {
+      // Decrease tone
+      if (cwTone > 400) {
+        cwTone -= 50;
+        drawShooterSettings(tft);
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+      }
+    }
+    else if (shooterSettingsSelection == 2) {
+      // Cycle key type backward
+      if (cwKeyType == KEY_IAMBIC_B) {
+        cwKeyType = KEY_IAMBIC_A;
+      } else if (cwKeyType == KEY_IAMBIC_A) {
+        cwKeyType = KEY_STRAIGHT;
+      } else {
+        cwKeyType = KEY_IAMBIC_B;
+      }
+      drawShooterSettings(tft);
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+    }
+    return 1;
+  }
+  else if (key == KEY_RIGHT) {
+    if (shooterSettingsSelection == 0) {
+      // Increase speed
+      if (cwSpeed < WPM_MAX) {
+        cwSpeed++;
+        drawShooterSettings(tft);
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+      }
+    }
+    else if (shooterSettingsSelection == 1) {
+      // Increase tone
+      if (cwTone < 1200) {
+        cwTone += 50;
+        drawShooterSettings(tft);
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+      }
+    }
+    else if (shooterSettingsSelection == 2) {
+      // Cycle key type forward
+      if (cwKeyType == KEY_STRAIGHT) {
+        cwKeyType = KEY_IAMBIC_A;
+      } else if (cwKeyType == KEY_IAMBIC_A) {
+        cwKeyType = KEY_IAMBIC_B;
+      } else {
+        cwKeyType = KEY_STRAIGHT;
+      }
+      drawShooterSettings(tft);
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+    }
+    return 1;
+  }
+  else if (key == KEY_ENTER || key == KEY_ENTER_ALT) {
+    if (shooterSettingsSelection == 3) {
+      // Save & Return
+      saveCWSettings();  // Save to preferences
+      inShooterSettings = false;
+      gamePaused = false;  // Unpause the game
+      resetGame();  // Start new game
+      drawMorseShooterUI(tft);
+      beep(TONE_SELECT, BEEP_MEDIUM);
+      return 2;  // Full redraw
+    }
+  }
+  else if (key == KEY_ESC) {
+    // Cancel without saving
+    loadCWSettings();  // Reload original settings
+    inShooterSettings = false;
+    gamePaused = false;  // Unpause the game
+    drawMorseShooterUI(tft);
+    beep(TONE_MENU_NAV, BEEP_SHORT);
+    return 2;
+  }
+
+  return 0;
 }
 
 /*
@@ -556,6 +803,21 @@ void drawGameOver(Adafruit_ST7789& tft) {
  */
 void startMorseShooter(Adafruit_ST7789& tft) {
   resetGame();
+
+  // Setup decoder callback to capture decoded text
+  shooterDecoder.messageCallback = [](String morse, String text) {
+    // Append decoded characters
+    for (int i = 0; i < text.length(); i++) {
+      shooterDecodedText += text[i];
+    }
+
+    Serial.print("Morse Shooter decoded: ");
+    Serial.print(text);
+    Serial.print(" (");
+    Serial.print(morse);
+    Serial.println(")");
+  };
+
   drawMorseShooterUI(tft);
 }
 
@@ -568,6 +830,12 @@ void drawMorseShooterUI(Adafruit_ST7789& tft) {
 
   // Draw header
   drawHeader();
+
+  // If in settings mode, show settings
+  if (inShooterSettings) {
+    drawShooterSettings(tft);
+    return;
+  }
 
   if (gameOver) {
     drawGameOver(tft);
@@ -601,10 +869,10 @@ void updateMorseShooterVisuals(Adafruit_ST7789& tft) {
     return;
   }
 
-  // FREEZE screen completely during any keying activity or if pattern exists
+  // FREEZE screen completely during any keying activity or if decoded text exists
   bool isKeying = morseInput.keyerActive || morseInput.inSpacing ||
                   morseInput.ditPressed || morseInput.dahPressed ||
-                  morseInput.pattern.length() > 0;
+                  shooterDecodedText.length() > 0;
 
   if (isKeying) {
     return;
@@ -631,6 +899,11 @@ void updateMorseShooterVisuals(Adafruit_ST7789& tft) {
  * Returns: -1 to exit game, 0 for normal input, 2 for full redraw
  */
 int handleMorseShooterInput(char key, Adafruit_ST7789& tft) {
+  // If in settings mode, route to settings handler
+  if (inShooterSettings) {
+    return handleShooterSettingsInput(key, tft);
+  }
+
   if (key == KEY_ESC) {
     return -1;  // Exit to games menu
   }
@@ -642,6 +915,16 @@ int handleMorseShooterInput(char key, Adafruit_ST7789& tft) {
       return 2;  // Full redraw
     }
     return 0;
+  }
+
+  // Settings with 'S' key
+  if (key == 's' || key == 'S') {
+    inShooterSettings = true;
+    gamePaused = true;  // Pause the game
+    shooterSettingsSelection = 0;
+    drawShooterSettings(tft);
+    beep(TONE_SELECT, BEEP_MEDIUM);
+    return 2;  // Full redraw
   }
 
   // Pause/unpause with SPACE
