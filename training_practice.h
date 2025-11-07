@@ -113,8 +113,8 @@ void startPracticeMode(Adafruit_ST7789 &display) {
   decoder.messageCallback = [](String morse, String text) {
     // Process each character in the decoded text individually
     for (int i = 0; i < text.length(); i++) {
-      // Check if adding this character would exceed our 34-char limit
-      if (decodedText.length() >= 34) {
+      // Check if adding this character would exceed our 32-char limit
+      if (decodedText.length() >= 32) {
         // Clear everything and start fresh
         decodedText = "";
         decodedMorse = "";
@@ -296,10 +296,10 @@ void drawPracticeUI(Adafruit_ST7789 &display) {
     display.setTextColor(ST77XX_WHITE);
     display.setTextWrap(false);  // Disable automatic text wrapping
 
-    // STRICT: 17 chars per line, 2 lines max = 34 chars total
-    const int CHARS_PER_LINE = 17;
+    // STRICT: 16 chars per line, 2 lines max = 32 chars total
+    const int CHARS_PER_LINE = 16;
     const int MAX_LINES = 2;
-    const int MAX_TOTAL_CHARS = 34;  // Absolute maximum
+    const int MAX_TOTAL_CHARS = 32;  // Absolute maximum
     const int LINE1_Y = DECODER_Y + 17;  // Adjusted for new decoder position
     const int LINE2_Y = DECODER_Y + 43;  // Adjusted for new decoder position
     const int TEXT_X = 15;
@@ -310,17 +310,17 @@ void drawPracticeUI(Adafruit_ST7789 &display) {
       safeText = safeText.substring(safeText.length() - MAX_TOTAL_CHARS);
     }
 
-    // Extract exactly the last 34 chars (or less if shorter)
+    // Extract exactly the last 32 chars (or less if shorter)
     int textLen = safeText.length();
 
-    // Line 1: Show last N characters that fit (up to 17)
+    // Line 1: Show last N characters that fit (up to 16)
     if (textLen > 0) {
       String line1;
       if (textLen <= CHARS_PER_LINE) {
         // All text fits on line 1
         line1 = safeText;
       } else {
-        // Text spans both lines - line 1 gets chars 0-16 of the last 34
+        // Text spans both lines - line 1 gets chars 0-15 of the last 32
         line1 = safeText.substring(0, CHARS_PER_LINE);
       }
 
@@ -338,9 +338,9 @@ void drawPracticeUI(Adafruit_ST7789 &display) {
       display.print(line1);
     }
 
-    // Line 2: Show overflow (chars 17-33)
+    // Line 2: Show overflow (chars 16-31)
     if (textLen > CHARS_PER_LINE) {
-      String line2 = safeText.substring(CHARS_PER_LINE);  // Everything after char 17
+      String line2 = safeText.substring(CHARS_PER_LINE);  // Everything after char 16
 
       Serial.print("Line 2: '");
       Serial.print(line2);
@@ -374,7 +374,7 @@ void drawPracticeUI(Adafruit_ST7789 &display) {
   // Split into two lines for better readability
   if (showDecoding) {
     String line1 = "\x18\x19:Speed \x1B\x1A:Key";
-    String line2 = "D:Hide ESC:Exit";
+    String line2 = "C:Clear D:Hide ESC";
 
     int16_t fx1, fy1;
     uint16_t fw, fh;
@@ -446,9 +446,9 @@ void drawDecodedTextOnly(Adafruit_ST7789 &display) {
   display.setTextColor(ST77XX_WHITE);
   display.setTextWrap(false);  // Disable automatic text wrapping
 
-  // STRICT: 17 chars per line, 2 lines max = 34 chars total
-  const int CHARS_PER_LINE = 17;
-  const int MAX_TOTAL_CHARS = 34;  // Absolute maximum
+  // STRICT: 16 chars per line, 2 lines max = 32 chars total
+  const int CHARS_PER_LINE = 16;
+  const int MAX_TOTAL_CHARS = 32;  // Absolute maximum
   const int LINE1_Y = DECODER_Y + 17;  // Match drawPracticeUI
   const int LINE2_Y = DECODER_Y + 43;  // Match drawPracticeUI
   const int TEXT_X = 15;
@@ -459,17 +459,17 @@ void drawDecodedTextOnly(Adafruit_ST7789 &display) {
     safeText = safeText.substring(safeText.length() - MAX_TOTAL_CHARS);
   }
 
-  // Extract exactly the last 34 chars (or less if shorter)
+  // Extract exactly the last 32 chars (or less if shorter)
   int textLen = safeText.length();
 
-  // Line 1: Show last N characters that fit (up to 17)
+  // Line 1: Show last N characters that fit (up to 16)
   if (textLen > 0) {
     String line1;
     if (textLen <= CHARS_PER_LINE) {
       // All text fits on line 1
       line1 = safeText;
     } else {
-      // Text spans both lines - line 1 gets chars 0-16 of the last 34
+      // Text spans both lines - line 1 gets chars 0-15 of the last 32
       line1 = safeText.substring(0, CHARS_PER_LINE);
     }
 
@@ -482,9 +482,9 @@ void drawDecodedTextOnly(Adafruit_ST7789 &display) {
     display.setTextWrap(false);
   }
 
-  // Line 2: Show overflow (chars 17-33)
+  // Line 2: Show overflow (chars 16-31)
   if (textLen > CHARS_PER_LINE) {
-    String line2 = safeText.substring(CHARS_PER_LINE);  // Everything after char 17
+    String line2 = safeText.substring(CHARS_PER_LINE);  // Everything after char 16
 
     // Clear the line 2 area specifically before rendering
     // Line 2 is at y=138, text size 3 = ~24 pixels high
@@ -593,6 +593,16 @@ int handlePracticeInput(char key, Adafruit_ST7789 &display) {
     }
     saveCWSettings();  // Save to preferences
     drawPracticeUI(display);
+    beep(TONE_MENU_NAV, BEEP_SHORT);
+    return 1;
+  }
+  else if (key == 'c' || key == 'C') {
+    // Clear decoder text
+    decodedText = "";
+    decodedMorse = "";
+    decoder.reset();
+    decoder.flush();
+    drawDecodedTextOnly(display);
     beep(TONE_MENU_NAV, BEEP_SHORT);
     return 1;
   }
