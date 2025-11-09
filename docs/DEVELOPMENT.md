@@ -557,6 +557,51 @@ Serial.println(touchRead(5));
 // Adjust TOUCH_THRESHOLD based on values seen
 ```
 
+### CW Memories transmission issues
+
+**Symptoms:** Memories play as "random dits" or gibberish on radio output
+
+**Possible Causes:**
+1. `radioDitDuration` corrupted or zero in Summit Keyer mode
+2. Conflict between `playMorseCharViaRadio()` blocking delays and `radioIambicKeyerHandler()` state machine
+3. Both functions controlling same GPIO pins simultaneously
+
+**Current Mitigation:**
+```cpp
+// In processRadioMessageQueue() - wait for keyer to be idle
+if (radioMode == RADIO_MODE_SUMMIT_KEYER) {
+  if (ditPressed || dahPressed || radioKeyerActive || radioInSpacing) {
+    return; // Wait for keyer to be completely idle
+  }
+}
+```
+
+**Debug Steps:**
+1. Enable Serial Monitor at 115200 baud
+2. Create simple test memory (e.g., "TEST" → "SOS")
+3. Check serial output for:
+   ```
+   Loading CW memory 1: TEST → SOS
+   Previewing memory 1: SOS (length: 3)
+   Queueing message for radio: SOS (length: 3)
+   Transmitting from queue: SOS (length: 3)
+   Dit duration: 60ms (should be non-zero)
+   ```
+4. Compare behavior:
+   - **Summit Keyer mode:** Check if manual keying also produces gibberish
+   - **Radio Keyer mode:** Check if manual keying works (should passthrough correctly)
+5. If `radioDitDuration` is 0 or corrupt, timing will be instant/rapid
+
+**Known Issues:**
+- Summit Keyer mode may produce incorrect timing if `radioDitDuration` not calculated correctly
+- Preview function may crash device halfway through long messages (blocking audio playback)
+- Memory transmission may sound different than preview if keyer state machine interferes
+
+**Workarounds:**
+1. Use Radio Keyer mode for memory transmission (relies on radio's keyer, not device)
+2. Keep preview messages short to avoid crashes
+3. Monitor Serial output to verify message content and timing values
+
 ## Performance Optimization
 
 ### Memory Management

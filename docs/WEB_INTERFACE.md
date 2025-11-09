@@ -428,6 +428,154 @@ W1ABC,14.025,20m,CW,20251028,1430,599,599,...
 6. Can queue up to 5 messages
 7. Messages transmit sequentially without interrupting manual keying
 
+### CW Memory Presets Card (Collapsible)
+
+**File:** `web_server.h` - RADIO_HTML section with integrated JavaScript
+
+**Features:**
+- Collapsible card with ▶/▼ toggle indicator
+- Dropdown selector showing all populated memory presets
+- Format: `"Slot #: Label"` (e.g., `"1: CQ CALL"`)
+- "Send Memory" button to queue preset for radio transmission
+- Quick-send functionality for contest operation
+
+**UI Elements:**
+```html
+<select id="memorySelect">
+  <option value="">-- Select a memory --</option>
+  <option value="1">1: CQ CALL</option>
+  <option value="2">2: 5NN CA</option>
+  ...
+</select>
+<button onclick="sendMemory()">Send Memory</button>
+```
+
+**Behavior:**
+- Dropdown auto-populates from `/api/memories/list` on page load
+- Only shows non-empty slots
+- Send button calls `/api/memories/send` with selected slot
+- Success message confirms queuing for transmission
+- Auto-refreshes preset list every 15 seconds
+
+### Manage CW Memories Card (Collapsible)
+
+**Features:**
+- Collapsible card with full CRUD table
+- "Create New Preset" button opens modal dialog
+- Table shows all 10 slots (empty and occupied)
+- Actions per row: Preview, Edit, Delete (or Create for empty slots)
+
+**Table Structure:**
+```
+Slot | Label      | Message                  | Actions
+-----|------------|--------------------------|-------------------------
+1    | CQ CALL    | CQ CQ DE K6ABC K         | [Preview] [Edit] [Delete]
+2    | (empty)    |                          | [Create]
+...
+```
+
+**Create/Edit Modal:**
+- **Slot Selector:** Dropdown 1-10 (disabled when editing)
+- **Label Input:** Max 15 characters with live counter
+- **Message Input:** Textarea, max 100 characters with live counter
+- **Auto-uppercase:** Both fields automatically uppercased
+- **Validation:** Empty fields, character limits, morse-valid characters
+- **Save/Cancel Buttons**
+
+**Actions:**
+1. **Preview** - Calls `/api/memories/preview` to play on device speaker
+2. **Edit** - Opens modal pre-filled with existing data
+3. **Delete** - Confirms via `confirm()` dialog, then calls `/api/memories/delete`
+4. **Create** - Opens modal for new preset at selected slot
+
+**JavaScript Functions:**
+```javascript
+loadMemories()              // Load all presets from API
+updateMemoriesDropdown()    // Refresh quick-send dropdown
+updateMemoriesTable()       // Refresh management table
+sendMemory()                // Send selected preset via radio
+previewMemory(slot)         // Preview on device speaker
+showCreateModal(slot)       // Open create dialog
+showEditModal(slot)         // Open edit dialog
+saveMemory()                // Create or update preset
+deleteMemory(slot)          // Delete preset with confirmation
+```
+
+**API Endpoints Used:**
+
+**CW Memories API** (`web_api_memories.h`):
+
+1. **`GET /api/memories/list`**
+   - Returns all 10 memory presets
+   - Response: `{presets: [{slot, label, message, isEmpty}, ...]}`
+
+2. **`POST /api/memories/create`**
+   - Creates new preset
+   - Body: `{slot: 1-10, label: "...", message: "..."}`
+   - Validation: slot range, label length (15), message length (100), morse characters
+   - Response: `{success: true}` or `{success: false, error: "..."}`
+
+3. **`POST /api/memories/update`**
+   - Updates existing preset (same as create)
+   - Body: `{slot: 1-10, label: "...", message: "..."}`
+   - Same validation as create
+   - Response: `{success: true}` or `{success: false, error: "..."}`
+
+4. **`POST /api/memories/delete`**
+   - Deletes preset (clears slot)
+   - Body: `{slot: 1-10}`
+   - Response: `{success: true}` or `{success: false, error: "..."}`
+
+5. **`POST /api/memories/preview`**
+   - Plays preset on device speaker (not radio output)
+   - Body: `{slot: 1-10}`
+   - Blocking operation - plays entire message before returning
+   - Response: `{success: true}` or `{success: false, error: "..."}`
+
+6. **`POST /api/memories/send`**
+   - Queues preset for radio transmission
+   - Body: `{slot: 1-10}`
+   - Uses existing message queue (max 5 messages)
+   - Response: `{success: true}` or `{success: false, error: "queue full"}`
+
+**Data Flow:**
+1. Page loads → `loadMemories()` fetches `/api/memories/list`
+2. Dropdown and table populated from response
+3. User clicks "Send Memory" → `sendMemory()` → POST `/api/memories/send`
+4. User clicks "Preview" → `previewMemory(slot)` → POST `/api/memories/preview`
+5. User creates/edits → Modal opens → `saveMemory()` → POST `/api/memories/create` or `/update`
+6. User deletes → Confirm → `deleteMemory(slot)` → POST `/api/memories/delete`
+7. After any mutation → `loadMemories()` refreshes UI
+
+**Validation:**
+- **Label:** 1-15 characters, auto-uppercased, cannot be empty
+- **Message:** 1-100 characters, auto-uppercased, cannot be empty, morse-valid only
+- **Morse-valid characters:** A-Z, 0-9, space, `.`,`,`,`?`,`/`,`-`, `<`, `>` (for prosigns)
+- **Slot:** 1-10 integer
+- Server-side validation returns descriptive error messages
+
+**Mobile Responsive:**
+- Table scrolls horizontally on small screens
+- Modal scales to viewport
+- Buttons stack vertically on mobile
+- Touch-friendly button sizing
+
+**Debug and Troubleshooting:**
+
+The CW Memories API includes comprehensive debug logging for troubleshooting transmission and playback issues:
+
+- All API endpoints log operations to Serial (115200 baud)
+- Preview endpoint logs blocking behavior (message plays completely before HTTP response)
+- Send endpoint logs queue status (success or queue full error)
+- Server-side validation provides descriptive error messages in JSON response
+
+Common issues:
+- **Preview crashes:** Long messages may cause device reset during blocking playback
+- **Transmission gibberish:** Check Serial output for dit/dah timing values and keyer state
+- **Queue full errors:** Maximum 5 messages can be queued; wait for transmission to complete
+
+For detailed debugging steps, see [docs/FEATURES.md - CW Memories Debugging](FEATURES.md#debugging-and-troubleshooting)
+
 ## ADIF Export Format
 
 ### Header

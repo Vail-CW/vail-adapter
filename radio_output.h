@@ -23,6 +23,10 @@ RadioMode radioMode = RADIO_MODE_SUMMIT_KEYER;
 int radioSettingSelection = 0;  // 0=Speed, 1=Key Type, 2=Radio Mode
 #define RADIO_SETTINGS_COUNT 3
 
+// Memory selector state
+bool memorySelectorActive = false;
+int memorySelectorSelection = 0;  // Selected memory slot (0-9)
+
 // Message queue for web-based transmission
 #define RADIO_MESSAGE_QUEUE_SIZE 5
 #define RADIO_MESSAGE_MAX_LENGTH 200
@@ -197,7 +201,7 @@ void drawRadioOutputUI(Adafruit_ST7789 &display) {
   // Footer with instructions
   display.setTextSize(1);
   display.setTextColor(COLOR_WARNING);
-  String helpText = "\x18\x19 Select  \x1B\x1A Adjust  ESC Back";
+  String helpText = "\x18\x19 Select  \x1B\x1A Adjust  M Memories  ESC Back";
   int16_t x1, y1;
   uint16_t w, h;
   display.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
@@ -206,8 +210,132 @@ void drawRadioOutputUI(Adafruit_ST7789 &display) {
   display.print(helpText);
 }
 
+// Draw memory selector overlay
+void drawMemorySelector(Adafruit_ST7789 &display) {
+  // Semi-transparent overlay effect (just draw over existing content)
+  display.fillRoundRect(30, 50, SCREEN_WIDTH - 60, 160, 12, 0x0841);  // Very dark blue
+  display.drawRoundRect(30, 50, SCREEN_WIDTH - 60, 160, 12, 0x34BF);  // Light blue outline
+
+  // Title
+  display.setTextSize(1);
+  display.setTextColor(ST77XX_CYAN);
+  int16_t x1, y1;
+  uint16_t w, h;
+  String title = "CW MEMORIES";
+  display.getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+  int centerX = (SCREEN_WIDTH - w) / 2;
+  display.setCursor(centerX, 65);
+  display.print(title);
+
+  // Draw memory list (show 5 at a time, scrollable)
+  int startY = 85;
+  int itemHeight = 22;
+  int visibleItems = 5;
+  int scrollOffset = (memorySelectorSelection > 4) ? (memorySelectorSelection - 4) : 0;
+
+  for (int i = 0; i < visibleItems && (scrollOffset + i) < CW_MEMORY_MAX_SLOTS; i++) {
+    int slot = scrollOffset + i;
+    int yPos = startY + (i * itemHeight);
+
+    bool isSelected = (slot == memorySelectorSelection);
+
+    // Highlight selected item
+    if (isSelected) {
+      display.fillRoundRect(40, yPos - 2, SCREEN_WIDTH - 80, itemHeight - 3, 6, 0x249F);
+    }
+
+    // Draw slot number and label
+    display.setTextSize(1);
+    display.setTextColor(isSelected ? ST77XX_WHITE : ST77XX_CYAN);
+    display.setCursor(50, yPos + 6);
+    display.print(slot + 1);
+    display.print(". ");
+
+    if (cwMemories[slot].isEmpty) {
+      display.setTextColor(isSelected ? 0xC618 : 0x7BEF);  // Gray
+      display.print("(empty)");
+    } else {
+      display.setTextColor(isSelected ? ST77XX_WHITE : ST77XX_CYAN);
+      // Truncate label if too long
+      if (strlen(cwMemories[slot].label) > 20) {
+        char truncated[21];
+        strlcpy(truncated, cwMemories[slot].label, 18);
+        strcat(truncated, "...");
+        display.print(truncated);
+      } else {
+        display.print(cwMemories[slot].label);
+      }
+    }
+  }
+
+  // Footer instructions
+  display.setTextSize(1);
+  display.setTextColor(COLOR_WARNING);
+  String helpText = "\x18\x19 Select  ENTER Send  ESC Cancel";
+  display.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  centerX = (SCREEN_WIDTH - w) / 2;
+  display.setCursor(centerX, 195);
+  display.print(helpText);
+}
+
 // Handle radio output input
 int handleRadioOutputInput(char key, Adafruit_ST7789 &display) {
+  // Handle memory selector if active
+  if (memorySelectorActive) {
+    if (key == KEY_UP) {
+      if (memorySelectorSelection > 0) {
+        memorySelectorSelection--;
+        drawMemorySelector(display);
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+        return 0;  // Don't request full redraw - just redrew overlay
+      }
+    }
+    else if (key == KEY_DOWN) {
+      if (memorySelectorSelection < CW_MEMORY_MAX_SLOTS - 1) {
+        memorySelectorSelection++;
+        drawMemorySelector(display);
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+        return 0;  // Don't request full redraw - just redrew overlay
+      }
+    }
+    else if (key == KEY_ENTER || key == KEY_ENTER_ALT) {
+      // Send selected memory
+      if (!cwMemories[memorySelectorSelection].isEmpty) {
+        bool success = queueRadioMessage(cwMemories[memorySelectorSelection].message);
+        memorySelectorActive = false;
+        drawRadioOutputUI(display);
+
+        if (success) {
+          beep(TONE_SUCCESS, BEEP_MEDIUM);
+        } else {
+          beep(TONE_ERROR, BEEP_LONG);
+        }
+        return 2;
+      } else {
+        // Empty slot - show error
+        beep(TONE_ERROR, BEEP_SHORT);
+        return 0;
+      }
+    }
+    else if (key == KEY_ESC) {
+      // Cancel memory selector
+      memorySelectorActive = false;
+      drawRadioOutputUI(display);
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      return 2;
+    }
+    return 0;
+  }
+
+  // Check for 'M' key to open memory selector
+  if (key == 'm' || key == 'M') {
+    memorySelectorActive = true;
+    memorySelectorSelection = 0;
+    drawMemorySelector(display);
+    beep(TONE_SELECT, BEEP_SHORT);
+    return 0;  // Don't request redraw - overlay is already drawn
+  }
+
   // Navigation
   if (key == KEY_UP) {
     if (radioSettingSelection > 0) {
@@ -353,6 +481,12 @@ void radioIambicKeyerHandler() {
       radioDitDahTimer = currentTime + (radioSendingDit ? radioDitDuration : radioDitDuration * 3);
       radioElementStartTime = currentTime;
 
+      // Debug
+      Serial.print("Keyer: Starting ");
+      Serial.print(radioSendingDit ? "DIT" : "DAH");
+      Serial.print(" duration=");
+      Serial.println(radioSendingDit ? radioDitDuration : radioDitDuration * 3);
+
       // Key radio output (straight key format on DIT pin)
       digitalWrite(RADIO_KEY_DIT_PIN, HIGH);
       digitalWrite(RADIO_KEY_DAH_PIN, LOW);
@@ -455,7 +589,10 @@ bool queueRadioMessage(const char* message) {
 
   Serial.print("Message queued (");
   Serial.print(radioMessageQueue.count);
-  Serial.println(" in queue)");
+  Serial.print(" in queue): '");
+  Serial.print(message);
+  Serial.print("' Length=");
+  Serial.println(strlen(message));
 
   return true;
 }
@@ -494,16 +631,25 @@ void playMorseCharViaRadio(char c) {
 
 // Process radio message queue (called from updateRadioOutput)
 void processRadioMessageQueue() {
-  // Only process queue if we're in radio output mode and Summit Keyer mode
-  if (!radioOutputActive || radioMode != RADIO_MODE_SUMMIT_KEYER) {
+  // Only process queue if we're in radio output mode
+  if (!radioOutputActive) {
     return;
   }
 
-  // Don't start new message if user is keying
+  // Don't start new message if user is keying OR if keyer state machine is active
   bool ditPressed = (digitalRead(DIT_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
   bool dahPressed = (digitalRead(DAH_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DAH_PIN) > TOUCH_THRESHOLD);
-  if (ditPressed || dahPressed || radioKeyerActive || radioInSpacing) {
-    return; // Wait for user to finish keying
+
+  // In Summit Keyer mode, also check if keyer state machine is busy
+  if (radioMode == RADIO_MODE_SUMMIT_KEYER) {
+    if (ditPressed || dahPressed || radioKeyerActive || radioInSpacing) {
+      return; // Wait for keyer to be completely idle
+    }
+  } else {
+    // In Radio Keyer mode, just check paddle states
+    if (ditPressed || dahPressed) {
+      return; // Wait for user to finish keying
+    }
   }
 
   // If not currently transmitting, check if there's a message in the queue
@@ -519,8 +665,10 @@ void processRadioMessageQueue() {
       messageCharIndex = 0;
       messageTransmissionTimer = millis(); // Start immediately
 
-      Serial.print("Starting transmission: ");
-      Serial.println(currentTransmittingMessage);
+      Serial.print("Starting transmission: '");
+      Serial.print(currentTransmittingMessage);
+      Serial.print("' Length=");
+      Serial.println(strlen(currentTransmittingMessage));
     }
   } else {
     // Continue transmitting current message

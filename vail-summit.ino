@@ -49,9 +49,9 @@
 // Connectivity
 #include "vail_repeater.h"
 
-// Radio modes
-#include "radio_output.h"
+// Radio modes (CW memories must be included before radio_output)
 #include "radio_cw_memories.h"
+#include "radio_output.h"
 
 // NTP Time
 #include "ntp_time.h"
@@ -200,6 +200,10 @@ void setup() {
   // Load radio settings from preferences
   Serial.println("Loading radio settings...");
   loadRadioSettings();
+
+  // Load CW memories from preferences
+  Serial.println("Loading CW memories...");
+  loadCWMemories();
 
   // Load saved callsign
   Serial.println("Loading callsign...");

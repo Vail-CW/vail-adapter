@@ -64,6 +64,7 @@
 #define TONE_SIDETONE   700   // Hz - Morse code audio tone
 #define TONE_MENU_NAV   800   // Hz - Menu navigation beep
 #define TONE_SELECT     1200  // Hz - Selection confirmation
+#define TONE_SUCCESS    1000  // Hz - Success confirmation
 #define TONE_ERROR      400   // Hz - Error/invalid beep
 #define TONE_STARTUP    1000  // Hz - Startup beep
 

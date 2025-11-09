@@ -135,7 +135,7 @@ enum CWAMessageType {
 
 ### Overview
 
-The Morse Shooter is an arcade-style game where falling letters descend from the top of the screen. The player uses an iambic keyer (paddle or touch pads) to send morse code patterns that shoot matching letters.
+The Morse Shooter is an arcade-style game where falling letters descend from the top of the screen. The player uses morse code (straight key, iambic paddle, or capacitive touch) to shoot matching letters. The game uses the **adaptive morse decoder** from Practice Mode for accurate real-time decoding.
 
 ### Game Architecture: `game_morse_shooter.h`
 
@@ -147,57 +147,101 @@ The Morse Shooter is an arcade-style game where falling letters descend from the
 #define GROUND_Y 225                    // Y position of ground
 #define MAX_LIVES 5                     // Lives before game over
 #define GAME_UPDATE_INTERVAL 1000       // ms between game physics updates
-#define GAME_LETTER_TIMEOUT 1200        // ms before pattern is submitted
 ```
 
 **Character Set:**
 - 36 characters: E, T, I, A, N, M, S, U, R, W, D, K, G, O, H, V, F, L, P, J, B, X, C, Y, Z, Q, 0-9
 - Ordered by common morse patterns (easier letters first)
 
-### Iambic Keyer Integration
+### Adaptive Decoder Integration
 
-The game uses the **exact same iambic keyer logic** as practice mode for consistent feel:
+The game uses `MorseDecoderAdaptive` (same as Practice Mode) for real-time morse code decoding:
 
-**State Machine:** IDLE → SENDING → SPACING → IDLE
-- `keyerActive` - Currently sending an element (dit or dah)
-- `inSpacing` - In the inter-element gap
-- `sendingDit` / `sendingDah` - Which element is being sent
-- `ditMemory` / `dahMemory` - Memory paddles for squeeze keying
+**Decoder State:**
+```cpp
+MorseDecoderAdaptive shooterDecoder(20, 20, 30);  // Initial 20 WPM, buffer 30
+String shooterDecodedText = "";                    // Captured decoded characters
+unsigned long shooterLastStateChangeTime = 0;      // Timing state
+bool shooterLastToneState = false;                 // Tone on/off tracking
+unsigned long shooterLastElementTime = 0;          // Timeout tracking
+```
 
 **Key Features:**
-- Non-blocking state machine (checked every loop iteration)
-- Proper iambic A/B behavior with memory paddles
-- Accurate WPM timing from device settings (`cwSpeed`)
-- Uses `startTone()` / `continueTone()` / `stopTone()` for glitch-free audio
-- **Screen completely freezes during keying** to prevent audio interference
+- **Adaptive speed tracking** - Automatically adjusts to your sending speed
+- **Straight key support** - Tracks actual key-down/key-up timings
+- **Iambic keyer support** - Perfect dit/dah timing (Mode A/B)
+- **Word gap timeout** - Uses 7-dit word gap (more forgiving than 3-dit character gap)
+- **Real-time decoding** - Characters appear immediately when decoded
+
+### Keyer Integration
+
+**Straight Key Mode** (`KEY_STRAIGHT`):
+- Uses DIT_PIN as straight key input
+- Captures tone-on and silence durations
+- Sends timing data to decoder via `addTiming()`
+- More forgiving timeout (word gap vs character gap)
+
+**Iambic Keyer Mode** (`KEY_IAMBIC_A` / `KEY_IAMBIC_B`):
+- Full state machine: IDLE → SENDING → SPACING → IDLE
+- Memory paddles for squeeze keying
+- Precise WPM timing from device settings
+- Decoder receives perfect dit/dah timing
+
+**Screen Freeze During Keying:**
+- Screen updates blocked while keying to prevent audio glitches
+- Checks: `keyerActive`, `inSpacing`, `ditPressed`, `dahPressed`, `shooterDecodedText.length() > 0`
 
 ### Game Loop Architecture
 
 **Dual Update System:**
 
 1. **`updateMorseShooterInput(tft)`** - Called every main loop iteration
-   - Runs iambic keyer state machine
-   - Handles pattern timeout detection
-   - Screen freezes if any keying activity detected
+   - Straight key: Captures key-up/key-down timings
+   - Iambic keyer: Runs state machine with memory paddles
+   - Decoder: Feeds timing data, checks timeout (word gap)
+   - On timeout: Flushes decoder and checks for shot
 
 2. **`updateMorseShooterVisuals(tft)`** - Called every main loop iteration
-   - Checks if keying is active (paddles, tone, gap, or pattern exists)
+   - Checks if keying is active
    - If keying: returns immediately (screen frozen)
    - If idle: updates game physics once per second
-   - Updates falling letters, spawns new letters, redraws HUD
+   - Spawns letters, updates positions, redraws HUD
 
-**Critical Design Decision:** Screen updates are **completely blocked** during any keying activity to ensure smooth, glitch-free audio at the configured WPM speed.
+**Timeout Logic (Word Gap = 7 dits):**
+```cpp
+float wordGapDuration = MorseWPM::wordGap(shooterDecoder.getWPM());
+if (timeSinceLastElement > wordGapDuration) {
+  shooterDecoder.flush();  // Decode buffered character
+  checkMorseShoot(tft);    // Attempt to shoot
+}
+```
 
-### Pattern Matching and Shooting
+### Character Decoding and Shooting
 
-**Pattern Completion:**
-1. Pattern builds as user keys morse code (e.g., ".-" for A)
-2. After last element, user releases paddles
-3. System waits GAME_LETTER_TIMEOUT (1200ms) for inactivity
-4. Pattern is matched against morse code table
-5. If match found, searches for falling letter with that character
-6. If found: shoots letter, plays laser/explosion, updates score
-7. If no match or wrong code: error beep, pattern cleared
+**Decoding Flow:**
+1. User keys morse code (straight key or iambic paddle)
+2. Decoder captures timing data in real-time
+3. After word gap timeout (7 dits), decoder flushes → character decoded
+4. Decoder callback appends character to `shooterDecodedText`
+5. `checkMorseShoot()` finds matching falling letter
+6. If found: shoots letter, plays effects, clears decoded text
+7. If no match: miss sound, clears decoded text
+
+**Decoder Callback:**
+```cpp
+shooterDecoder.messageCallback = [](String morse, String text) {
+  for (int i = 0; i < text.length(); i++) {
+    shooterDecodedText += text[i];
+  }
+};
+```
+
+**Shooting Logic:**
+- Get last decoded character from `shooterDecodedText`
+- Convert to uppercase (if needed)
+- Search active falling letters for match
+- On match: laser/explosion animation, score +10, clear decoded text
+- On miss: error beep (600 Hz), clear decoded text
 
 **Collision Avoidance:**
 - When spawning new letters, system checks existing letters
@@ -357,15 +401,163 @@ Both checked every loop iteration for responsive keying.
 - Compare Summit Keyer vs. Radio Keyer behavior
 - Use with actual radio for on-air confidence
 
-### CW Memories (Placeholder)
+### CW Memories
 
-The **CW Memories** menu option is currently a placeholder for future implementation:
+The **CW Memories** feature allows storage and management of up to 10 reusable morse code message presets. Presets can be created, edited, deleted, and previewed on the device, or managed via the web interface. They integrate seamlessly with Radio Output mode for transmission.
 
-**Planned Features:**
-- Store up to 8-10 CW message memories
-- Playback stored messages via radio output
-- Common contest exchanges, CQ calls, 73, etc.
-- Integration with both keyer modes
+#### Architecture: `radio_cw_memories.h`
+
+**Preset Structure:**
+```cpp
+#define CW_MEMORY_MAX_SLOTS 10
+#define CW_MEMORY_LABEL_MAX_LENGTH 15
+#define CW_MEMORY_MESSAGE_MAX_LENGTH 100
+
+struct CWMemoryPreset {
+  char label[CW_MEMORY_LABEL_MAX_LENGTH + 1];     // Label (15 chars + null)
+  char message[CW_MEMORY_MESSAGE_MAX_LENGTH + 1]; // Message (100 chars + null)
+  bool isEmpty;
+};
+```
+
+**Storage:**
+- Persistent storage via ESP32 Preferences namespace `"cw_memories"`
+- Keys: `"label1"` through `"label10"`, `"message1"` through `"message10"`
+- Loaded at startup via `loadCWMemories()`
+- Saved immediately on create/edit/delete
+
+#### Device UI - CW Memories Mode
+
+Accessible from: **Radio Menu → CW Memories**
+
+**Main Screen:**
+- Scrollable list of all 10 preset slots
+- Shows `[Slot #] Label` or `[Slot #] (empty)` for unused slots
+- Navigation: UP/DOWN to select, ENTER for context menu, ESC to exit
+
+**Context Menu (Empty Slot):**
+- Create Preset
+- Cancel
+
+**Context Menu (Occupied Slot):**
+- Preview (plays on device speaker)
+- Edit Preset
+- Delete Preset
+- Cancel
+
+**Create/Edit Flow:**
+1. **Label Entry:** Type label (max 15 chars), auto-uppercase
+2. **Message Entry:** Type message (max 100 chars), validation for valid morse characters
+3. **Save:** ENTER to save, ESC to cancel
+4. Character validation: A-Z, 0-9, space, `.`,`,`,`?`,`/`,`-`, prosigns as `<AR>`, `<SK>`, etc.
+
+**Delete Confirmation:**
+- Yes/No dialog with LEFT/RIGHT to toggle, ENTER to confirm
+
+**Preview:**
+- Plays preset message on device speaker using current WPM and tone settings
+- Does NOT transmit via radio output pins (GPIO 18/17 remain LOW)
+- Press ESC to stop playback early
+
+#### Radio Output Mode Integration
+
+In Radio Output mode, press the **'M'** key to open the memory selector:
+
+**Memory Selector Overlay:**
+- Modal overlay showing all 10 preset slots
+- Scrollable list (5 visible at a time)
+- Shows slot number and label (or "(empty)")
+- Navigation: UP/DOWN to select, ENTER to queue for transmission, ESC to cancel
+
+**Transmission:**
+- Selected preset message is queued via existing `queueRadioMessage()` function
+- Uses current WPM speed and Radio Mode settings
+- Transmitted via radio output pins (GPIO 18/17)
+- Queue limit: 5 messages (error beep if full)
+
+**UI Indicator:**
+- Footer in Radio Output mode shows: `M Memories` as hint
+
+#### Debugging and Troubleshooting
+
+**Debug Logging:**
+The CW Memories module includes comprehensive debug output via Serial (115200 baud) for troubleshooting:
+
+- `loadCWMemories()` - Prints each slot's label and message when loading from Preferences
+- `saveCWMemory()` - Prints label and message when saving to Preferences
+- `previewCWMemory()` - Prints label, message, and length before playback
+- `queueRadioMessage()` - Prints message and length when queuing for transmission
+- `processRadioMessageQueue()` - Prints message and length when transmitting via radio
+- `radioIambicKeyerHandler()` - Prints dit/dah duration values for timing verification
+
+**Known Issues:**
+
+1. **Summit Keyer Mode Timing:**
+   - In Summit Keyer mode, if `radioDitDuration` becomes corrupted or zero, both manual keying and memory transmission produce "random dits" (rapid/instant timing)
+   - Radio Keyer mode works correctly for manual keying (passthrough to radio's keyer)
+   - Memories may still sound incorrect in Radio Keyer mode if message queue conflicts with keyer state machine
+
+2. **State Machine Conflict:**
+   - `playMorseCharViaRadio()` uses blocking delays while `updateRadioOutput()` keyer state machine runs simultaneously
+   - Both functions control the same GPIO pins (18 and 17), causing interference
+   - Current mitigation: `processRadioMessageQueue()` waits for keyer state machine to be idle in Summit Keyer mode (checks `radioKeyerActive` and `radioInSpacing` flags)
+
+3. **Preview Crashes:**
+   - Preview function (`previewCWMemory()`) may crash and reset device halfway through playback
+   - Likely related to blocking audio playback conflicting with other system tasks
+   - Workaround: Keep preview messages short or use radio transmission instead
+
+**Troubleshooting Steps:**
+
+1. Enable Serial Monitor at 115200 baud
+2. Create a simple test memory (e.g., "TEST" → "SOS")
+3. Preview the memory and check serial output for:
+   - Correct label and message strings
+   - Correct message length
+   - Dit/dah duration values (should be non-zero and proportional to WPM)
+4. Compare behavior between Summit Keyer and Radio Keyer modes
+5. Check if manual keying works correctly in both modes (isolates keyer vs. message queue issues)
+
+#### Supported Characters
+
+**Valid Characters:**
+- Letters: A-Z (auto-uppercased)
+- Numbers: 0-9
+- Punctuation: `.` `,` `?` `/` `-`
+- Prosigns: Entered as text like `<AR>`, `<SK>`, `<BK>`, `<BT>`, `<CT>`, `<HH>`, `<SN>`, `<SOS>`
+- Spaces: Word spacing in morse code
+
+**Validation:**
+- Label and message cannot be empty
+- Message must contain only valid morse characters
+- Invalid characters trigger error beep and validation message
+
+#### Use Cases
+
+**Contest Operation:**
+- Store common exchanges: `"5NN CA"`, `"TU K6ABC"`, `"CQ CQ DE K6ABC K"`
+- Quick send via 'M' key in Radio Output mode
+- Consistent, error-free messaging
+
+**Casual Operation:**
+- Store callsign, standard sign-offs: `"73 ES CUL <SK>"`
+- CQ calls with proper prosigns
+- Frequently used phrases
+
+**Training:**
+- Pre-configured examples for learning proper formats
+- Practice sending stored messages
+
+#### State Variables
+
+```cpp
+CWMemoryPreset cwMemories[CW_MEMORY_MAX_SLOTS];  // Global array of presets
+int cwMemorySelection;                            // Currently selected slot in UI
+CWMemoryContextMenu contextMenuActive;            // Current context menu state
+CWMemoryEditMode editMode;                        // Current edit mode state
+bool memorySelectorActive;                        // True when selector active in Radio Output
+int memorySelectorSelection;                      // Selected slot in Radio Output selector
+```
 
 ## Morse Code Decoder (Adaptive)
 
