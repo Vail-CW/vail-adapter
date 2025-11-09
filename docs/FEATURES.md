@@ -431,28 +431,51 @@ struct CWMemoryPreset {
 Accessible from: **Radio Menu → CW Memories**
 
 **Main Screen:**
-- Scrollable list of all 10 preset slots
+- Scrollable list of all 10 preset slots (5 visible at a time)
 - Shows `[Slot #] Label` or `[Slot #] (empty)` for unused slots
-- Navigation: UP/DOWN to select, ENTER for context menu, ESC to exit
+- Navigation: UP/DOWN to select, ENTER to open action menu, ESC to exit
+- Footer: `↑↓ Select  ENTER Menu  ESC Back`
 
-**Context Menu (Empty Slot):**
-- Create Preset
-- Cancel
+**Action Menu (Full-Screen):**
+When ENTER is pressed on a slot, a full-screen action menu appears:
 
-**Context Menu (Occupied Slot):**
-- Preview (plays on device speaker)
-- Edit Preset
-- Delete Preset
-- Cancel
+**Empty Slot Actions:**
+- **Create Preset** - Opens label entry screen
+- **Cancel** - Returns to main list
 
-**Create/Edit Flow:**
-1. **Label Entry:** Type label (max 15 chars), auto-uppercase
-2. **Message Entry:** Type message (max 100 chars), validation for valid morse characters
-3. **Save:** ENTER to save, ESC to cancel
-4. Character validation: A-Z, 0-9, space, `.`,`,`,`?`,`/`,`-`, prosigns as `<AR>`, `<SK>`, etc.
+**Occupied Slot Actions:**
+- **Preview** - Plays preset on device speaker
+- **Edit Preset** - Opens label/message editor
+- **Delete Preset** - Shows delete confirmation
+- **Cancel** - Returns to main list
 
-**Delete Confirmation:**
-- Yes/No dialog with LEFT/RIGHT to toggle, ENTER to confirm
+Navigation: UP/DOWN to select action, ENTER to confirm, ESC to cancel
+
+**Create/Edit Flow (Full-Screen):**
+1. **Label Entry Screen:**
+   - Title: "CREATE PRESET" or "EDIT PRESET"
+   - Input box with character counter (max 15 chars)
+   - Auto-uppercase text entry
+   - Blinking cursor indicator
+   - Footer: `Type text  ENTER Save  ESC Cancel`
+
+2. **Message Entry Screen:**
+   - Title: "CREATE PRESET" or "EDIT PRESET"
+   - Multi-line input box with word wrap (max 100 chars)
+   - Character counter showing current/max
+   - Validation for valid morse characters (A-Z, 0-9, space, `.`,`,`,`?`,`/`,`-`)
+   - Supports prosigns entered as `<AR>`, `<SK>`, etc.
+   - Footer: `Type text  ENTER Save  ESC Cancel`
+
+3. **Save:** ENTER advances from label → message → save, ESC cancels at any time
+
+**Delete Confirmation (Full-Screen):**
+- Title: "DELETE PRESET?" in red
+- Shows preset label being deleted
+- Warning: "This action cannot be undone"
+- Two large buttons: **Yes, Delete** (red highlight) and **No, Cancel** (blue highlight)
+- Navigation: UP/DOWN arrows to select, ENTER to confirm
+- Footer: `↑↓ Select  ENTER Confirm  ESC Cancel`
 
 **Preview:**
 - Plays preset message on device speaker using current WPM and tone settings

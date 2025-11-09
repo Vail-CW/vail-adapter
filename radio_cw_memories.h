@@ -49,6 +49,7 @@ enum CWMemoryContextMenu {
 
 CWMemoryContextMenu contextMenuActive = CONTEXT_NONE;
 int contextMenuSelection = 0;
+bool showingDeleteConfirmation = false;  // Track delete confirmation dialog state
 
 // Edit mode state
 enum CWMemoryEditMode {
@@ -294,45 +295,87 @@ void drawCWMemoriesUI(Adafruit_ST7789 &display) {
   display.print(helpText);
 }
 
-// Draw context menu
+// Draw context menu (full screen)
 void drawContextMenu(Adafruit_ST7789 &display) {
-  // Modal overlay
-  display.fillRoundRect(40, 80, SCREEN_WIDTH - 80, 100, 12, 0x1082);  // Dark blue fill
-  display.drawRoundRect(40, 80, SCREEN_WIDTH - 80, 100, 12, 0x34BF);  // Light blue outline
+  // Clear screen (preserve header)
+  display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
-  display.setTextSize(1);
-  display.setTextColor(ST77XX_CYAN);
-  int yPos = 95;
+  // Title - show slot info
+  display.setTextSize(2);
+  display.setTextColor(COLOR_TITLE);
+  int16_t x1, y1;
+  uint16_t w, h;
+  String title = "SLOT " + String(cwMemorySelection + 1);
+  display.getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+  int centerX = (SCREEN_WIDTH - w) / 2;
+  display.setCursor(centerX, 55);
+  display.print(title);
+
+  // Show label/message preview if occupied
+  if (contextMenuActive == CONTEXT_OCCUPIED_SLOT && !cwMemories[cwMemorySelection].isEmpty) {
+    display.setTextSize(1);
+    display.setTextColor(0x7BEF);  // Light gray
+    String label = String(cwMemories[cwMemorySelection].label);
+    display.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
+    centerX = (SCREEN_WIDTH - w) / 2;
+    display.setCursor(centerX, 75);
+    display.print(label);
+  }
+
+  // Menu options
+  int startY = 100;
+  int itemHeight = 30;
 
   if (contextMenuActive == CONTEXT_EMPTY_SLOT) {
     // Empty slot menu
-    bool sel0 = (contextMenuSelection == 0);
-    bool sel1 = (contextMenuSelection == 1);
+    const char* options[] = {"Create Preset", "Cancel"};
 
-    if (sel0) display.fillRoundRect(50, yPos - 3, SCREEN_WIDTH - 100, 20, 6, 0x249F);
-    display.setTextColor(sel0 ? ST77XX_WHITE : ST77XX_CYAN);
-    display.setCursor(60, yPos + 5);
-    display.print("Create Preset");
+    for (int i = 0; i < 2; i++) {
+      int yPos = startY + (i * itemHeight);
+      bool isSelected = (contextMenuSelection == i);
 
-    yPos += 30;
-    if (sel1) display.fillRoundRect(50, yPos - 3, SCREEN_WIDTH - 100, 20, 6, 0x249F);
-    display.setTextColor(sel1 ? ST77XX_WHITE : ST77XX_CYAN);
-    display.setCursor(60, yPos + 5);
-    display.print("Cancel");
+      // Highlight selected item
+      if (isSelected) {
+        display.fillRoundRect(20, yPos - 2, SCREEN_WIDTH - 40, itemHeight - 2, 8, 0x249F);
+      }
 
+      display.setTextSize(2);
+      display.setTextColor(isSelected ? ST77XX_WHITE : ST77XX_CYAN);
+      display.getTextBounds(options[i], 0, 0, &x1, &y1, &w, &h);
+      centerX = (SCREEN_WIDTH - w) / 2;
+      display.setCursor(centerX, yPos + 8);
+      display.print(options[i]);
+    }
   } else if (contextMenuActive == CONTEXT_OCCUPIED_SLOT) {
     // Occupied slot menu
     const char* options[] = {"Preview", "Edit Preset", "Delete Preset", "Cancel"};
 
     for (int i = 0; i < 4; i++) {
-      bool sel = (contextMenuSelection == i);
-      if (sel) display.fillRoundRect(50, yPos - 3, SCREEN_WIDTH - 100, 20, 6, 0x249F);
-      display.setTextColor(sel ? ST77XX_WHITE : ST77XX_CYAN);
-      display.setCursor(60, yPos + 5);
+      int yPos = startY + (i * itemHeight);
+      bool isSelected = (contextMenuSelection == i);
+
+      // Highlight selected item
+      if (isSelected) {
+        display.fillRoundRect(20, yPos - 2, SCREEN_WIDTH - 40, itemHeight - 2, 8, 0x249F);
+      }
+
+      display.setTextSize(2);
+      display.setTextColor(isSelected ? ST77XX_WHITE : ST77XX_CYAN);
+      display.getTextBounds(options[i], 0, 0, &x1, &y1, &w, &h);
+      centerX = (SCREEN_WIDTH - w) / 2;
+      display.setCursor(centerX, yPos + 8);
       display.print(options[i]);
-      yPos += 20;
     }
   }
+
+  // Footer with instructions
+  display.setTextSize(1);
+  display.setTextColor(COLOR_WARNING);
+  String helpText = "\x18\x19 Select  ENTER Confirm  ESC Back";
+  display.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  centerX = (SCREEN_WIDTH - w) / 2;
+  display.setCursor(centerX, SCREEN_HEIGHT - 12);
+  display.print(helpText);
 }
 
 // Draw edit screen (label or message input)
@@ -430,49 +473,80 @@ void drawEditScreen(Adafruit_ST7789 &display) {
   display.print(helpText);
 }
 
-// Draw delete confirmation dialog
+// Draw delete confirmation dialog (full screen)
 void drawDeleteConfirmation(Adafruit_ST7789 &display, int slot) {
-  // Modal overlay
-  display.fillRoundRect(30, 70, SCREEN_WIDTH - 60, 110, 12, 0x1082);
-  display.drawRoundRect(30, 70, SCREEN_WIDTH - 60, 110, 12, COLOR_ERROR);
+  // Clear screen (preserve header)
+  display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   // Title
-  display.setTextSize(1);
+  display.setTextSize(2);
   display.setTextColor(COLOR_ERROR);
-  display.setCursor(50, 85);
-  display.print("DELETE PRESET");
+  int16_t x1, y1;
+  uint16_t w, h;
+  String title = "DELETE PRESET?";
+  display.getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+  int centerX = (SCREEN_WIDTH - w) / 2;
+  display.setCursor(centerX, 55);
+  display.print(title);
 
-  // Message (wrap if needed)
+  // Show label being deleted
   display.setTextSize(1);
   display.setTextColor(ST77XX_WHITE);
-  display.setCursor(50, 105);
-  display.print("Delete \"");
+  String label = "\"" + String(cwMemories[slot].label) + "\"";
+  display.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
+  centerX = (SCREEN_WIDTH - w) / 2;
+  display.setCursor(centerX, 85);
+  display.print(label);
 
-  // Truncate label if needed
-  if (strlen(cwMemories[slot].label) > 18) {
-    char truncated[19];
-    strlcpy(truncated, cwMemories[slot].label, 16);
-    strcat(truncated, "...");
-    display.print(truncated);
-  } else {
-    display.print(cwMemories[slot].label);
+  // Warning message
+  display.setTextSize(1);
+  display.setTextColor(0x7BEF);  // Light gray
+  String warning = "This action cannot be undone";
+  display.getTextBounds(warning, 0, 0, &x1, &y1, &w, &h);
+  centerX = (SCREEN_WIDTH - w) / 2;
+  display.setCursor(centerX, 105);
+  display.print(warning);
+
+  // Yes/No buttons
+  int startY = 135;
+  int itemHeight = 35;
+  const char* options[] = {"Yes, Delete", "No, Cancel"};
+
+  for (int i = 0; i < 2; i++) {
+    int yPos = startY + (i * itemHeight);
+    bool isSelected = (contextMenuSelection == i);
+
+    // Highlight selected button
+    if (isSelected) {
+      uint16_t color = (i == 0) ? COLOR_ERROR : 0x249F;  // Red for Yes, Blue for No
+      display.fillRoundRect(40, yPos - 2, SCREEN_WIDTH - 80, itemHeight - 2, 8, color);
+    }
+
+    display.setTextSize(2);
+    display.setTextColor(isSelected ? ST77XX_WHITE : ST77XX_CYAN);
+    display.getTextBounds(options[i], 0, 0, &x1, &y1, &w, &h);
+    centerX = (SCREEN_WIDTH - w) / 2;
+    display.setCursor(centerX, yPos + 8);
+    display.print(options[i]);
   }
-  display.print("\"?");
 
-  // Yes/No options
-  int yPos = 135;
-  bool selYes = (contextMenuSelection == 0);
-  bool selNo = (contextMenuSelection == 1);
+  // Footer with instructions
+  display.setTextSize(1);
+  display.setTextColor(COLOR_WARNING);
+  String helpText = "\x18\x19 Select  ENTER Confirm  ESC Cancel";
+  display.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  centerX = (SCREEN_WIDTH - w) / 2;
+  display.setCursor(centerX, SCREEN_HEIGHT - 12);
+  display.print(helpText);
+}
 
-  if (selYes) display.fillRoundRect(50, yPos, 80, 25, 6, COLOR_ERROR);
-  display.setTextColor(selYes ? ST77XX_BLACK : ST77XX_WHITE);
-  display.setCursor(70, yPos + 10);
-  display.print("Yes");
+// ============================================
+// Helper Functions
+// ============================================
 
-  if (selNo) display.fillRoundRect(150, yPos, 80, 25, 6, 0x249F);
-  display.setTextColor(selNo ? ST77XX_WHITE : 0x7BEF);
-  display.setCursor(170, yPos + 10);
-  display.print("No");
+// Check if we should draw the main CW Memories list (not in submenu/edit/delete state)
+bool shouldDrawCWMemoriesList() {
+  return (editMode == EDIT_NONE && contextMenuActive == CONTEXT_NONE && !showingDeleteConfirmation);
 }
 
 // ============================================
@@ -484,6 +558,7 @@ void startCWMemoriesMode(Adafruit_ST7789 &display) {
   cwMemoryScrollOffset = 0;
   contextMenuActive = CONTEXT_NONE;
   contextMenuSelection = 0;
+  showingDeleteConfirmation = false;
   editMode = EDIT_NONE;
   editingSlot = -1;
   editBuffer[0] = '\0';
@@ -602,6 +677,8 @@ int handleContextMenuInput(char key, Adafruit_ST7789 &display) {
       beep(TONE_MENU_NAV, BEEP_SHORT);
       return 2;
     }
+    // Consume the input even if we can't move up
+    return 0;
   }
   else if (key == KEY_DOWN) {
     if (contextMenuSelection < maxOptions - 1) {
@@ -610,6 +687,8 @@ int handleContextMenuInput(char key, Adafruit_ST7789 &display) {
       beep(TONE_MENU_NAV, BEEP_SHORT);
       return 2;
     }
+    // Consume the input even if we can't move down
+    return 0;
   }
   else if (key == KEY_ENTER || key == KEY_ENTER_ALT) {
     if (contextMenuActive == CONTEXT_EMPTY_SLOT) {
@@ -651,6 +730,7 @@ int handleContextMenuInput(char key, Adafruit_ST7789 &display) {
       }
       else if (contextMenuSelection == 2) {
         // Delete - show confirmation
+        showingDeleteConfirmation = true;
         contextMenuSelection = 1;  // Default to "No"
         drawDeleteConfirmation(display, cwMemorySelection);
         beep(TONE_MENU_NAV, BEEP_SHORT);
@@ -678,7 +758,7 @@ int handleContextMenuInput(char key, Adafruit_ST7789 &display) {
 
 // Handle delete confirmation input
 int handleDeleteConfirmationInput(char key, Adafruit_ST7789 &display) {
-  if (key == KEY_LEFT || key == KEY_RIGHT) {
+  if (key == KEY_UP || key == KEY_DOWN || key == KEY_LEFT || key == KEY_RIGHT) {
     contextMenuSelection = (contextMenuSelection == 0) ? 1 : 0;
     drawDeleteConfirmation(display, cwMemorySelection);
     beep(TONE_MENU_NAV, BEEP_SHORT);
@@ -688,12 +768,14 @@ int handleDeleteConfirmationInput(char key, Adafruit_ST7789 &display) {
     if (contextMenuSelection == 0) {
       // Confirm delete
       deleteCWMemory(cwMemorySelection);
+      showingDeleteConfirmation = false;
       contextMenuActive = CONTEXT_NONE;
       drawCWMemoriesUI(display);
       beep(TONE_SUCCESS, BEEP_MEDIUM);
       return 2;
     } else {
-      // Cancel delete
+      // Cancel delete - return to context menu
+      showingDeleteConfirmation = false;
       contextMenuActive = CONTEXT_OCCUPIED_SLOT;
       contextMenuSelection = 0;
       drawContextMenu(display);
@@ -702,7 +784,8 @@ int handleDeleteConfirmationInput(char key, Adafruit_ST7789 &display) {
     }
   }
   else if (key == KEY_ESC) {
-    // Cancel delete
+    // Cancel delete - return to context menu
+    showingDeleteConfirmation = false;
     contextMenuActive = CONTEXT_OCCUPIED_SLOT;
     contextMenuSelection = 0;
     drawContextMenu(display);
@@ -720,21 +803,9 @@ int handleCWMemoriesInput(char key, Adafruit_ST7789 &display) {
     return handleEditModeInput(key, display);
   }
 
-  // Handle delete confirmation
-  if (contextMenuActive == CONTEXT_OCCUPIED_SLOT && contextMenuSelection == 2) {
-    // Check if we're showing delete confirmation (rough heuristic)
-    // This would be cleaner with a separate state variable
-    static bool showingDeleteConfirm = false;
-    if (key == KEY_LEFT || key == KEY_RIGHT) {
-      showingDeleteConfirm = true;
-    }
-    if (showingDeleteConfirm) {
-      int result = handleDeleteConfirmationInput(key, display);
-      if (result != 0) {
-        showingDeleteConfirm = false;
-      }
-      return result;
-    }
+  // Handle delete confirmation dialog
+  if (showingDeleteConfirmation) {
+    return handleDeleteConfirmationInput(key, display);
   }
 
   // Handle context menu

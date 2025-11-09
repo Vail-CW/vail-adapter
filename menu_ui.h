@@ -50,6 +50,9 @@ enum MenuMode {
 
 extern MenuMode currentMode;
 
+// Forward declaration for CW Memories helper function (from radio_cw_memories.h)
+bool shouldDrawCWMemoriesList();
+
 // Forward declarations for status bar functions
 void drawStatusIcons();
 
@@ -436,7 +439,11 @@ void drawMenu() {
   } else if (currentMode == MODE_RADIO_OUTPUT) {
     drawRadioOutputUI(tft);
   } else if (currentMode == MODE_CW_MEMORIES) {
-    drawCWMemoriesUI(tft);
+    // CW Memories has multiple UI states - only redraw main list if not in submenu
+    if (shouldDrawCWMemoriesList()) {
+      drawCWMemoriesUI(tft);
+    }
+    // Otherwise, the active state (context menu, edit screen, delete confirm) is already showing
   } else if (currentMode == MODE_WIFI_SETTINGS) {
     drawWiFiUI(tft);
   } else if (currentMode == MODE_CW_SETTINGS) {

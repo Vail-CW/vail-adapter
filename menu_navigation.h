@@ -629,10 +629,9 @@ void handleKeyPress(char key) {
       currentSelection = 0;
       beep(TONE_MENU_NAV, BEEP_SHORT);
       drawMenu();
-    } else if (result == 2) {
-      // Redraw requested
-      drawCWMemoriesUI(tft);
     }
+    // Note: result == 2 means redraw was already handled by the input handler
+    // Don't force redraw here - the handler draws the appropriate screen (list/menu/edit/delete)
     return;
   }
 
