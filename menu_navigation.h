@@ -63,6 +63,9 @@ void connectToVail(String channel);
 void startMorseShooter(Adafruit_ST7789& tft);
 void startRadioOutput(Adafruit_ST7789& tft);  // Radio Output initialization
 int handleRadioOutputInput(char key, Adafruit_ST7789& tft);  // Radio Output input handler
+void startCWMemoriesMode(Adafruit_ST7789& tft);  // CW Memories initialization
+int handleCWMemoriesInput(char key, Adafruit_ST7789& tft);  // CW Memories input handler
+void drawCWMemoriesUI(Adafruit_ST7789& tft);  // CW Memories UI
 void initLogEntry();  // QSO Logger initialization
 int handleQSOLogEntryInput(char key, Adafruit_ST7789& tft);  // QSO log entry input handler
 void startViewLogs(Adafruit_ST7789& tft);  // QSO view logs initialization
@@ -251,9 +254,9 @@ void selectMenuItem() {
       currentMode = MODE_RADIO_OUTPUT;
       startRadioOutput(tft);
     } else if (currentSelection == 1) {
-      // CW Memories (placeholder)
+      // CW Memories
       currentMode = MODE_CW_MEMORIES;
-      drawMenu();
+      startCWMemoriesMode(tft);
     }
 
   } else if (currentMode == MODE_TOOLS_MENU) {
@@ -617,14 +620,18 @@ void handleKeyPress(char key) {
     return;
   }
 
-  // Handle CW Memories mode (placeholder)
+  // Handle CW Memories mode
   if (currentMode == MODE_CW_MEMORIES) {
-    if (key == KEY_ESC) {
+    int result = handleCWMemoriesInput(key, tft);
+    if (result == -1) {
       // Exit to Radio menu
       currentMode = MODE_RADIO_MENU;
       currentSelection = 0;
       beep(TONE_MENU_NAV, BEEP_SHORT);
       drawMenu();
+    } else if (result == 2) {
+      // Redraw requested
+      drawCWMemoriesUI(tft);
     }
     return;
   }
@@ -657,7 +664,7 @@ void handleKeyPress(char key) {
         beep(TONE_MENU_NAV, BEEP_SHORT);
       }
     }
-    else if (key == KEY_ENTER || key == KEY_ENTER_ALT) {
+    else if (key == KEY_ENTER || key == KEY_ENTER_ALT || key == KEY_RIGHT) {
       selectMenuItem();
     }
     else if (key == KEY_ESC) {

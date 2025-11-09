@@ -25,7 +25,7 @@ The system operates as a state machine with different modes (`MenuMode` enum in 
 - `MODE_CW_ACADEMY_COPY_PRACTICE` - CW Academy copy practice (listen and type)
 
 **Games:**
-- `MODE_MORSE_SHOOTER` - Arcade-style game (shoot falling letters with morse code)
+- `MODE_MORSE_SHOOTER` - Arcade-style game with adaptive decoder (shoot falling letters with morse code, supports straight key and iambic keyer)
 
 **Radio Integration:**
 - `MODE_RADIO_OUTPUT` - Key external ham radios via 3.5mm jack outputs
@@ -159,6 +159,37 @@ void updateMyMode() {
 }
 ```
 
+## Menu Navigation
+
+The menu system uses a card-based UI where users scroll through options and select items.
+
+### Navigation Controls
+
+**Arrow Keys:**
+- **Up/Down** - Navigate between menu items (scroll through cards)
+- **Right** - Select highlighted menu item (enter submenu/mode)
+
+**Other Keys:**
+- **Enter** - Select highlighted menu item (same as Right arrow)
+- **ESC** - Go back to parent menu / Exit current mode
+- **ESC (triple press in main menu)** - Enter deep sleep mode
+
+### Visual Design
+
+Each menu card displays:
+- Icon representing the menu option
+- Title text
+- Right arrow (→) indicating the option can be selected
+
+The right arrow visual matches the keyboard input - pressing the **Right arrow key** or **Enter** selects the highlighted card.
+
+### Implementation
+
+Menu navigation is handled in `menu_navigation.h`:
+- `handleKeyPress()` routes input based on current mode
+- `selectMenuItem()` transitions to the selected mode
+- `drawMenuItems()` renders the card-based UI with arrow indicators
+
 ## Configuration Management
 
 All user settings are stored in ESP32 Preferences (non-volatile flash storage).
@@ -175,6 +206,13 @@ All user settings are stored in ESP32 Preferences (non-volatile flash storage).
 - **"cwa"** - CW Academy progress (track, session, practice type, message type)
 - **"radio"** - Radio mode (Summit Keyer vs Radio Keyer)
 - **"qso_operator"** - Station info (callsign, grid square, POTA reference)
+- **"cw_memories"** - CW memory presets (10 slots)
+  - Keys: "label1" through "label10", "message1" through "message10"
+  - Each slot stores a label (max 15 chars) and message (max 100 chars)
+  - Empty slots stored as empty strings
+  - Loaded at startup via `loadCWMemories()` in `radio_cw_memories.h`
+  - Saved immediately on create/edit/delete
+  - Debug logging: All load/save operations print to Serial for troubleshooting
 
 ### Best Practices
 

@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-VAIL SUMMIT is a portable morse code training device built on the ESP32-S3 Feather platform with an LCD display and modern UI. It's designed for ham radio operators to practice receiving and sending morse code. Input comes from a CardKB I2C keyboard, iambic paddle, and capacitive touch pads. The device includes training modes, settings management, WiFi connectivity to the Vail internet morse repeater, and extensive hardware integration (battery monitoring, I2S audio).
+VAIL SUMMIT is a portable morse code training device built on the ESP32-S3 Feather platform with an LCD display and modern UI. It's designed for ham radio operators to practice receiving and sending morse code. Input comes from a CardKB I2C keyboard, iambic paddle, and capacitive touch pads. The device includes training modes, settings management, WiFi connectivity to the Vail internet morse repeater, and extensive hardware integration.
 
 ## Documentation Structure
 
@@ -80,6 +80,21 @@ For detailed architecture information, see **[docs/ARCHITECTURE.md](docs/ARCHITE
 
 For complete pin assignments and hardware details, see **[docs/HARDWARE.md](docs/HARDWARE.md)**.
 
+### Menu Navigation
+
+The device uses a card-based menu UI with keyboard navigation:
+
+**Navigation Keys:**
+- **Up/Down arrows** - Scroll through menu cards
+- **Right arrow** - Select highlighted menu item (enter submenu/mode)
+- **Enter** - Select highlighted menu item (same as Right arrow)
+- **ESC** - Go back to parent menu / Exit current mode
+- **ESC (triple press)** - Enter deep sleep mode from main menu
+
+Each menu card displays an icon, title, and right arrow (→) visual indicator. The right arrow key input matches the visual arrow shown on cards.
+
+For detailed menu architecture, see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#menu-navigation)**.
+
 ### Configuration Management
 
 All settings stored in ESP32 Preferences (non-volatile flash):
@@ -90,6 +105,7 @@ All settings stored in ESP32 Preferences (non-volatile flash):
 - **"callsign"** - User callsign for Vail repeater
 - **"cwa"** - CW Academy progress (track, session, practice/message types)
 - **"radio"** - Radio mode (Summit Keyer vs Radio Keyer)
+- **"cw_memories"** - CW message presets (10 slots, label + message)
 - **"qso_operator"** - Station info for QSO logging
 
 Settings loaded on startup, saved immediately when changed.
@@ -110,8 +126,9 @@ For WiFi state machine details, see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.m
 ### Major Features
 
 **CW Academy Training Mode** - 4-track, 16-session curriculum with progressive character introduction
-**Morse Shooter Game** - Arcade-style game using iambic keyer to shoot falling letters
+**Morse Shooter Game** - Arcade-style game with adaptive decoder, supports straight key and iambic keyer
 **Radio Output Mode** - Key external ham radios via 3.5mm jack (Summit Keyer or Radio Keyer modes)
+**CW Memories** - Store and manage up to 10 reusable morse code message presets
 **Morse Decoder** - Real-time adaptive decoding of paddle input with WPM tracking
 **QSO Logger** - Device and web-based contact logging with ADIF/CSV export
 **Web Interface** - Comprehensive browser-based control and QSO management
@@ -261,7 +278,7 @@ Each major feature is isolated in its own header file:
 - `training_cwa.h` - CW Academy curriculum (4 tracks, 16 sessions each)
 
 **Games:**
-- `game_morse_shooter.h` - Arcade game with falling letters and morse code shooting
+- `game_morse_shooter.h` - Arcade game with adaptive decoder, straight key and iambic keyer support, in-game settings
 
 **Radio Integration:**
 - `radio_output.h` - Radio keying output (Summit Keyer and Radio Keyer modes)
