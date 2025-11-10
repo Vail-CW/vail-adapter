@@ -100,22 +100,22 @@ void playWebMemorySequence() {
       for (int j = 0; pattern[j] != '\0'; j++) {
         if (pattern[j] == '.') {
           startTone(700);
-          delay(timing.ditDuration());
+          delay(timing.ditDuration);
           stopTone();
         } else if (pattern[j] == '-') {
           startTone(700);
-          delay(timing.dahDuration());
+          delay(timing.dahDuration);
           stopTone();
         }
 
         // Inter-element gap
         if (pattern[j + 1] != '\0') {
-          delay(timing.ditDuration());
+          delay(timing.ditDuration);
         }
       }
 
       // Letter gap
-      delay(timing.letterGap());
+      delay(timing.letterGap);
     }
   }
 
@@ -239,11 +239,11 @@ void startWebMemoryChainMode(Adafruit_ST7789& tft, int difficulty, int mode, int
   webMemoryGame.sequenceLength = 0;
 
   // Configure decoder
-  webMemoryChainDecoder.setSpeed(wpm);
-  webMemoryChainDecoder.setCallback(onWebMemoryDecoded);
+  webMemoryChainDecoder.messageCallback = onWebMemoryDecoded;
+  webMemoryChainDecoder.reset();
 
   // Draw static screen on device
-  tft.fillScreen(COLOR_BG);
+  tft.fillScreen(COLOR_BACKGROUND);
   tft.setTextColor(COLOR_TEXT);
   tft.setTextSize(2);
 
@@ -279,7 +279,7 @@ void startWebMemoryChainMode(Adafruit_ST7789& tft, int difficulty, int mode, int
 
   y += 30;
   tft.setCursor(20, y);
-  tft.setTextColor(COLOR_ACCENT);
+  tft.setTextColor(ST77XX_YELLOW);  // Yellow for instructions
   tft.println("Press ESC to exit");
 
   // Send initial state to browser
@@ -318,8 +318,7 @@ void updateWebMemoryChain() {
     }
   }
 
-  // Let decoder process any queued timings
-  webMemoryChainDecoder.update();
+  // Decoder processes timings automatically via callbacks
 }
 
 #endif // WEB_MEMORY_CHAIN_MODE_H

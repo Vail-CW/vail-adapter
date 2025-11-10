@@ -53,6 +53,22 @@ void sendPracticeWPM(float wpm);
 void startWebPracticeMode(Adafruit_ST7789& tft);
 void startWebMemoryChainMode(Adafruit_ST7789& tft, int difficulty, int mode, int wpm, bool sound, bool hints);
 
+// Serve functions for modular pages
+void serveRadioPage(AsyncWebServerRequest *request) {
+  extern const char RADIO_HTML[] PROGMEM;
+  request->send_P(200, "text/html", RADIO_HTML);
+}
+
+void serveSettingsPage(AsyncWebServerRequest *request) {
+  extern const char SETTINGS_HTML[] PROGMEM;
+  request->send_P(200, "text/html", SETTINGS_HTML);
+}
+
+void serveSystemPage(AsyncWebServerRequest *request) {
+  extern const char SYSTEM_HTML[] PROGMEM;
+  request->send_P(200, "text/html", SYSTEM_HTML);
+}
+
 /*
  * Initialize and start the web server
  * Called automatically when WiFi connects
