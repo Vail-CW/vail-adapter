@@ -25,6 +25,10 @@ void onMemoryChainWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *c
     case WS_EVT_CONNECT:
       Serial.printf("Memory Chain WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
       webMemoryChainModeActive = true;
+
+      // Note: Initial state and game start will be triggered from the main loop
+      // We can't call functions from web_memory_chain_mode.h here due to include order
+      // Instead, we set a flag that the main update loop will check
       break;
 
     case WS_EVT_DISCONNECT:
@@ -55,10 +59,9 @@ void onMemoryChainWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *c
             // Timing data from browser (morse input)
             float duration = doc["duration"].as<float>();
             bool positive = doc["positive"].as<bool>();
-            String key = doc["key"].as<String>();
 
-            Serial.printf("Memory Chain timing: %s, duration: %.1f ms, positive: %d\n",
-                         key.c_str(), duration, positive);
+            Serial.printf("Memory Chain timing: duration: %.1f ms, positive: %d\n",
+                         duration, positive);
 
             // Feed timing to decoder
             if (positive) {

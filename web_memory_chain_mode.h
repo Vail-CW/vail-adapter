@@ -24,6 +24,7 @@ struct WebMemoryChainGame {
   bool playingSequence;        // Device is playing sequence
   bool waitingForPlayer;       // Player's turn to reproduce
   unsigned long stateStartTime; // When current state began
+  bool needsInitialStart;      // Flag: needs to send initial state and start first round
 
   // Settings from browser
   int difficulty;              // 0=Beginner, 1=Intermediate, 2=Advanced
@@ -78,49 +79,56 @@ void generateWebMemorySequence() {
 }
 
 /*
- * Play sequence as morse code
+ * Send sequence to browser for audio playback
+ * Browser will play morse code using Web Audio API
  */
-void playWebMemorySequence() {
-  if (!webMemoryGame.soundEnabled) {
-    // Silent mode - just delay
-    delay(webMemoryGame.sequenceLength * 1000);
-    return;
-  }
-
-  MorseTiming timing(webMemoryGame.wpm);
+void sendWebMemorySequenceAudio() {
+  // Build array of morse patterns for browser to play
+  String morsePatterns = "";
 
   for (int i = 0; i < webMemoryGame.sequenceLength; i++) {
     char c = webMemoryGame.sequence[i];
     const char* pattern = getMorseCode(c);
 
     if (pattern) {
-      Serial.printf("Playing: %c (%s)\n", c, pattern);
-
-      // Play each element
-      for (int j = 0; pattern[j] != '\0'; j++) {
-        if (pattern[j] == '.') {
-          startTone(700);
-          delay(timing.ditDuration);
-          stopTone();
-        } else if (pattern[j] == '-') {
-          startTone(700);
-          delay(timing.dahDuration);
-          stopTone();
-        }
-
-        // Inter-element gap
-        if (pattern[j + 1] != '\0') {
-          delay(timing.ditDuration);
-        }
-      }
-
-      // Letter gap
-      delay(timing.letterGap);
+      if (i > 0) morsePatterns += " ";  // Space between characters
+      morsePatterns += pattern;
+      Serial.printf("Sending pattern for %c: %s\n", c, pattern);
     }
   }
 
-  // Extra delay before player's turn
-  delay(500);
+  // Send to browser via WebSocket
+  if (webMemoryChainModeActive && memoryChainWebSocket.count() > 0) {
+    JsonDocument doc;
+    doc["type"] = "play_morse";
+    doc["patterns"] = morsePatterns;
+    doc["wpm"] = webMemoryGame.wpm;
+    doc["soundEnabled"] = webMemoryGame.soundEnabled;
+
+    String output;
+    serializeJson(doc, output);
+    memoryChainWebSocket.textAll(output);
+
+    Serial.printf("Sent morse patterns to browser: %s\n", morsePatterns.c_str());
+  }
+
+  // Calculate duration for synchronization
+  MorseTiming timing(webMemoryGame.wpm);
+  int totalDuration = 0;
+
+  for (int i = 0; i < webMemoryGame.sequenceLength; i++) {
+    const char* pattern = getMorseCode(webMemoryGame.sequence[i]);
+    if (pattern) {
+      for (int j = 0; pattern[j] != '\0'; j++) {
+        totalDuration += (pattern[j] == '.') ? timing.ditDuration : timing.dahDuration;
+        if (pattern[j + 1] != '\0') totalDuration += timing.ditDuration;  // Inter-element
+      }
+      totalDuration += timing.letterGap;  // Letter gap
+    }
+  }
+
+  // Wait for browser to finish playing
+  delay(totalDuration + 500);
 }
 
 /*
@@ -132,6 +140,10 @@ void startWebMemoryRound() {
   webMemoryGame.waitingForPlayer = false;
   webMemoryGame.stateStartTime = millis();
 
+  // Reset decoder to clear any residual timings from previous round
+  webMemoryChainDecoder.reset();
+  Serial.println("Decoder reset for new round");
+
   // Generate new sequence
   generateWebMemorySequence();
 
@@ -142,9 +154,9 @@ void startWebMemoryRound() {
   String seqStr = String(webMemoryGame.sequence);
   sendMemoryChainSequence(seqStr, webMemoryGame.showHints);
 
-  // Play sequence
-  Serial.println("Playing sequence...");
-  playWebMemorySequence();
+  // Send sequence to browser for playback
+  Serial.println("Sending sequence to browser...");
+  sendWebMemorySequenceAudio();
 
   // Now player's turn
   webMemoryGame.playingSequence = false;
@@ -237,6 +249,7 @@ void startWebMemoryChainMode(Adafruit_ST7789& tft, int difficulty, int mode, int
   webMemoryGame.currentScore = 0;
   webMemoryGame.highScore = 0;
   webMemoryGame.sequenceLength = 0;
+  webMemoryGame.needsInitialStart = true;  // Will start when WebSocket connects
 
   // Configure decoder
   webMemoryChainDecoder.messageCallback = onWebMemoryDecoded;
@@ -282,13 +295,9 @@ void startWebMemoryChainMode(Adafruit_ST7789& tft, int difficulty, int mode, int
   tft.setTextColor(ST77XX_YELLOW);  // Yellow for instructions
   tft.println("Press ESC to exit");
 
-  // Send initial state to browser
-  sendMemoryChainState("ready", "Click Start Game to begin");
-  sendMemoryChainScore(0, 0);
-
-  // Start first round
-  delay(1000);
-  startWebMemoryRound();
+  // Note: Don't send messages or start round here!
+  // The WebSocket isn't connected yet. Messages will be sent
+  // when the browser connects (see onMemoryChainWebSocketEvent)
 }
 
 /*
@@ -308,6 +317,21 @@ int handleWebMemoryChainInput(char key, Adafruit_ST7789& tft) {
  */
 void updateWebMemoryChain() {
   if (!webMemoryGame.gameActive) return;
+
+  // Check if we need to send initial state and start first round
+  // This happens after WebSocket connects
+  if (webMemoryGame.needsInitialStart && webMemoryChainModeActive) {
+    Serial.println("WebSocket connected, starting first round...");
+    webMemoryGame.needsInitialStart = false;
+
+    // Send initial state
+    sendMemoryChainState("ready", "Get ready...");
+    sendMemoryChainScore(0, 0);
+
+    // Start first round
+    delay(500);
+    startWebMemoryRound();
+  }
 
   // Check for timed mode timeout
   if (webMemoryGame.mode == 2) {  // Timed mode

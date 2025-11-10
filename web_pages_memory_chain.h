@@ -282,6 +282,76 @@ const char MEMORY_CHAIN_HTML[] PROGMEM = R"rawliteral(
         let ws = null;
         let gameActive = false;
         let currentState = 'ready';
+        let audioContext = null;
+        let oscillator = null;
+
+        // Initialize Web Audio API
+        function initAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        // Play morse code tone
+        function playTone(frequency, duration) {
+            return new Promise((resolve) => {
+                const osc = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+
+                osc.type = 'sine';
+                osc.frequency.value = frequency;
+
+                gainNode.gain.value = 0.3;  // Volume
+
+                osc.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
+                osc.start(audioContext.currentTime);
+                osc.stop(audioContext.currentTime + duration / 1000);
+
+                setTimeout(resolve, duration);
+            });
+        }
+
+        // Play morse code pattern
+        async function playMorsePattern(patterns, wpm, soundEnabled) {
+            if (!soundEnabled) {
+                console.log('Sound disabled, skipping playback');
+                return;
+            }
+
+            initAudio();
+
+            // Calculate timing (PARIS standard)
+            const ditDuration = 1200 / wpm;  // milliseconds
+            const dahDuration = ditDuration * 3;
+            const frequency = 700;  // Hz
+
+            const chars = patterns.split(' ');  // Split by spaces (character boundaries)
+
+            for (let i = 0; i < chars.length; i++) {
+                const pattern = chars[i];
+
+                // Play each dit/dah in the pattern
+                for (let j = 0; j < pattern.length; j++) {
+                    if (pattern[j] === '.') {
+                        await playTone(frequency, ditDuration);
+                    } else if (pattern[j] === '-') {
+                        await playTone(frequency, dahDuration);
+                    }
+
+                    // Inter-element gap (between dits/dahs within a character)
+                    if (j < pattern.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, ditDuration));
+                    }
+                }
+
+                // Letter gap (between characters)
+                if (i < chars.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, ditDuration * 3));
+                }
+            }
+        }
 
         // Initialize page
         loadSettings();
@@ -305,12 +375,16 @@ const char MEMORY_CHAIN_HTML[] PROGMEM = R"rawliteral(
                 if (!response.ok) throw new Error('Failed to start game');
 
                 const data = await response.json();
+                console.log('Game start response:', data);
 
-                // Connect WebSocket
-                const wsUrl = data.endpoint.replace('http://', 'ws://');
+                // Connect WebSocket using current host (works with both IP and mDNS)
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}/ws/memory-chain`;
+                console.log('Connecting to WebSocket:', wsUrl);
                 ws = new WebSocket(wsUrl);
 
                 ws.onopen = () => {
+                    console.log('WebSocket connected');
                     document.getElementById('connectionStatus').textContent = '● Connected';
                     document.getElementById('connectionStatus').className = 'status-connected';
                     document.getElementById('startBtn').disabled = true;
@@ -318,6 +392,7 @@ const char MEMORY_CHAIN_HTML[] PROGMEM = R"rawliteral(
                 };
 
                 ws.onmessage = (event) => {
+                    console.log('WebSocket message received:', event.data);
                     const msg = JSON.parse(event.data);
                     handleGameMessage(msg);
                 };
@@ -342,12 +417,18 @@ const char MEMORY_CHAIN_HTML[] PROGMEM = R"rawliteral(
 
         // Handle game state messages from device
         function handleGameMessage(msg) {
+            console.log('Handling message type:', msg.type, msg);
             switch (msg.type) {
                 case 'state':
                     updateGameState(msg.state, msg.description);
                     break;
                 case 'sequence':
                     updateSequence(msg.characters, msg.show);
+                    break;
+                case 'play_morse':
+                    // Play morse code audio in browser
+                    console.log('Playing morse pattern:', msg.patterns, 'at', msg.wpm, 'WPM');
+                    playMorsePattern(msg.patterns, msg.wpm, msg.soundEnabled);
                     break;
                 case 'score':
                     document.getElementById('currentScore').textContent = msg.current;
@@ -380,6 +461,17 @@ const char MEMORY_CHAIN_HTML[] PROGMEM = R"rawliteral(
             };
 
             stateText.textContent = stateNames[state] || state.toUpperCase();
+
+            // Start/stop silence timer based on state
+            if (state === 'listening') {
+                // Reset timing state for new round
+                lastKeyUpTime = 0;
+                keyDownTime = {};
+                anyKeyDown = false;
+                startSilenceTimer();
+            } else {
+                stopSilenceTimer();
+            }
         }
 
         // Update sequence display
@@ -417,6 +509,45 @@ const char MEMORY_CHAIN_HTML[] PROGMEM = R"rawliteral(
 
         // Keyboard input for morse code
         let keyDownTime = {};
+        let lastKeyUpTime = 0;
+        let anyKeyDown = false;
+        let silenceTimer = null;
+
+        // Send silence updates periodically when no keys are pressed
+        // Only sends after user has started keying (lastKeyUpTime is set)
+        function sendSilenceUpdate() {
+            if (!gameActive || currentState !== 'listening' || anyKeyDown) return;
+
+            // Don't send silence until user has keyed at least once
+            if (lastKeyUpTime === 0) return;
+
+            const now = performance.now();
+            const silenceDuration = now - lastKeyUpTime;
+            if (ws && silenceDuration > 50) {  // Meaningful silence
+                console.log('Sending ongoing silence:', silenceDuration, 'ms');
+                ws.send(JSON.stringify({
+                    type: 'timing',
+                    duration: silenceDuration,
+                    positive: false
+                }));
+                lastKeyUpTime = now;  // Reset for next update
+            }
+        }
+
+        // Start silence timer when entering listening state
+        function startSilenceTimer() {
+            if (silenceTimer) clearInterval(silenceTimer);
+            silenceTimer = setInterval(sendSilenceUpdate, 100);  // Check every 100ms
+        }
+
+        // Stop silence timer when leaving listening state
+        function stopSilenceTimer() {
+            if (silenceTimer) {
+                clearInterval(silenceTimer);
+                silenceTimer = null;
+            }
+        }
+
         document.addEventListener('keydown', (e) => {
             if (!gameActive || currentState !== 'listening') return;
             if (e.repeat) return;
@@ -426,7 +557,24 @@ const char MEMORY_CHAIN_HTML[] PROGMEM = R"rawliteral(
             if (e.code === 'ControlRight') key = 'dah';
 
             if (key && !keyDownTime[key]) {
-                keyDownTime[key] = performance.now();
+                const now = performance.now();
+                console.log('Key down:', key);
+
+                // Send silence timing if there was a gap since last key-up
+                if (lastKeyUpTime > 0 && !anyKeyDown) {
+                    const silenceDuration = now - lastKeyUpTime;
+                    if (ws && silenceDuration > 10) {  // Only send meaningful gaps
+                        console.log('Sending silence timing:', silenceDuration, 'ms');
+                        ws.send(JSON.stringify({
+                            type: 'timing',
+                            duration: silenceDuration,
+                            positive: false
+                        }));
+                    }
+                }
+
+                keyDownTime[key] = now;
+                anyKeyDown = true;
             }
         });
 
@@ -438,14 +586,23 @@ const char MEMORY_CHAIN_HTML[] PROGMEM = R"rawliteral(
             if (e.code === 'ControlRight') key = 'dah';
 
             if (key && keyDownTime[key] && ws) {
-                const duration = performance.now() - keyDownTime[key];
+                const now = performance.now();
+                const duration = now - keyDownTime[key];
+
+                console.log('Key up:', key, 'duration:', duration, 'ms');
+
+                // Send positive timing (key-down duration)
                 ws.send(JSON.stringify({
                     type: 'timing',
                     duration: duration,
-                    positive: true,
-                    key: key
+                    positive: true
                 }));
+
                 delete keyDownTime[key];
+                lastKeyUpTime = now;
+
+                // Check if all keys are up
+                anyKeyDown = Object.keys(keyDownTime).length > 0;
             }
         });
 
