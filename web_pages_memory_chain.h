@@ -1,0 +1,498 @@
+/*
+ * Web Pages - Memory Chain Game
+ * Browser-based progressive memory training game
+ * Player listens to morse sequences and reproduces them via keyboard/paddle
+ */
+
+#ifndef WEB_PAGES_MEMORY_CHAIN_H
+#define WEB_PAGES_MEMORY_CHAIN_H
+
+const char MEMORY_CHAIN_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Chain - VAIL SUMMIT</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 900px; margin: 0 auto; }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        h1 { font-size: 2rem; margin-bottom: 10px; }
+        .status-bar {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+        .status-item {
+            background: rgba(255,255,255,0.15);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+        .status-connected { color: #4ade80; }
+        .status-disconnected { color: #f87171; }
+        .game-container {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            margin-bottom: 20px;
+        }
+        .game-state {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .game-state h2 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        .state-ready { color: #60a5fa; }
+        .state-playing { color: #fbbf24; }
+        .state-listening { color: #4ade80; }
+        .state-correct { color: #10b981; }
+        .state-wrong { color: #ef4444; }
+        .game-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+        .sequence-display {
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 25px;
+            text-align: center;
+            min-height: 100px;
+            margin-bottom: 25px;
+            font-size: 2rem;
+            font-family: monospace;
+            letter-spacing: 8px;
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: #00d4ff;
+            color: #1e3c72;
+        }
+        .btn-primary:hover { background: #00b8e6; }
+        .btn-secondary {
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+        }
+        .btn-secondary:hover { background: rgba(255,255,255,0.3); }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .settings-panel {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 25px;
+            backdrop-filter: blur(10px);
+        }
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        .setting-item {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .setting-label {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        select, input[type="range"] {
+            padding: 10px;
+            border-radius: 6px;
+            border: none;
+            font-size: 1rem;
+        }
+        select {
+            background: rgba(255,255,255,0.9);
+            color: #1e3c72;
+        }
+        .range-value {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #00d4ff;
+        }
+        .instructions {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+        .instructions h3 {
+            margin-bottom: 15px;
+            color: #00d4ff;
+        }
+        .instructions ul {
+            padding-left: 20px;
+            line-height: 1.8;
+        }
+        @media (max-width: 768px) {
+            h1 { font-size: 1.5rem; }
+            .game-state h2 { font-size: 1.8rem; }
+            .sequence-display { font-size: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🧠 Memory Chain Game</h1>
+            <p>Progressive memory training with morse code sequences</p>
+            <div class="status-bar">
+                <div class="status-item">
+                    <span id="connectionStatus" class="status-disconnected">● Disconnected</span>
+                </div>
+                <div class="status-item">
+                    Score: <span id="currentScore">0</span>
+                </div>
+                <div class="status-item">
+                    High: <span id="highScore">0</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="game-container">
+            <div class="game-state">
+                <h2 id="gameStateText" class="state-ready">READY</h2>
+                <p id="gameStateDesc">Press Start to begin your memory training</p>
+            </div>
+
+            <div class="sequence-display" id="sequenceDisplay">
+                ---
+            </div>
+
+            <div class="controls">
+                <button id="startBtn" class="btn-primary" onclick="startGame()">Start Game</button>
+                <button id="settingsBtn" class="btn-secondary" onclick="toggleSettings()">Settings</button>
+                <button id="backBtn" class="btn-secondary" onclick="goBack()">Back to Dashboard</button>
+            </div>
+        </div>
+
+        <div class="settings-panel" id="settingsPanel" style="display: none;">
+            <h2 style="margin-bottom: 20px;">Game Settings</h2>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label class="setting-label">Difficulty</label>
+                    <select id="difficulty">
+                        <option value="0">Beginner (Letters Only)</option>
+                        <option value="1">Intermediate (+ Numbers)</option>
+                        <option value="2">Advanced (+ Prosigns)</option>
+                    </select>
+                </div>
+                <div class="setting-item">
+                    <label class="setting-label">Game Mode</label>
+                    <select id="gameMode">
+                        <option value="0">Standard (One Life)</option>
+                        <option value="1">Practice (3 Lives)</option>
+                        <option value="2">Timed (60 Seconds)</option>
+                    </select>
+                </div>
+                <div class="setting-item">
+                    <label class="setting-label">Speed: <span class="range-value" id="wpmValue">15</span> WPM</label>
+                    <input type="range" id="wpm" min="5" max="40" value="15" oninput="updateWpmDisplay()">
+                </div>
+                <div class="setting-item">
+                    <label class="setting-label">Sound</label>
+                    <select id="sound">
+                        <option value="true">Enabled</option>
+                        <option value="false">Silent</option>
+                    </select>
+                </div>
+                <div class="setting-item">
+                    <label class="setting-label">Show Sequence</label>
+                    <select id="hints">
+                        <option value="false">Hidden (True Memory)</option>
+                        <option value="true">Visible (Training)</option>
+                    </select>
+                </div>
+            </div>
+            <div style="margin-top: 20px; text-align: center;">
+                <button class="btn-primary" onclick="saveSettings()">Save Settings</button>
+            </div>
+        </div>
+
+        <div class="instructions">
+            <h3>How to Play</h3>
+            <ul>
+                <li><strong>Listen:</strong> The device plays a morse code sequence</li>
+                <li><strong>Remember:</strong> Memorize the characters you heard</li>
+                <li><strong>Reproduce:</strong> Key the same sequence using your paddle</li>
+                <li><strong>Advance:</strong> Each correct round adds one more character</li>
+                <li><strong>Challenge:</strong> How long can you make the chain?</li>
+            </ul>
+            <p style="margin-top: 15px; opacity: 0.8;">
+                Use Left Ctrl = Dit, Right Ctrl = Dah (or connect your Vail adapter)
+            </p>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let gameActive = false;
+        let currentState = 'ready';
+
+        // Initialize page
+        loadSettings();
+
+        // Start game
+        async function startGame() {
+            try {
+                // Request device to enter Memory Chain mode
+                const response = await fetch('/api/memory-chain/start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        difficulty: parseInt(document.getElementById('difficulty').value),
+                        mode: parseInt(document.getElementById('gameMode').value),
+                        wpm: parseInt(document.getElementById('wpm').value),
+                        sound: document.getElementById('sound').value === 'true',
+                        hints: document.getElementById('hints').value === 'true'
+                    })
+                });
+
+                if (!response.ok) throw new Error('Failed to start game');
+
+                const data = await response.json();
+
+                // Connect WebSocket
+                const wsUrl = data.endpoint.replace('http://', 'ws://');
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    document.getElementById('connectionStatus').textContent = '● Connected';
+                    document.getElementById('connectionStatus').className = 'status-connected';
+                    document.getElementById('startBtn').disabled = true;
+                    gameActive = true;
+                };
+
+                ws.onmessage = (event) => {
+                    const msg = JSON.parse(event.data);
+                    handleGameMessage(msg);
+                };
+
+                ws.onclose = () => {
+                    document.getElementById('connectionStatus').textContent = '● Disconnected';
+                    document.getElementById('connectionStatus').className = 'status-disconnected';
+                    document.getElementById('startBtn').disabled = false;
+                    gameActive = false;
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    alert('Connection error. Please try again.');
+                };
+
+            } catch (error) {
+                console.error('Failed to start game:', error);
+                alert('Failed to start game. Make sure device is connected.');
+            }
+        }
+
+        // Handle game state messages from device
+        function handleGameMessage(msg) {
+            switch (msg.type) {
+                case 'state':
+                    updateGameState(msg.state, msg.description);
+                    break;
+                case 'sequence':
+                    updateSequence(msg.characters, msg.show);
+                    break;
+                case 'score':
+                    document.getElementById('currentScore').textContent = msg.current;
+                    document.getElementById('highScore').textContent = msg.high;
+                    break;
+                case 'feedback':
+                    showFeedback(msg.correct);
+                    break;
+                case 'game_over':
+                    handleGameOver(msg.finalScore, msg.reason);
+                    break;
+            }
+        }
+
+        // Update game state display
+        function updateGameState(state, description) {
+            currentState = state;
+            const stateText = document.getElementById('gameStateText');
+            const stateDesc = document.getElementById('gameStateDesc');
+
+            stateText.className = 'state-' + state;
+            stateDesc.textContent = description;
+
+            const stateNames = {
+                'ready': 'READY',
+                'playing': 'LISTEN',
+                'listening': 'YOUR TURN',
+                'feedback': 'FEEDBACK',
+                'game_over': 'GAME OVER'
+            };
+
+            stateText.textContent = stateNames[state] || state.toUpperCase();
+        }
+
+        // Update sequence display
+        function updateSequence(characters, show) {
+            const display = document.getElementById('sequenceDisplay');
+            if (show) {
+                display.textContent = characters;
+            } else {
+                display.textContent = '?'.repeat(characters.length);
+            }
+        }
+
+        // Show correct/wrong feedback
+        function showFeedback(correct) {
+            const stateText = document.getElementById('gameStateText');
+            if (correct) {
+                stateText.textContent = '✓ CORRECT!';
+                stateText.className = 'state-correct';
+            } else {
+                stateText.textContent = '✗ WRONG';
+                stateText.className = 'state-wrong';
+            }
+        }
+
+        // Handle game over
+        function handleGameOver(finalScore, reason) {
+            updateGameState('game_over', `Final score: ${finalScore} - ${reason}`);
+            document.getElementById('startBtn').disabled = false;
+            gameActive = false;
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        // Keyboard input for morse code
+        let keyDownTime = {};
+        document.addEventListener('keydown', (e) => {
+            if (!gameActive || currentState !== 'listening') return;
+            if (e.repeat) return;
+
+            let key = null;
+            if (e.code === 'ControlLeft') key = 'dit';
+            if (e.code === 'ControlRight') key = 'dah';
+
+            if (key && !keyDownTime[key]) {
+                keyDownTime[key] = performance.now();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (!gameActive || currentState !== 'listening') return;
+
+            let key = null;
+            if (e.code === 'ControlLeft') key = 'dit';
+            if (e.code === 'ControlRight') key = 'dah';
+
+            if (key && keyDownTime[key] && ws) {
+                const duration = performance.now() - keyDownTime[key];
+                ws.send(JSON.stringify({
+                    type: 'timing',
+                    duration: duration,
+                    positive: true,
+                    key: key
+                }));
+                delete keyDownTime[key];
+            }
+        });
+
+        // Settings functions
+        function toggleSettings() {
+            const panel = document.getElementById('settingsPanel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function updateWpmDisplay() {
+            document.getElementById('wpmValue').textContent = document.getElementById('wpm').value;
+        }
+
+        function loadSettings() {
+            const settings = JSON.parse(localStorage.getItem('memoryChainSettings') || '{}');
+            if (settings.difficulty !== undefined) document.getElementById('difficulty').value = settings.difficulty;
+            if (settings.mode !== undefined) document.getElementById('gameMode').value = settings.mode;
+            if (settings.wpm !== undefined) {
+                document.getElementById('wpm').value = settings.wpm;
+                updateWpmDisplay();
+            }
+            if (settings.sound !== undefined) document.getElementById('sound').value = settings.sound;
+            if (settings.hints !== undefined) document.getElementById('hints').value = settings.hints;
+        }
+
+        function saveSettings() {
+            const settings = {
+                difficulty: document.getElementById('difficulty').value,
+                mode: document.getElementById('gameMode').value,
+                wpm: document.getElementById('wpm').value,
+                sound: document.getElementById('sound').value,
+                hints: document.getElementById('hints').value
+            };
+            localStorage.setItem('memoryChainSettings', JSON.stringify(settings));
+            alert('Settings saved!');
+            toggleSettings();
+        }
+
+        function goBack() {
+            if (gameActive && ws) {
+                ws.close();
+            }
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>
+)rawliteral";
+
+#endif // WEB_PAGES_MEMORY_CHAIN_H

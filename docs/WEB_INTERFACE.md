@@ -4,6 +4,38 @@ This document covers the web server, QSO logger, REST API endpoints, and all web
 
 ## Web Server Architecture
 
+### Modular File Structure
+
+The web server implementation is split into multiple header files for better maintainability and organization:
+
+**Core Coordinator:**
+- `web_server.h` (228 lines) - Main server setup, routing, and lifecycle management
+
+**Page Components:**
+- `web_pages_dashboard.h` - Main dashboard with status cards and navigation
+- `web_pages_wifi.h` - WiFi setup and network configuration
+- `web_pages_practice.h` - Web-based morse practice mode
+- `web_pages_radio.h` - Radio control and CW memory management
+- `web_pages_settings.h` - Device settings (CW, audio, callsign)
+- `web_pages_system.h` - System diagnostics and information
+
+**API Modules:**
+- `web_server_api.h` - Core API functions (device status, ADIF/CSV export)
+- `web_api_wifi.h` - WiFi API endpoints (scan, connect, manage credentials)
+- `web_api_qso.h` - QSO logger API (CRUD operations for contacts)
+- `web_api_settings.h` - Settings API (CW, volume, callsign configuration)
+- `web_api_memories.h` - CW memories API (manage preset messages)
+
+**Enhanced Features:**
+- `web_logger_enhanced.h` - Enhanced QSO logger with map visualization
+- `web_practice_socket.h` - WebSocket handler for real-time practice mode
+
+**Benefits of Modular Structure:**
+- Smaller, more manageable files (web_server.h reduced from 1669 to 228 lines)
+- Easier to locate and modify specific features
+- Reduced compilation memory usage
+- Better code organization and separation of concerns
+
 ### Technology Stack
 
 - **ESPAsyncWebServer** - Non-blocking HTTP server
@@ -11,6 +43,7 @@ This document covers the web server, QSO logger, REST API endpoints, and all web
 - **WiFi Event Handlers** - Auto-start/stop on connect/disconnect
 - **PROGMEM HTML** - Stores web pages in flash to save RAM
 - **RESTful API** - JSON endpoints for CRUD operations
+- **WebSocket** - Real-time bidirectional communication for practice mode
 
 ### Server Lifecycle
 

@@ -668,6 +668,19 @@ void handleKeyPress(char key) {
     return;
   }
 
+  // Handle Web Memory Chain mode
+  if (currentMode == MODE_WEB_MEMORY_CHAIN) {
+    int result = handleWebMemoryChainInput(key, tft);
+    if (result == -1) {
+      // Exit to Main menu
+      currentMode = MODE_MAIN_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    }
+    return;
+  }
+
   // Menu navigation (for MAIN_MENU, TRAINING_MENU, GAMES_MENU, RADIO_MENU, SETTINGS_MENU, TOOLS_MENU, QSO_LOGGER_MENU)
   if (currentMode == MODE_MAIN_MENU || currentMode == MODE_TRAINING_MENU ||
       currentMode == MODE_GAMES_MENU || currentMode == MODE_RADIO_MENU ||

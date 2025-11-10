@@ -99,6 +99,64 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
             font-weight: 600;
         }
         .btn-primary:hover { background: #00b8e6; }
+        .section-header {
+            text-align: center;
+            margin: 40px 0 30px;
+            padding: 20px;
+        }
+        .section-header h2 {
+            font-size: 2rem;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+        .section-header p {
+            opacity: 0.8;
+            font-size: 1.1rem;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 25px;
+            margin-bottom: 60px;
+        }
+        .feature-card {
+            background: linear-gradient(135deg, rgba(0,212,255,0.2) 0%, rgba(42,82,152,0.3) 100%);
+            border-radius: 15px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(0,212,255,0.3);
+            transition: all 0.3s;
+        }
+        .feature-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 15px 40px rgba(0,212,255,0.4);
+            border-color: rgba(0,212,255,0.6);
+        }
+        .feature-card h3 {
+            font-size: 1.6rem;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .feature-icon { font-size: 2.2rem; }
+        .feature-card p {
+            opacity: 0.95;
+            margin-bottom: 20px;
+            line-height: 1.7;
+        }
+        .feature-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: rgba(0,212,255,0.3);
+            border-radius: 12px;
+            font-size: 0.8rem;
+            margin-left: 10px;
+            font-weight: 600;
+        }
         footer {
             text-align: center;
             padding: 20px;
@@ -127,6 +185,15 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
                 </div>
             </div>
         </header>
+
+        <!-- Device Management Section -->
+        <div class="section-header">
+            <h2>
+                <span>⚙️</span>
+                Device Management
+            </h2>
+            <p>Configure and monitor your VAIL SUMMIT device</p>
+        </div>
 
         <div class="dashboard-grid">
             <div class="card">
@@ -157,6 +224,63 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
                 <h2><span class="card-icon">📻</span> Radio Control</h2>
                 <p>Send morse code messages to your connected ham radio via 3.5mm output jack.</p>
                 <a href="/radio" class="btn btn-primary">Radio Mode</a>
+            </div>
+        </div>
+
+        <!-- Remote Training & Games Section -->
+        <div class="section-header">
+            <h2>
+                <span>🎯</span>
+                Remote Training & Games
+                <span>🎮</span>
+            </h2>
+            <p>Practice morse code remotely using your web browser</p>
+        </div>
+
+        <div class="feature-grid">
+            <div class="feature-card">
+                <h3><span class="feature-icon">⚡</span> Practice Mode</h3>
+                <p>Real-time morse code practice with adaptive decoder. Key using your keyboard and see decoded text with WPM tracking.</p>
+                <a href="/practice" class="btn btn-primary">Start Practice</a>
+            </div>
+
+            <div class="feature-card" style="">
+                <h3>
+                    <span class="feature-icon">🧠</span>
+                    Memory Chain
+                </h3>
+                <p>Progressive memory training game. Listen to sequences and reproduce them to advance through levels.</p>
+                <a href="/memory-chain" class="btn btn-primary">Start Game</a>
+            </div>
+
+            <div class="feature-card" style="opacity: 0.6; cursor: not-allowed;">
+                <h3>
+                    <span class="feature-icon">📻</span>
+                    Hear It Type It
+                    <span class="feature-badge">Coming Soon</span>
+                </h3>
+                <p>Receive training with random callsigns. Listen to morse code and type what you hear for instant feedback.</p>
+                <button class="btn" disabled>Coming Soon</button>
+            </div>
+
+            <div class="feature-card" style="opacity: 0.6; cursor: not-allowed;">
+                <h3>
+                    <span class="feature-icon">🎓</span>
+                    CW Academy
+                    <span class="feature-badge">Coming Soon</span>
+                </h3>
+                <p>Structured curriculum with 4 tracks and 64 sessions. Progressive character introduction and skill building.</p>
+                <button class="btn" disabled>Coming Soon</button>
+            </div>
+
+            <div class="feature-card" style="opacity: 0.6; cursor: not-allowed;">
+                <h3>
+                    <span class="feature-icon">🎮</span>
+                    Morse Shooter
+                    <span class="feature-badge">Coming Soon</span>
+                </h3>
+                <p>Arcade-style action game. Shoot falling letters by keying their morse code before they reach the ground.</p>
+                <button class="btn" disabled>Coming Soon</button>
             </div>
         </div>
 

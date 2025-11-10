@@ -1,0 +1,295 @@
+/*
+ * Web Page - System Info
+ * HTML/CSS/JavaScript for system diagnostics page
+ * Displays firmware, memory, storage, WiFi, and battery info
+ */
+
+#ifndef WEB_PAGES_SYSTEM_H
+#define WEB_PAGES_SYSTEM_H
+
+const char SYSTEM_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Info - VAIL SUMMIT</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 1000px; margin: 0 auto; }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        h1 { font-size: 2rem; margin-bottom: 10px; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .card h2 { font-size: 1.2rem; margin-bottom: 15px; opacity: 0.9; }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .info-row:last-child { border-bottom: none; }
+        .info-label {
+            font-size: 0.9rem;
+            opacity: 0.7;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .info-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            text-align: right;
+        }
+        .signal-good { color: #00ff00; }
+        .signal-ok { color: #ffff00; }
+        .signal-poor { color: #ff4444; }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background: rgba(255,255,255,0.2);
+            color: #fff;
+            text-decoration: none;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.3);
+            transition: all 0.2s;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        .btn:hover {
+            background: rgba(255,255,255,0.3);
+            border-color: rgba(255,255,255,0.5);
+        }
+        .last-update {
+            text-align: center;
+            opacity: 0.6;
+            font-size: 0.85rem;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ℹ️ System Info</h1>
+            <p>VAIL SUMMIT Diagnostics & Status</p>
+        </header>
+
+        <div class="grid">
+            <div class="card">
+                <h2>📱 Firmware</h2>
+                <div class="info-row">
+                    <span class="info-label">Version</span>
+                    <span class="info-value" id="firmware">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Build Date</span>
+                    <span class="info-value" id="firmwareDate">Loading...</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>⏱️ System</h2>
+                <div class="info-row">
+                    <span class="info-label">Uptime</span>
+                    <span class="info-value" id="uptime">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">CPU Speed</span>
+                    <span class="info-value" id="cpuSpeed">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Flash Size</span>
+                    <span class="info-value" id="flashSize">Loading...</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>💾 Memory</h2>
+                <div class="info-row">
+                    <span class="info-label">Free RAM</span>
+                    <span class="info-value" id="freeHeap">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Min Free RAM</span>
+                    <span class="info-value" id="minFreeHeap">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Free PSRAM</span>
+                    <span class="info-value" id="freePsram">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Min Free PSRAM</span>
+                    <span class="info-value" id="minFreePsram">Loading...</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>💿 Storage</h2>
+                <div class="info-row">
+                    <span class="info-label">SPIFFS Used</span>
+                    <span class="info-value" id="spiffsUsed">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">SPIFFS Total</span>
+                    <span class="info-value" id="spiffsTotal">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">QSO Logs</span>
+                    <span class="info-value" id="qsoCount">Loading...</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>📶 WiFi</h2>
+                <div class="info-row">
+                    <span class="info-label">Status</span>
+                    <span class="info-value" id="wifiStatus">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">SSID</span>
+                    <span class="info-value" id="wifiSSID">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">IP Address</span>
+                    <span class="info-value" id="wifiIP">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Signal</span>
+                    <span class="info-value" id="wifiSignal">Loading...</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>🔋 Battery</h2>
+                <div class="info-row">
+                    <span class="info-label">Voltage</span>
+                    <span class="info-value" id="battVoltage">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Charge</span>
+                    <span class="info-value" id="battPercent">Loading...</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Monitor</span>
+                    <span class="info-value" id="battMonitor">Loading...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="last-update" id="lastUpdate">Last updated: Never</div>
+
+        <div style="text-align: center; margin-top: 20px;">
+            <button class="btn" onclick="window.location.href='/'">
+                Back to Dashboard
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Format bytes to human readable
+        function formatBytes(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+        }
+
+        // Format uptime
+        function formatUptime(ms) {
+            const seconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const hours = Math.floor(minutes / 60);
+            const days = Math.floor(hours / 24);
+
+            if (days > 0) return days + 'd ' + (hours % 24) + 'h';
+            if (hours > 0) return hours + 'h ' + (minutes % 60) + 'm';
+            if (minutes > 0) return minutes + 'm ' + (seconds % 60) + 's';
+            return seconds + 's';
+        }
+
+        // Load system info
+        async function loadSystemInfo() {
+            try {
+                const response = await fetch('/api/system/info');
+                const data = await response.json();
+
+                // Firmware
+                document.getElementById('firmware').textContent = data.firmware || 'Unknown';
+                document.getElementById('firmwareDate').textContent = data.firmwareDate || 'Unknown';
+
+                // System
+                document.getElementById('uptime').textContent = formatUptime(data.uptime || 0);
+                document.getElementById('cpuSpeed').textContent = (data.cpuFreq || '?') + ' MHz';
+                document.getElementById('flashSize').textContent = formatBytes(data.flashSize || 0);
+
+                // Memory
+                document.getElementById('freeHeap').textContent = formatBytes(data.freeHeap || 0);
+                document.getElementById('minFreeHeap').textContent = formatBytes(data.minFreeHeap || 0);
+                document.getElementById('freePsram').textContent = data.psramFound ? formatBytes(data.freePsram || 0) : 'N/A';
+                document.getElementById('minFreePsram').textContent = data.psramFound ? formatBytes(data.minFreePsram || 0) : 'N/A';
+
+                // Storage
+                document.getElementById('spiffsUsed').textContent = formatBytes(data.spiffsUsed || 0);
+                document.getElementById('spiffsTotal').textContent = formatBytes(data.spiffsTotal || 0);
+                document.getElementById('qsoCount').textContent = (data.qsoCount || 0) + ' logs';
+
+                // WiFi
+                document.getElementById('wifiStatus').textContent = data.wifiConnected ? 'Connected' : 'Disconnected';
+                document.getElementById('wifiSSID').textContent = data.wifiSSID || 'N/A';
+                document.getElementById('wifiIP').textContent = data.wifiIP || 'N/A';
+
+                const rssi = data.wifiRSSI || -100;
+                let signalClass = 'signal-poor';
+                if (rssi > -60) signalClass = 'signal-good';
+                else if (rssi > -70) signalClass = 'signal-ok';
+                document.getElementById('wifiSignal').innerHTML = '<span class="' + signalClass + '">' + rssi + ' dBm</span>';
+
+                // Battery
+                document.getElementById('battVoltage').textContent = (data.batteryVoltage || 0).toFixed(2) + ' V';
+                document.getElementById('battPercent').textContent = (data.batteryPercent || 0).toFixed(0) + '%';
+                document.getElementById('battMonitor').textContent = data.batteryMonitor || 'None';
+
+                // Update timestamp
+                const now = new Date();
+                document.getElementById('lastUpdate').textContent = 'Last updated: ' + now.toLocaleTimeString();
+
+            } catch (error) {
+                console.error('Failed to load system info:', error);
+            }
+        }
+
+        // Load on page load and refresh every 10 seconds
+        loadSystemInfo();
+        setInterval(loadSystemInfo, 10000);
+    </script>
+</body>
+</html>
+)rawliteral";
+
+#endif // WEB_PAGES_SYSTEM_H

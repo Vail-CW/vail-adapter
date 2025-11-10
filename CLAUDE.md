@@ -294,7 +294,7 @@ Each major feature is isolated in its own header file:
 - `settings_general.h` - User callsign configuration
 
 **Network:**
-- `vail_repeater.h` - WebSocket client for vail.woozle.org morse repeater
+- `vail_repeater.h` - WebSocket client for vailmorse.com morse repeater
 
 **QSO Logging:**
 - `qso_logger.h` - Data structures and field definitions
@@ -302,9 +302,21 @@ Each major feature is isolated in its own header file:
 - `qso_logger_input.h` - Device-side input forms and field navigation
 - `qso_logger_validation.h` - Validation functions for callsigns, frequencies, RST
 
-**Web Interface:**
-- `web_server.h` - AsyncWebServer for device control and QSO management
-- `web_logger_enhanced.h` - HTML/CSS/JavaScript for enhanced QSO logger
+**Web Interface (Modular):**
+- `web_server.h` - AsyncWebServer setup and routing (main coordinator)
+- `web_server_api.h` - Core API functions (device status, QSO logs, ADIF/CSV export)
+- `web_pages_dashboard.h` - Main dashboard HTML/CSS/JS
+- `web_pages_wifi.h` - WiFi setup page HTML/CSS/JS
+- `web_pages_practice.h` - Practice mode page HTML/CSS/JS
+- `web_pages_radio.h` - Radio control page HTML/CSS/JS
+- `web_pages_settings.h` - Device settings page HTML/CSS/JS
+- `web_pages_system.h` - System diagnostics page HTML/CSS/JS
+- `web_api_wifi.h` - WiFi API endpoints (scan, connect, credentials)
+- `web_api_qso.h` - QSO logger API endpoints (create, read, update, delete)
+- `web_api_settings.h` - Settings API endpoints (CW, volume, callsign)
+- `web_api_memories.h` - CW memories API endpoints (CRUD operations)
+- `web_logger_enhanced.h` - Enhanced QSO logger HTML/CSS/JS
+- `web_practice_socket.h` - WebSocket handler for practice mode
 
 ## License Information
 

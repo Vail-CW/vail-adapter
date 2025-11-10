@@ -74,6 +74,9 @@
 // Web Practice Mode
 #include "web_practice_mode.h"
 
+// Web Memory Chain Mode
+#include "web_memory_chain_mode.h"
+
 // ============================================
 // Global Hardware Objects
 // ============================================
@@ -267,6 +270,7 @@ void loop() {
       currentMode != MODE_MORSE_MEMORY &&
       currentMode != MODE_RADIO_OUTPUT &&
       currentMode != MODE_WEB_PRACTICE &&
+      currentMode != MODE_WEB_MEMORY_CHAIN &&
       millis() - lastStatusUpdate > 5000) { // Update every 5 seconds
     updateStatus();
     // Redraw status icons with new data
@@ -335,9 +339,17 @@ void loop() {
     practiceWebSocket.cleanupClients();
   }
 
+  // Update Web Memory Chain mode if active
+  if (currentMode == MODE_WEB_MEMORY_CHAIN) {
+    updateWebMemoryChain();
+    // Also need to process WebSocket events
+    extern AsyncWebSocket memoryChainWebSocket;
+    memoryChainWebSocket.cleanupClients();
+  }
+
   // Check for keyboard input (reduce I2C polling frequency during practice/game/radio modes)
   static unsigned long lastKeyCheck = 0;
-  unsigned long keyCheckInterval = (currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_WEB_PRACTICE) ? 50 : 10; // Slower polling in practice/game/radio/web
+  unsigned long keyCheckInterval = (currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_WEB_PRACTICE || currentMode == MODE_WEB_MEMORY_CHAIN) ? 50 : 10; // Slower polling in practice/game/radio/web
 
   if (millis() - lastKeyCheck >= keyCheckInterval) {
     Wire.requestFrom(CARDKB_ADDR, 1);
