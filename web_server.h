@@ -17,6 +17,7 @@
 // Include modular web components
 #include "web_pages_dashboard.h"
 #include "web_pages_wifi.h"
+#include "web_pages_practice.h"
 #include "web_api_wifi.h"
 #include "web_api_qso.h"
 #include "web_api_settings.h"
@@ -1363,11 +1364,15 @@ const char SYSTEM_HTML[] PROGMEM = R"rawliteral(
 // Global web server instance
 AsyncWebServer webServer(80);
 
+// WebSocket for practice mode
+AsyncWebSocket practiceWebSocket("/ws/practice");
+
 // mDNS hostname
 String mdnsHostname = "vail-summit";
 
 // Server state
 bool webServerRunning = false;
+bool webPracticeModeActive = false;
 
 // Forward declarations
 void setupWebServer();
@@ -1376,6 +1381,10 @@ String getDeviceStatusJSON();
 String getQSOLogsJSON();
 String generateADIF();
 String generateCSV();
+void onPracticeWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len);
+void sendPracticeDecoded(String morse, String text);
+void sendPracticeWPM(float wpm);
+void startWebPracticeMode(Adafruit_ST7789& tft);
 
 /*
  * Initialize and start the web server
@@ -1449,6 +1458,13 @@ void setupWebServer() {
   });
 
   // ============================================
+  // Practice Mode Page
+  // ============================================
+  webServer.on("/practice", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send_P(200, "text/html", PRACTICE_PAGE_HTML);
+  });
+
+  // ============================================
   // API Endpoints
   // ============================================
 
@@ -1478,11 +1494,35 @@ void setupWebServer() {
     request->send(response);
   });
 
+  // Practice mode API endpoint
+  webServer.on("/api/practice/start", HTTP_POST, [](AsyncWebServerRequest *request) {
+    extern MenuMode currentMode;
+    extern Adafruit_ST7789 tft;
+
+    // Switch device to web practice mode
+    currentMode = MODE_WEB_PRACTICE;
+
+    // Initialize the mode (this will draw the UI and set up decoder)
+    startWebPracticeMode(tft);
+
+    JsonDocument doc;
+    doc["status"] = "active";
+    doc["endpoint"] = "ws://" + mdnsHostname + ".local/ws/practice";
+
+    String output;
+    serializeJson(doc, output);
+    request->send(200, "application/json", output);
+  });
+
   // Setup modular API endpoints
   setupQSOAPI(webServer);
   setupWiFiAPI(webServer);
   setupSettingsAPI(webServer);
   setupMemoriesAPI(webServer);
+
+  // Setup WebSocket for practice mode
+  practiceWebSocket.onEvent(onPracticeWebSocketEvent);
+  webServer.addHandler(&practiceWebSocket);
 
   // Start server
   webServer.begin();
@@ -1811,6 +1851,108 @@ String generateCSV() {
   }
 
   return csv;
+}
+
+/*
+ * WebSocket Event Handler for Practice Mode
+ */
+void onPracticeWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
+  extern MorseDecoderAdaptive webPracticeDecoder;  // Decoder instance for web practice mode
+
+  switch(type) {
+    case WS_EVT_CONNECT:
+      Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
+      webPracticeModeActive = true;
+      break;
+
+    case WS_EVT_DISCONNECT:
+      Serial.printf("WebSocket client #%u disconnected\n", client->id());
+      webPracticeModeActive = false;
+
+      // Exit web practice mode if active
+      extern MenuMode currentMode;
+      if (currentMode == MODE_WEB_PRACTICE) {
+        currentMode = MODE_MAIN_MENU;
+      }
+      break;
+
+    case WS_EVT_DATA: {
+      AwsFrameInfo *info = (AwsFrameInfo*)arg;
+      if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
+        data[len] = 0;  // Null terminate
+        String message = (char*)data;
+
+        // Parse JSON message
+        JsonDocument doc;
+        DeserializationError error = deserializeJson(doc, message);
+
+        if (!error) {
+          String type = doc["type"].as<String>();
+
+          if (type == "timing") {
+            // Timing data from browser
+            float duration = doc["duration"].as<float>();
+            bool positive = doc["positive"].as<bool>();
+            String key = doc["key"].as<String>();
+
+            Serial.printf("Received timing: %s, duration: %.1f ms, positive: %d\n",
+                         key.c_str(), duration, positive);
+
+            // Feed timing to decoder
+            if (positive) {
+              webPracticeDecoder.addTiming(duration);
+            } else {
+              webPracticeDecoder.addTiming(-duration);  // Negative for silence
+            }
+          }
+          else if (type == "start") {
+            Serial.println("Practice mode start requested via WebSocket");
+            webPracticeModeActive = true;
+          }
+        }
+      }
+      break;
+    }
+
+    case WS_EVT_ERROR:
+      Serial.printf("WebSocket error: %u\n", *((uint16_t*)arg));
+      break;
+
+    case WS_EVT_PONG:
+      // Ignore pong responses
+      break;
+  }
+}
+
+/*
+ * Send decoded morse character to browser
+ */
+void sendPracticeDecoded(String morse, String text) {
+  if (webPracticeModeActive && practiceWebSocket.count() > 0) {
+    JsonDocument doc;
+    doc["type"] = "decoded";
+    doc["morse"] = morse;
+    doc["text"] = text;
+
+    String output;
+    serializeJson(doc, output);
+    practiceWebSocket.textAll(output);
+  }
+}
+
+/*
+ * Send WPM update to browser
+ */
+void sendPracticeWPM(float wpm) {
+  if (webPracticeModeActive && practiceWebSocket.count() > 0) {
+    JsonDocument doc;
+    doc["type"] = "wpm";
+    doc["value"] = wpm;
+
+    String output;
+    serializeJson(doc, output);
+    practiceWebSocket.textAll(output);
+  }
 }
 
 #endif // WEB_SERVER_H

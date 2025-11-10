@@ -61,10 +61,10 @@ The system operates as a **mode-based state machine**:
 
 **Key modes:**
 - Training: `MODE_HEAR_IT_TYPE_IT`, `MODE_PRACTICE`, `MODE_CW_ACADEMY_*`
-- Games: `MODE_MORSE_SHOOTER`
+- Games: `MODE_MORSE_SHOOTER`, `MODE_MORSE_MEMORY`
 - Radio: `MODE_RADIO_OUTPUT`, `MODE_CW_MEMORIES`
 - Settings: `MODE_WIFI_SETTINGS`, `MODE_CW_SETTINGS`, `MODE_VOLUME_SETTINGS`
-- Network: `MODE_VAIL_REPEATER`, QSO Logger via web interface
+- Network: `MODE_VAIL_REPEATER`, `MODE_WEB_PRACTICE`, QSO Logger via web interface
 
 For detailed architecture information, see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 

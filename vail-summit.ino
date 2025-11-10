@@ -71,6 +71,9 @@
 // Web Server (must come after QSO Logger to access storage)
 #include "web_server.h"
 
+// Web Practice Mode
+#include "web_practice_mode.h"
+
 // ============================================
 // Global Hardware Objects
 // ============================================
@@ -263,6 +266,7 @@ void loop() {
       currentMode != MODE_MORSE_SHOOTER &&
       currentMode != MODE_MORSE_MEMORY &&
       currentMode != MODE_RADIO_OUTPUT &&
+      currentMode != MODE_WEB_PRACTICE &&
       millis() - lastStatusUpdate > 5000) { // Update every 5 seconds
     updateStatus();
     // Redraw status icons with new data
@@ -323,9 +327,17 @@ void loop() {
     updateRadioOutput();
   }
 
+  // Update Web Practice mode if active
+  if (currentMode == MODE_WEB_PRACTICE) {
+    updateWebPracticeMode();
+    // Also need to process WebSocket events
+    extern AsyncWebSocket practiceWebSocket;
+    practiceWebSocket.cleanupClients();
+  }
+
   // Check for keyboard input (reduce I2C polling frequency during practice/game/radio modes)
   static unsigned long lastKeyCheck = 0;
-  unsigned long keyCheckInterval = (currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT) ? 50 : 10; // Slower polling in practice/game/radio
+  unsigned long keyCheckInterval = (currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_WEB_PRACTICE) ? 50 : 10; // Slower polling in practice/game/radio/web
 
   if (millis() - lastKeyCheck >= keyCheckInterval) {
     Wire.requestFrom(CARDKB_ADDR, 1);
@@ -345,6 +357,6 @@ void loop() {
     escPressCount = 0;
   }
 
-  // Minimal delay in practice, game, radio, and vail modes for better audio/graphics performance
-  delay((currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_VAIL_REPEATER) ? 1 : 10);
+  // Minimal delay in practice, game, radio, web, and vail modes for better audio/graphics performance
+  delay((currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_WEB_PRACTICE || currentMode == MODE_VAIL_REPEATER) ? 1 : 10);
 }

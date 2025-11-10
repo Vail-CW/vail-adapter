@@ -576,6 +576,163 @@ Common issues:
 
 For detailed debugging steps, see [docs/FEATURES.md - CW Memories Debugging](FEATURES.md#debugging-and-troubleshooting)
 
+## Practice Mode Page (/practice)
+
+**File:** `web_pages_practice.h` - Complete HTML/CSS/JavaScript for web-based practice mode
+
+### Overview
+
+Web Practice Mode allows users to practice morse code via their browser using a USB Vail adapter connected to their computer. The browser captures keyboard/MIDI events from the Vail adapter, sends timing data to the Summit device via WebSocket, and displays decoded morse code in real-time.
+
+### Features
+
+**1. Real-time Decoder**
+- Adaptive morse decoder runs on Summit device
+- Decoder reuses existing `morse_decoder_adaptive.h` implementation
+- WPM tracking with color-coded indicator (green = matching configured speed)
+- Decoded text appears in browser window as you key
+
+**2. Status Bar**
+- Connection indicator (green pulsing dot when connected)
+- Real-time WPM display updates as you send
+- Connection status text (Connected/Disconnected)
+
+**3. Decoded Output Area**
+- Dark terminal-style text display
+- Shows morse patterns and decoded characters
+- Scrollable output with word spacing detection
+- Auto-scrolls to bottom as new text arrives
+
+**4. Keyboard Input Support**
+- **Left Control** = Dit paddle
+- **Right Control** = Dah paddle
+- Compatible with Vail USB adapter in keyboard mode
+- JavaScript captures `keydown`/`keyup` events with millisecond precision
+
+**5. Future MIDI Support** (documented for implementation)
+- Web MIDI API integration (Chrome/Edge/Opera/Brave only)
+- Direct MIDI Note On/Off events from Vail adapter
+- Sub-millisecond timing precision
+- See `docs/WEB_MIDI_PROTOCOL.md` for implementation details
+
+### Architecture
+
+**Hybrid Client-Server Design:**
+
+```
+Browser (Computer + Vail Adapter)
+├── JavaScript Event Capture (Left/Right Ctrl keydown/up)
+├── Display UI (Decoded text, WPM, status)
+└── WebSocket Client (Send timing, receive decoded text)
+        ↕ WebSocket
+VAIL SUMMIT Device
+├── WebSocket Server (/ws/practice)
+├── morse_decoder_adaptive.h (Reused decoder)
+└── Device Display (Static "Web Practice Mode Active")
+```
+
+### WebSocket Protocol
+
+**Endpoint:** `ws://vail-summit.local/ws/practice`
+
+**Client → Device Messages:**
+
+```json
+{
+  "type": "timing",
+  "duration": 123.4,     // milliseconds
+  "positive": true,      // true = tone, false = silence
+  "key": "dit"           // "dit" or "dah" (informational)
+}
+```
+
+**Device → Client Messages:**
+
+```json
+// Decoded character
+{
+  "type": "decoded",
+  "morse": ".-",         // Morse pattern
+  "text": "A"            // Decoded character
+}
+
+// WPM update
+{
+  "type": "wpm",
+  "value": 22.5          // Detected speed in WPM
+}
+```
+
+### API Endpoints
+
+**`POST /api/practice/start`**
+- Switches Summit device to `MODE_WEB_PRACTICE`
+- Browser calls this before connecting WebSocket
+- Returns: `{"status": "active", "endpoint": "ws://vail-summit.local/ws/practice"}`
+
+**GET `/practice`**
+- Serves practice mode HTML page
+- Returns: `PRACTICE_PAGE_HTML` from PROGMEM
+
+### User Workflow
+
+1. User opens `http://vail-summit.local/practice` in browser
+2. Connects USB Vail adapter to computer
+3. Clicks "Start Practice" button
+   - Browser sends `POST /api/practice/start`
+   - Device switches to `MODE_WEB_PRACTICE`
+   - Device display shows "Web Practice Mode Active"
+4. Browser opens WebSocket connection to `/ws/practice`
+5. User keys morse code with paddle
+   - Vail adapter generates sidetone (instant audio feedback)
+   - Browser captures Left/Right Ctrl key events
+   - JavaScript calculates duration between keydown/keyup
+   - Sends timing data to device via WebSocket
+6. Device decoder processes timing
+   - Adaptive algorithm detects speed and decodes characters
+   - Callbacks send decoded text and WPM to browser
+7. Browser displays decoded text in scrolling output area
+8. To exit:
+   - Press ESC on Summit device keypad, OR
+   - Close browser tab (WebSocket disconnect triggers exit)
+
+### Implementation Files
+
+**Web Components:**
+- `web_pages_practice.h` - HTML/CSS/JavaScript page (~120 lines)
+- `web_server.h` - WebSocket handlers and API endpoint (~90 lines)
+
+**Device Components:**
+- `web_practice_mode.h` - Mode handler and decoder integration
+- `menu_ui.h` - `MODE_WEB_PRACTICE` enum definition
+- `menu_navigation.h` - Input routing for ESC key
+- `vail-summit.ino` - Main loop updates for WebSocket cleanup
+
+**Storage Impact:** ~30KB total (< 1% of 4MB flash)
+
+### Advantages Over Device Practice Mode
+
+**Benefits:**
+- ✅ Practice remotely (device can be across room for viewing)
+- ✅ Larger display (computer monitor vs 240px LCD)
+- ✅ Easier to read decoded text
+- ✅ Session logging possible (browser localStorage)
+- ✅ Mobile device support (touch keyer for phones/tablets)
+
+**Trade-offs:**
+- ⚠️ Requires WiFi connection (battery drain)
+- ⚠️ 10-50ms network latency for display (audio is instant via Vail adapter)
+- ⚠️ Keyboard input requires browser focus
+- ⚠️ Not a replacement for hardware paddle practice (different feel)
+
+### Future Enhancements
+
+See `docs/WEB_MIDI_PROTOCOL.md` for:
+- Web MIDI API integration for sub-millisecond timing
+- Direct Vail adapter settings control (key type, speed, tone)
+- MIDI passthrough mode configuration
+- Browser compatibility fallbacks
+
 ## ADIF Export Format
 
 ### Header

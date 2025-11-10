@@ -46,7 +46,8 @@ enum MenuMode {
   MODE_QSO_LOG_ENTRY,
   MODE_QSO_VIEW_LOGS,
   MODE_QSO_STATISTICS,
-  MODE_QSO_LOGGER_SETTINGS
+  MODE_QSO_LOGGER_SETTINGS,
+  MODE_WEB_PRACTICE
 };
 
 extern MenuMode currentMode;
@@ -81,6 +82,7 @@ void drawQSOViewLogsUI(Adafruit_ST7789& tft);
 void drawQSOStatisticsUI(Adafruit_ST7789& tft);
 void drawRadioOutputUI(Adafruit_ST7789& tft);
 void drawCWMemoriesUI(Adafruit_ST7789& tft);
+void drawWebPracticeUI(Adafruit_ST7789& tft);
 
 // Menu Options and Icons
 String mainMenuOptions[MENU_ITEMS] = {

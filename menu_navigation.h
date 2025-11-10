@@ -38,6 +38,7 @@ int handleCWASendingPracticeInput(char key, Adafruit_ST7789& tft);
 int handleCWAQSOPracticeInput(char key, Adafruit_ST7789& tft);
 int handleMorseShooterInput(char key, Adafruit_ST7789& tft);
 int handleMemoryGameInput(char key, Adafruit_ST7789& tft);
+int handleWebPracticeInput(char key, Adafruit_ST7789& tft);
 
 void drawHearItTypeItUI(Adafruit_ST7789& tft);
 void drawInputBox(Adafruit_ST7789& tft);
@@ -651,6 +652,19 @@ void handleKeyPress(char key) {
     }
     // Note: result == 2 means redraw was already handled by the input handler
     // Don't force redraw here - the handler draws the appropriate screen (list/menu/edit/delete)
+    return;
+  }
+
+  // Handle Web Practice mode
+  if (currentMode == MODE_WEB_PRACTICE) {
+    int result = handleWebPracticeInput(key, tft);
+    if (result == -1) {
+      // Exit to Main menu
+      currentMode = MODE_MAIN_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    }
     return;
   }
 
