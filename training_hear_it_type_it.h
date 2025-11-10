@@ -9,6 +9,30 @@
 #include "morse_code.h"
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
+#include <Preferences.h>
+
+// Training mode types
+enum HearItMode {
+  MODE_CALLSIGNS,
+  MODE_RANDOM_LETTERS,
+  MODE_RANDOM_NUMBERS,
+  MODE_LETTERS_NUMBERS,
+  MODE_CUSTOM_CHARS
+};
+
+// Training settings
+struct HearItSettings {
+  HearItMode mode;
+  int groupLength;        // 3-10 characters
+  String customChars;     // For MODE_CUSTOM_CHARS
+};
+
+// Default settings
+HearItSettings hearItSettings = {
+  MODE_CALLSIGNS,  // Default to callsigns
+  5,               // Default group length
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"  // Default custom chars (all)
+};
 
 // Training state
 String currentCallsign = "";
@@ -16,33 +40,104 @@ String userInput = "";
 int currentWPM = 15;
 bool waitingForInput = false;
 int attemptsOnCurrentCallsign = 0;
+bool inSettingsMode = false;
+HearItSettings tempSettings;  // Temporary settings while in settings mode
 
-// Generate a random ham radio callsign
-// US Format: ^[AKNW][A-Z]?[0-9][A-Z]{1,3}$
-// Examples: W1ABC, K4XY, N2Q, KA1ABC, WB4XYZ, etc.
+// Load settings from preferences
+void loadHearItSettings() {
+  Preferences prefs;
+  prefs.begin("hear_it", true);  // Read-only
+  hearItSettings.mode = (HearItMode)prefs.getInt("mode", MODE_CALLSIGNS);
+  hearItSettings.groupLength = prefs.getInt("length", 5);
+  hearItSettings.customChars = prefs.getString("custom", "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+  prefs.end();
+}
+
+// Save settings to preferences
+void saveHearItSettings() {
+  Preferences prefs;
+  prefs.begin("hear_it", false);  // Read-write
+  prefs.putInt("mode", hearItSettings.mode);
+  prefs.putInt("length", hearItSettings.groupLength);
+  prefs.putString("custom", hearItSettings.customChars);
+  prefs.end();
+}
+
+// Generate random character group based on settings
+String generateCharacterGroup() {
+  String result = "";
+
+  switch (hearItSettings.mode) {
+    case MODE_CALLSIGNS: {
+      // Generate a random ham radio callsign
+      // US Format: ^[AKNW][A-Z]?[0-9][A-Z]{1,3}$
+      // Examples: W1ABC, K4XY, N2Q, KA1ABC, WB4XYZ, etc.
+
+      // First character: A, K, N, or W
+      char firstLetters[] = {'A', 'K', 'N', 'W'};
+      result += firstLetters[random(0, 4)];
+
+      // Optional: 0 or 1 additional prefix letter (total prefix: 1 or 2 letters)
+      if (random(0, 2) == 1) {  // 50% chance of 2-letter prefix
+        result += char('A' + random(0, 26));
+      }
+
+      // Required: Single digit (0-9)
+      result += String(random(0, 10));
+
+      // Required: 1-3 suffix letters
+      int suffixLength = random(1, 4);
+      for (int i = 0; i < suffixLength; i++) {
+        result += char('A' + random(0, 26));
+      }
+      break;
+    }
+
+    case MODE_RANDOM_LETTERS:
+      // Generate random letters only
+      for (int i = 0; i < hearItSettings.groupLength; i++) {
+        result += char('A' + random(0, 26));
+      }
+      break;
+
+    case MODE_RANDOM_NUMBERS:
+      // Generate random numbers only
+      for (int i = 0; i < hearItSettings.groupLength; i++) {
+        result += char('0' + random(0, 10));
+      }
+      break;
+
+    case MODE_LETTERS_NUMBERS:
+      // Generate random mix of letters and numbers
+      for (int i = 0; i < hearItSettings.groupLength; i++) {
+        if (random(0, 2) == 0) {
+          result += char('A' + random(0, 26));  // Letter
+        } else {
+          result += char('0' + random(0, 10));  // Number
+        }
+      }
+      break;
+
+    case MODE_CUSTOM_CHARS:
+      // Generate from custom character set
+      if (hearItSettings.customChars.length() > 0) {
+        for (int i = 0; i < hearItSettings.groupLength; i++) {
+          int idx = random(0, hearItSettings.customChars.length());
+          result += hearItSettings.customChars[idx];
+        }
+      } else {
+        // Fallback if custom chars is empty
+        result = "ERROR";
+      }
+      break;
+  }
+
+  return result;
+}
+
+// Legacy function name for compatibility
 String generateCallsign() {
-  String callsign = "";
-
-  // First character: A, K, N, or W
-  char firstLetters[] = {'A', 'K', 'N', 'W'};
-  callsign += firstLetters[random(0, 4)];
-
-  // Optional: 0 or 1 additional prefix letter (total prefix: 1 or 2 letters)
-  // Common second letters: A-L for older calls, B-W for newer/club stations
-  if (random(0, 2) == 1) {  // 50% chance of 2-letter prefix
-    callsign += char('A' + random(0, 26));  // Any letter A-Z
-  }
-
-  // Required: Single digit (0-9)
-  callsign += String(random(0, 10));
-
-  // Required: 1-3 suffix letters
-  int suffixLength = random(1, 4); // 1, 2, or 3 letters
-  for (int i = 0; i < suffixLength; i++) {
-    callsign += char('A' + random(0, 26));
-  }
-
-  return callsign;
+  return generateCharacterGroup();
 }
 
 // Start a new callsign challenge
@@ -180,21 +275,128 @@ void drawHearItTypeItUI(Adafruit_ST7789& tft) {
   // Help text at bottom with modern styling
   tft.setTextColor(0x7BEF);
   tft.setTextSize(1);
-  String helpText = "ENTER Submit  \x1B Replay  TAB Skip  ESC Exit";
-  tft.setCursor((SCREEN_WIDTH - helpText.length() * 6) / 2, SCREEN_HEIGHT - 10);
+  String helpText = "ENTER Submit  \x1B Replay  TAB Skip  S Settings  ESC Exit";
+  tft.setCursor(10, SCREEN_HEIGHT - 10);
   tft.print(helpText);
+}
+
+// Draw settings overlay
+void drawSettingsOverlay(Adafruit_ST7789& tft) {
+  // Semi-transparent overlay effect (draw dark rectangle)
+  tft.fillRect(20, 60, SCREEN_WIDTH - 40, 140, 0x18C3);
+  tft.drawRect(20, 60, SCREEN_WIDTH - 40, 140, COLOR_WARNING);
+
+  tft.setTextSize(1);
+  tft.setTextColor(ST77XX_WHITE);
+
+  // Title
+  tft.setFont(&FreeSansBold12pt7b);
+  tft.setCursor(70, 85);
+  tft.print("SETTINGS");
+  tft.setFont();
+
+  // Current mode
+  const char* modeNames[] = {"Callsigns", "Letters", "Numbers", "Let+Num", "Custom"};
+  tft.setCursor(30, 100);
+  tft.print("Mode: ");
+  tft.setTextColor(COLOR_WARNING);
+  tft.print(modeNames[hearItSettings.mode]);
+
+  // Group length (only for non-callsign modes)
+  if (hearItSettings.mode != MODE_CALLSIGNS) {
+    tft.setTextColor(ST77XX_WHITE);
+    tft.setCursor(30, 115);
+    tft.print("Length: ");
+    tft.setTextColor(COLOR_WARNING);
+    tft.print(hearItSettings.groupLength);
+  }
+
+  // Custom chars preview (only for custom mode)
+  if (hearItSettings.mode == MODE_CUSTOM_CHARS) {
+    tft.setTextColor(ST77XX_WHITE);
+    tft.setCursor(30, 130);
+    tft.print("Chars: ");
+    tft.setTextColor(COLOR_WARNING);
+    String preview = hearItSettings.customChars.substring(0, 15);
+    if (hearItSettings.customChars.length() > 15) preview += "...";
+    tft.print(preview);
+  }
+
+  // Instructions
+  tft.setTextColor(0x7BEF);
+  tft.setCursor(30, 160);
+  tft.print("M:Mode  +:Len+  -:Len-");
+  tft.setCursor(30, 175);
+  tft.print("C:Custom  ENTER:Save  ESC:Cancel");
+}
+
+// Handle settings mode input
+int handleSettingsInput(char key, Adafruit_ST7789& tft) {
+  if (key == KEY_ESC) {
+    // Cancel - restore original settings
+    inSettingsMode = false;
+    return 2;  // Redraw main UI
+  } else if (key == KEY_ENTER || key == KEY_ENTER_ALT) {
+    // Save settings
+    hearItSettings = tempSettings;
+    saveHearItSettings();
+    inSettingsMode = false;
+    beep(TONE_SELECT, BEEP_LONG);
+    return 2;  // Redraw main UI
+  } else if (key == 'm' || key == 'M') {
+    // Cycle mode
+    tempSettings.mode = (HearItMode)((tempSettings.mode + 1) % 5);
+    beep(TONE_MENU_NAV, BEEP_SHORT);
+    drawHearItTypeItUI(tft);
+    drawSettingsOverlay(tft);
+    return 0;
+  } else if (key == '+' || key == '=') {
+    // Increase length
+    if (tempSettings.groupLength < 10) {
+      tempSettings.groupLength++;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawHearItTypeItUI(tft);
+      drawSettingsOverlay(tft);
+    }
+    return 0;
+  } else if (key == '-' || key == '_') {
+    // Decrease length
+    if (tempSettings.groupLength > 3) {
+      tempSettings.groupLength--;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawHearItTypeItUI(tft);
+      drawSettingsOverlay(tft);
+    }
+    return 0;
+  }
+  // Ignore other keys in settings mode
+  return 0;
 }
 
 // Handle keyboard input for this mode
 // Returns: 0 = continue, -1 = exit mode, 2 = full redraw needed, 3 = input box redraw only
 int handleHearItTypeItInput(char key, Adafruit_ST7789& tft) {
-  if (!waitingForInput && key != KEY_ESC && key != KEY_LEFT && key != KEY_TAB) {
+  // Handle settings mode
+  if (inSettingsMode) {
+    return handleSettingsInput(key, tft);
+  }
+
+  if (!waitingForInput && key != KEY_ESC && key != KEY_LEFT && key != KEY_TAB && key != 's' && key != 'S') {
     return 0; // Ignore input while playing
   }
 
   if (key == KEY_ESC) {
     // Exit back to training menu
     return -1;
+
+  } else if (key == 's' || key == 'S') {
+    // Open settings
+    tempSettings = hearItSettings;  // Copy current settings to temp
+    inSettingsMode = true;
+    beep(TONE_MENU_NAV, BEEP_SHORT);
+    drawHearItTypeItUI(tft);
+    drawSettingsOverlay(tft);
+    return 0;
 
   } else if (key == KEY_LEFT) {
     // Replay the callsign

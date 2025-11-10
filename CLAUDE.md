@@ -64,7 +64,7 @@ The system operates as a **mode-based state machine**:
 - Games: `MODE_MORSE_SHOOTER`, `MODE_MORSE_MEMORY`
 - Radio: `MODE_RADIO_OUTPUT`, `MODE_CW_MEMORIES`
 - Settings: `MODE_WIFI_SETTINGS`, `MODE_CW_SETTINGS`, `MODE_VOLUME_SETTINGS`
-- Network: `MODE_VAIL_REPEATER`, `MODE_WEB_PRACTICE`, QSO Logger via web interface
+- Network: `MODE_VAIL_REPEATER`, `MODE_WEB_PRACTICE`, `MODE_WEB_MEMORY_CHAIN`, `MODE_WEB_HEAR_IT`, QSO Logger via web interface
 
 For detailed architecture information, see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
@@ -108,6 +108,7 @@ All settings stored in ESP32 Preferences (non-volatile flash):
 - **"cw_memories"** - CW message presets (10 slots, label + message)
 - **"qso_operator"** - Station info for QSO logging
 - **"memory"** - Memory Chain game settings (difficulty, mode, speed, sound, hints, high score)
+- **"hear_it"** - Hear It Type It training settings (mode, group length, custom characters)
 
 Settings loaded on startup, saved immediately when changed.
 
@@ -275,7 +276,7 @@ Each major feature is isolated in its own header file:
 - `morse_decoder_adaptive.h` - Adaptive speed tracking - EUPL v1.2
 
 **Training Modes:**
-- `training_hear_it_type_it.h` - Random callsign generator and receive training
+- `training_hear_it_type_it.h` - Configurable receive training (callsigns, letters, numbers, custom) with 5 modes
 - `training_practice.h` - Practice oscillator with iambic keyer and real-time decoding
 - `training_cwa.h` - CW Academy curriculum (4 tracks, 16 sessions each)
 
@@ -308,6 +309,8 @@ Each major feature is isolated in its own header file:
 - `web_pages_dashboard.h` - Main dashboard HTML/CSS/JS
 - `web_pages_wifi.h` - WiFi setup page HTML/CSS/JS
 - `web_pages_practice.h` - Practice mode page HTML/CSS/JS
+- `web_pages_memory_chain.h` - Memory Chain game page HTML/CSS/JS
+- `web_pages_hear_it_type_it.h` - Hear It Type It training page HTML/CSS/JS
 - `web_pages_radio.h` - Radio control page HTML/CSS/JS
 - `web_pages_settings.h` - Device settings page HTML/CSS/JS
 - `web_pages_system.h` - System diagnostics page HTML/CSS/JS
@@ -317,6 +320,11 @@ Each major feature is isolated in its own header file:
 - `web_api_memories.h` - CW memories API endpoints (CRUD operations)
 - `web_logger_enhanced.h` - Enhanced QSO logger HTML/CSS/JS
 - `web_practice_socket.h` - WebSocket handler for practice mode
+- `web_practice_mode.h` - Device-side web practice mode handler
+- `web_memory_chain_socket.h` - WebSocket handler for memory chain game
+- `web_memory_chain_mode.h` - Device-side web memory chain mode handler
+- `web_hear_it_socket.h` - WebSocket handler for hear it type it mode
+- `web_hear_it_mode.h` - Device-side web hear it mode handler
 
 ## License Information
 

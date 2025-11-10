@@ -609,6 +609,326 @@ Common issues:
 
 For detailed debugging steps, see [docs/FEATURES.md - CW Memories Debugging](FEATURES.md#debugging-and-troubleshooting)
 
+## Hear It Type It Training Page (/hear-it)
+
+**File:** `web_pages_hear_it_type_it.h` - Complete HTML/CSS/JavaScript for web-based receive training
+
+### Overview
+
+Web-based Hear It Type It mode provides receive training where the browser plays morse code character groups and the user types what they hear. Features configurable training modes (callsigns, letters, numbers, custom) with full settings control.
+
+### Features
+
+**1. Settings Panel**
+- **Mode Dropdown:** Callsigns, Random Letters, Random Numbers, Letters+Numbers, Custom
+- **Length Input:** Number selector (3-10 characters), hidden for Callsigns mode
+- **Custom Characters Input:** Text field for custom character set, visible only in Custom mode
+- Auto-uppercases input
+- Settings sent to device before starting training
+
+**2. Training Interface**
+- Status indicator (Waiting, Playing, Ready for Input, Correct, Wrong)
+- Audio playback using Web Audio API (browser plays morse, not device)
+- Input field for typing answers
+- Real-time feedback with color-coded results
+- Character group display after submission
+
+**3. Control Buttons**
+- **Start Training** - Begins session with selected settings
+- **Replay** - Replays current character group
+- **Skip** - Moves to next character group
+- **Stop Training** - Ends session and returns to settings
+
+**4. Browser Audio Playback**
+- Web Audio API generates morse tones (700 Hz by default)
+- PARIS standard timing (ditDuration = 1200/wpm)
+- Constant volume playback (0.3 gain)
+- No device audio conflicts
+
+### Architecture
+
+**Flow Diagram:**
+```
+Browser                          VAIL SUMMIT Device
+  │                                    │
+  │  POST /api/hear-it/start           │
+  │  {mode, length, customChars}       │
+  ├───────────────────────────────────>│
+  │                                    │ Apply settings
+  │                                    │ Switch to MODE_WEB_HEAR_IT
+  │  {"status": "active", ...}         │
+  │<───────────────────────────────────┤
+  │                                    │
+  │  WebSocket /ws/hear-it             │
+  │<──────────────────────────────────>│
+  │                                    │
+  │  {"type": "new_callsign", ...}     │
+  │<───────────────────────────────────┤
+  │                                    │
+  │  Play morse audio (Web Audio API)  │
+  │                                    │
+  │  {"type": "submit", answer}        │
+  ├───────────────────────────────────>│
+  │                                    │ Validate answer
+  │  {"type": "result", correct, ...}  │
+  │<───────────────────────────────────┤
+  │                                    │
+  │  (Repeat for next character group) │
+```
+
+### WebSocket Protocol
+
+**Endpoint:** `ws://vail-summit.local/ws/hear-it`
+
+**Device → Browser Messages:**
+
+```json
+// New character group with morse pattern
+{
+  "type": "new_callsign",
+  "callsign": "W1ABC",
+  "wpm": 18,
+  "morse": ".- -.-- .---- .- -... -.-."
+}
+
+// Start audio playback
+{
+  "type": "playing"
+}
+
+// Audio complete, ready for input
+{
+  "type": "ready_for_input"
+}
+
+// Answer validation result
+{
+  "type": "result",
+  "correct": true,
+  "answer": "W1ABC"
+}
+```
+
+**Browser → Device Messages:**
+
+```json
+// Submit typed answer
+{
+  "type": "submit",
+  "answer": "W1ABC"
+}
+
+// Request replay of current group
+{
+  "type": "replay"
+}
+
+// Skip to next group
+{
+  "type": "skip"
+}
+```
+
+### API Endpoints
+
+**`POST /api/hear-it/start`**
+- Starts web-based Hear It Type It training mode
+- Request body:
+  ```json
+  {
+    "mode": 0,           // 0=Callsigns, 1=Letters, 2=Numbers, 3=Letters+Numbers, 4=Custom
+    "length": 5,         // 3-10 characters (ignored for Callsigns mode)
+    "customChars": "ABC" // Custom character set (only for Custom mode)
+  }
+  ```
+- Response:
+  ```json
+  {
+    "status": "active",
+    "endpoint": "ws://vail-summit.local/ws/hear-it"
+  }
+  ```
+- Device behavior:
+  - Applies settings to `hearItSettings` struct
+  - Switches to `MODE_WEB_HEAR_IT`
+  - Display shows "Web Hear It Mode Active"
+  - Generates first character group
+
+**`GET /hear-it`**
+- Serves the Hear It Type It training page
+- Returns: `HEAR_IT_TYPE_IT_HTML` from PROGMEM
+
+### Web Audio Implementation
+
+**Morse Code Playback:**
+
+```javascript
+async function playMorsePattern(patterns, wpm) {
+  const audioContext = new AudioContext();
+  const ditDuration = 1200 / wpm;  // PARIS standard
+
+  for (const pattern of patterns.split(' ')) {
+    for (const symbol of pattern) {
+      if (symbol === '.') {
+        await playTone(audioContext, 700, ditDuration);
+      } else if (symbol === '-') {
+        await playTone(audioContext, 700, ditDuration * 3);
+      }
+      await sleep(ditDuration);  // Inter-element gap
+    }
+    await sleep(ditDuration * 3);  // Letter gap
+  }
+}
+
+function playTone(context, frequency, duration) {
+  return new Promise(resolve => {
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+
+    oscillator.frequency.value = frequency;
+    gainNode.gain.value = 0.3;  // Constant volume
+
+    oscillator.connect(gainNode);
+    gainNode.connect(context.destination);
+
+    oscillator.start(context.currentTime);
+    oscillator.stop(context.currentTime + duration / 1000);
+
+    oscillator.onended = resolve;
+  });
+}
+```
+
+**Why Browser Audio?**
+- Device audio playback caused crashes and conflicts
+- Browser Web Audio API provides clean, reliable audio
+- Device focuses on character generation and validation
+- Better separation of concerns
+
+### User Workflow
+
+1. User opens `http://vail-summit.local/hear-it` in browser
+2. Selects training mode, group length, custom characters (if applicable)
+3. Clicks "Start Training"
+   - Browser sends settings to device via POST
+   - Device switches to web mode
+   - Browser opens WebSocket connection
+4. Device generates character group based on settings
+5. Device sends morse pattern to browser
+6. Browser plays morse code audio
+7. User types what they heard in input field
+8. User presses Enter or clicks Submit
+9. Browser sends answer to device
+10. Device validates and sends result
+11. If correct: Green feedback, new group after 2s
+12. If incorrect: Red feedback, replays same group after 2s
+13. User can click Replay or Skip at any time
+14. Click "Stop Training" or press ESC on device to exit
+
+### Training Modes
+
+**Five Configurable Modes:**
+
+1. **Callsigns** (Default)
+   - Generates realistic amateur radio callsigns
+   - Format: W1ABC, K6XYZ, VE3ABC, etc.
+   - Fixed length based on callsign structure
+
+2. **Random Letters**
+   - Pure alphabet practice (A-Z)
+   - User-configurable length (3-10 chars)
+
+3. **Random Numbers**
+   - Number-only practice (0-9)
+   - User-configurable length (3-10 chars)
+
+4. **Letters + Numbers**
+   - Mixed alphanumeric groups
+   - User-configurable length (3-10 chars)
+
+5. **Custom Characters**
+   - User specifies exact character set
+   - Practice specific problem characters
+   - Example: "ETIANMS" for Koch method
+
+### Settings Persistence
+
+Device stores settings in ESP32 Preferences namespace `"hear_it"`:
+- `"mode"` - Selected mode (0-4)
+- `"groupLength"` - Character count (3-10)
+- `"customChars"` - Custom character string
+
+Settings persist across device reboots and web sessions.
+
+### Visual Feedback
+
+**State Indicators:**
+- **Waiting...** - Gray - Connecting to device
+- **Playing morse code** - Blue - Audio playback in progress
+- **Ready! Type what you heard** - Green - Input ready
+- **Correct!** - Green background - Answer correct
+- **Wrong!** - Red background - Answer incorrect
+
+**Input Field:**
+- Auto-focus when ready for input
+- Auto-uppercase as user types
+- Submit on Enter key
+- Clear after submission
+
+### Implementation Files
+
+**Web Components:**
+- `web_pages_hear_it_type_it.h` - Complete HTML/CSS/JavaScript (~400 lines)
+- `web_hear_it_socket.h` - WebSocket event handler (~190 lines)
+
+**Device Components:**
+- `web_hear_it_mode.h` - Mode handler and state management (~180 lines)
+- `training_hear_it_type_it.h` - Character generation logic (shared with device mode)
+- `menu_ui.h` - `MODE_WEB_HEAR_IT` enum
+- `menu_navigation.h` - Input routing for ESC exit
+- `vail-summit.ino` - Update loop integration
+
+### Advantages Over Device Mode
+
+**Benefits:**
+- ✅ Larger display (computer monitor vs 240px LCD)
+- ✅ Full keyboard for comfortable typing
+- ✅ Settings panel always visible
+- ✅ Superior audio quality (dedicated speakers)
+- ✅ No CardKB keyboard fatigue
+- ✅ Can train while device is across room
+
+**Trade-offs:**
+- ⚠️ Requires WiFi connection (battery drain)
+- ⚠️ 10-50ms network latency for validation feedback
+- ⚠️ Not portable (requires computer)
+
+### Troubleshooting
+
+**Audio not playing:**
+- Check browser console for Web Audio API errors
+- Ensure browser supports Web Audio API (Chrome, Firefox, Safari, Edge)
+- Click "Start Training" to initialize AudioContext (required by browsers)
+- Check computer volume and speaker settings
+
+**WebSocket disconnects:**
+- Check WiFi connection strength (signal >-70 dBm recommended)
+- Verify device is in `MODE_WEB_HEAR_IT` (Serial monitor)
+- Refresh browser page to reconnect
+- Check device Serial monitor for WebSocket errors
+
+**Settings not applying:**
+- Verify JSON body in POST request (check browser DevTools Network tab)
+- Check device Serial monitor for applied settings confirmation
+- Settings must be integers (mode 0-4, length 3-10)
+- Custom characters string must be non-empty for Custom mode
+
+**Feedback delayed:**
+- Network latency normal (10-50ms)
+- Visual feedback shows immediately on submit
+- Validation result updates after device response
+- Replay/skip delays intentional (2 seconds for readability)
+
 ## Practice Mode Page (/practice)
 
 **File:** `web_pages_practice.h` - Complete HTML/CSS/JavaScript for web-based practice mode

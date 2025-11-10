@@ -202,6 +202,7 @@ void selectMenuItem() {
     if (currentSelection == 0) {
       // Hear It Type It
       currentMode = MODE_HEAR_IT_TYPE_IT;
+      loadHearItSettings();  // Load settings from preferences
       randomSeed(analogRead(0)); // Seed random number generator
       startNewCallsign();
       drawMenu();
@@ -671,6 +672,19 @@ void handleKeyPress(char key) {
   // Handle Web Memory Chain mode
   if (currentMode == MODE_WEB_MEMORY_CHAIN) {
     int result = handleWebMemoryChainInput(key, tft);
+    if (result == -1) {
+      // Exit to Main menu
+      currentMode = MODE_MAIN_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    }
+    return;
+  }
+
+  // Handle Web Hear It Type It mode
+  if (currentMode == MODE_WEB_HEAR_IT) {
+    int result = handleWebHearItInput(key, tft);
     if (result == -1) {
       // Exit to Main menu
       currentMode = MODE_MAIN_MENU;

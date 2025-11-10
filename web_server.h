@@ -19,6 +19,7 @@
 #include "web_pages_wifi.h"
 #include "web_pages_practice.h"
 #include "web_pages_memory_chain.h"
+#include "web_pages_hear_it_type_it.h"
 #include "web_pages_radio.h"
 #include "web_pages_settings.h"
 #include "web_pages_system.h"
@@ -30,12 +31,16 @@
 #include "web_logger_enhanced.h"
 #include "web_practice_socket.h"
 #include "web_memory_chain_socket.h"
+#include "web_hear_it_socket.h"
 
 // Global web server instance
 AsyncWebServer webServer(80);
 
 // WebSocket for practice mode
 AsyncWebSocket practiceWebSocket("/ws/practice");
+
+// WebSocket for hear it type it mode
+AsyncWebSocket hearItWebSocket("/ws/hear-it");
 
 // mDNS hostname
 String mdnsHostname = "vail-summit";
@@ -52,6 +57,7 @@ void sendPracticeDecoded(String morse, String text);
 void sendPracticeWPM(float wpm);
 void startWebPracticeMode(Adafruit_ST7789& tft);
 void startWebMemoryChainMode(Adafruit_ST7789& tft, int difficulty, int mode, int wpm, bool sound, bool hints);
+void startWebHearItMode(Adafruit_ST7789& tft);
 
 // Serve functions for modular pages
 void serveRadioPage(AsyncWebServerRequest *request) {
@@ -155,6 +161,13 @@ void setupWebServer() {
   });
 
   // ============================================
+  // Hear It Type It Training Page
+  // ============================================
+  webServer.on("/hear-it", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send_P(200, "text/html", HEAR_IT_TYPE_IT_HTML);
+  });
+
+  // ============================================
   // API Endpoints
   // ============================================
 
@@ -233,6 +246,45 @@ void setupWebServer() {
       request->send(200, "application/json", output);
     });
 
+  // Hear It Type It mode API endpoint
+  webServer.on("/api/hear-it/start", HTTP_POST,
+    [](AsyncWebServerRequest *request) {},
+    NULL,
+    [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      JsonDocument doc;
+      deserializeJson(doc, data, len);
+
+      extern MenuMode currentMode;
+      extern Adafruit_ST7789 tft;
+
+      // Get settings from request
+      int mode = doc["mode"].as<int>();
+      int length = doc["length"].as<int>();
+      String customChars = doc["customChars"].as<String>();
+
+      // Update device settings
+      hearItSettings.mode = (HearItMode)mode;
+      hearItSettings.groupLength = length;
+      hearItSettings.customChars = customChars;
+
+      Serial.printf("Web Hear It settings: mode=%d, length=%d, custom=%s\n",
+                    mode, length, customChars.c_str());
+
+      // Switch device to web hear it mode
+      currentMode = MODE_WEB_HEAR_IT;
+
+      // Initialize the mode (this will draw the UI and start playing character groups)
+      startWebHearItMode(tft);
+
+      JsonDocument response;
+      response["status"] = "active";
+      response["endpoint"] = "ws://" + mdnsHostname + ".local/ws/hear-it";
+
+      String output;
+      serializeJson(response, output);
+      request->send(200, "application/json", output);
+    });
+
   // Setup modular API endpoints
   setupQSOAPI(webServer);
   setupWiFiAPI(webServer);
@@ -246,6 +298,10 @@ void setupWebServer() {
   // Setup WebSocket for memory chain mode
   memoryChainWebSocket.onEvent(onMemoryChainWebSocketEvent);
   webServer.addHandler(&memoryChainWebSocket);
+
+  // Setup WebSocket for hear it type it mode
+  hearItWebSocket.onEvent(onHearItWebSocketEvent);
+  webServer.addHandler(&hearItWebSocket);
 
   // Start server
   webServer.begin();

@@ -76,6 +76,9 @@
 // Web Memory Chain Mode
 #include "web_memory_chain_mode.h"
 
+// Web Hear It Type It Mode
+#include "web_hear_it_mode.h"
+
 // Menu navigation (must come after all mode headers that define input handlers)
 #include "menu_navigation.h"
 
@@ -349,9 +352,17 @@ void loop() {
     memoryChainWebSocket.cleanupClients();
   }
 
+  // Update Web Hear It Type It mode if active
+  if (currentMode == MODE_WEB_HEAR_IT) {
+    updateWebHearItMode();
+    // Also need to process WebSocket events
+    extern AsyncWebSocket hearItWebSocket;
+    hearItWebSocket.cleanupClients();
+  }
+
   // Check for keyboard input (reduce I2C polling frequency during practice/game/radio modes)
   static unsigned long lastKeyCheck = 0;
-  unsigned long keyCheckInterval = (currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_WEB_PRACTICE || currentMode == MODE_WEB_MEMORY_CHAIN) ? 50 : 10; // Slower polling in practice/game/radio/web
+  unsigned long keyCheckInterval = (currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_WEB_PRACTICE || currentMode == MODE_WEB_MEMORY_CHAIN || currentMode == MODE_WEB_HEAR_IT) ? 50 : 10; // Slower polling in practice/game/radio/web
 
   if (millis() - lastKeyCheck >= keyCheckInterval) {
     Wire.requestFrom(CARDKB_ADDR, 1);

@@ -69,6 +69,7 @@ String getDeviceStatusJSON() {
     case MODE_TRAINING_MENU: modeStr = "Training Menu"; break;
     case MODE_WEB_PRACTICE: modeStr = "Web Practice"; break;
     case MODE_WEB_MEMORY_CHAIN: modeStr = "Web Memory Chain"; break;
+    case MODE_WEB_HEAR_IT: modeStr = "Web Hear It Type It"; break;
     case MODE_PRACTICE: modeStr = "Practice"; break;
     case MODE_HEAR_IT_TYPE_IT: modeStr = "Hear It Type It"; break;
     case MODE_CW_ACADEMY_TRACK_SELECT: modeStr = "CW Academy"; break;

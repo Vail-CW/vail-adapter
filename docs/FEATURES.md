@@ -778,6 +778,387 @@ bool memorySelectorActive;                        // True when selector active i
 int memorySelectorSelection;                      // Selected slot in Radio Output selector
 ```
 
+## Hear It Type It Training Mode
+
+### Overview
+
+Hear It Type It is a morse code receive training mode that plays random character groups (callsigns, letters, numbers, or custom sets) and challenges users to type what they hear. Available both on-device and via the web interface.
+
+### Module: `training_hear_it_type_it.h`
+
+**Training Workflow:**
+1. Device/browser plays a morse code character group
+2. User types what they heard
+3. System provides instant feedback (correct/incorrect)
+4. On success: new group plays
+5. On error: same group replays for practice
+
+### Training Modes
+
+**Five Training Modes:**
+```cpp
+enum HearItMode {
+  MODE_CALLSIGNS,        // Realistic ham radio callsigns (W1ABC format)
+  MODE_RANDOM_LETTERS,   // Random letters A-Z only
+  MODE_RANDOM_NUMBERS,   // Random numbers 0-9 only
+  MODE_LETTERS_NUMBERS,  // Mixed letters and numbers
+  MODE_CUSTOM_CHARS      // User-specified character set
+};
+```
+
+**Mode Details:**
+
+1. **Callsigns Mode (Default)**
+   - Generates realistic amateur radio callsigns
+   - Format follows FCC call patterns: 1-2 prefix letters + number + 1-4 suffix letters
+   - Examples: W1ABC, K6XYZ, VE3ABC, N7MNO
+   - Prepares users for on-air copy work
+
+2. **Random Letters**
+   - Pure alphabet practice (A-Z)
+   - Variable length groups (3-10 characters)
+   - Tests letter recognition skills
+
+3. **Random Numbers**
+   - Number-only practice (0-9)
+   - Variable length groups (3-10 characters)
+   - Useful for contest exchanges and signal reports
+
+4. **Letters + Numbers**
+   - Mixed alphanumeric groups
+   - Variable length (3-10 characters)
+   - Full character set practice
+
+5. **Custom Characters**
+   - User specifies exact character set
+   - Can practice specific problem characters
+   - Examples: "ETI" (common letters), "QZ" (difficult letters), "0189" (similar numbers)
+   - Groups randomly selected from custom set
+
+### Settings
+
+**Group Length:** 3-10 characters (adjustable)
+- Callsigns mode: Fixed length based on callsign format (5-7 characters typical)
+- All other modes: User-configurable length
+
+**Custom Character Set:** (Custom mode only)
+- Specify exact characters to practice
+- Max 36 characters (A-Z, 0-9)
+- Must contain at least 1 character
+- Groups randomly generated from this set
+
+**Speed:** Uses global CW speed setting (5-40 WPM)
+
+**Persistence:** Settings stored in ESP32 Preferences namespace `"hear_it"` with keys:
+- `"mode"` - Selected training mode (0-4)
+- `"groupLength"` - Character count (3-10)
+- `"customChars"` - Custom character string
+
+### Device Implementation
+
+**Navigation:** Training Menu → Hear It Type It
+
+**UI Display:**
+```
+┌─────────────────────────┐
+│  Hear It, Type It       │
+│                         │
+│  Mode: Letters+Numbers  │
+│  Length: 5 chars        │
+│  Speed: 20 WPM          │
+│                         │
+│  [Listening...]         │
+│                         │
+│  Your input:            │
+│  ABC█                   │
+│                         │
+│  S Settings  ESC Menu   │
+└─────────────────────────┘
+```
+
+**Settings Overlay (Press 'S'):**
+- Full-screen settings menu
+- Navigate with UP/DOWN arrows
+- Adjust mode with 'M' key (cycles through 5 modes)
+- Adjust length with '+' and '-' keys (3-10 range)
+- Enter custom characters when Custom mode selected
+- ESC to close and return to training
+- Settings saved immediately to Preferences
+
+**Input Handling:**
+- Type characters as you decode them
+- BACKSPACE to correct mistakes
+- ENTER to submit answer
+- SPACE bar to replay current group
+- 'S' key to open settings overlay
+- ESC to return to menu
+
+**Feedback:**
+- Green highlight + success beep for correct answers
+- Red highlight + error beep for incorrect answers
+- Automatic replay on errors for reinforcement
+- New group generated on success
+
+### Web Interface Implementation
+
+**Access:** `http://vail-summit.local/hear-it`
+
+**Files:**
+- `web_pages_hear_it_type_it.h` - Complete HTML/CSS/JavaScript interface
+- `web_hear_it_mode.h` - Device-side mode handler
+- `web_hear_it_socket.h` - WebSocket communication handler
+
+**Architecture:**
+
+```
+Browser (Computer)
+├── Settings Panel (Mode, Length, Custom Chars)
+├── Audio Playback (Web Audio API - browser plays morse)
+├── Input Field (Type what you hear)
+└── WebSocket Client (Submit answers, receive results)
+        ↕ WebSocket (/ws/hear-it)
+VAIL SUMMIT Device
+├── Character Generation (generateCharacterGroup)
+├── Answer Validation (check correctness)
+└── Device Display (Static "Web Hear It Mode Active")
+```
+
+**Key Design Decision - Browser Audio:**
+- Audio playback handled entirely in browser using Web Audio API
+- Device sends morse pattern (e.g., ".- -... -.-.") via WebSocket
+- Browser plays morse tones using OscillatorNode with PARIS timing
+- Prevents device crashes from audio conflicts
+- Provides cleaner, more reliable audio playback
+
+**Settings Panel:**
+- **Mode Dropdown:** Callsigns, Random Letters, Random Numbers, Letters+Numbers, Custom
+- **Length Input:** Number selector (3-10), hidden for Callsigns mode
+- **Custom Characters Input:** Text field, visible only in Custom mode
+- Settings sent to device via POST before starting training
+- Device applies settings and generates groups accordingly
+
+**Training Flow:**
+1. User opens `/hear-it` in browser
+2. Selects mode, length, custom characters
+3. Clicks "Start Training"
+   - Browser sends POST `/api/hear-it/start` with settings
+   - Device applies settings to `hearItSettings` struct
+   - Device switches to `MODE_WEB_HEAR_IT`
+   - Browser opens WebSocket to `/ws/hear-it`
+4. Device generates character group using selected mode
+5. Device sends morse pattern to browser via WebSocket
+6. Browser plays morse code audio using Web Audio API
+7. Browser shows input field when audio completes
+8. User types answer and submits
+9. Browser sends answer to device
+10. Device validates and sends result (correct/incorrect)
+11. On correct: device generates new group after 2s delay
+12. On incorrect: device replays same group after 2s delay
+13. User can click "Replay" or "Skip" buttons at any time
+
+**WebSocket Protocol:**
+
+**Device → Browser Messages:**
+```json
+// New character group
+{
+  "type": "new_callsign",
+  "callsign": "W1ABC",
+  "wpm": 18,
+  "morse": ".- -.-- .---- .- -... -.-."
+}
+
+// Start audio playback
+{
+  "type": "playing"
+}
+
+// Ready for user input
+{
+  "type": "ready_for_input"
+}
+
+// Validation result
+{
+  "type": "result",
+  "correct": true,
+  "answer": "W1ABC"
+}
+```
+
+**Browser → Device Messages:**
+```json
+// Submit answer
+{
+  "type": "submit",
+  "answer": "W1ABC"
+}
+
+// Replay request
+{
+  "type": "replay"
+}
+
+// Skip to next
+{
+  "type": "skip"
+}
+```
+
+**Audio Implementation (Web Audio API):**
+```javascript
+async function playMorsePattern(patterns, wpm) {
+  const audioContext = new AudioContext();
+  const ditDuration = 1200 / wpm;  // PARIS standard
+
+  for (const pattern of patterns.split(' ')) {
+    for (const symbol of pattern) {
+      if (symbol === '.') {
+        playTone(audioContext, 700, ditDuration);
+      } else if (symbol === '-') {
+        playTone(audioContext, 700, ditDuration * 3);
+      }
+      await sleep(ditDuration);  // Inter-element gap
+    }
+    await sleep(ditDuration * 3);  // Letter gap
+  }
+}
+
+function playTone(context, frequency, duration) {
+  const oscillator = context.createOscillator();
+  const gainNode = context.createGain();
+
+  oscillator.frequency.value = frequency;
+  gainNode.gain.value = 0.3;  // Constant volume (matches Memory Chain)
+
+  oscillator.connect(gainNode);
+  gainNode.connect(context.destination);
+  oscillator.start(context.currentTime);
+  oscillator.stop(context.currentTime + duration / 1000);
+}
+```
+
+**State Management:**
+```javascript
+let ws = null;
+let currentTrainingState = 'idle';  // idle, playing, waiting_input, replay, skip
+let currentCallsign = '';
+let currentWPM = 0;
+```
+
+### API Endpoints
+
+**`POST /api/hear-it/start`**
+- Starts web-based Hear It Type It mode
+- Body: `{"mode": 0-4, "length": 3-10, "customChars": "ABC..."}`
+- Device applies settings to `hearItSettings` struct
+- Switches device to `MODE_WEB_HEAR_IT`
+- Returns: `{"status": "active", "endpoint": "ws://vail-summit.local/ws/hear-it"}`
+
+**WebSocket: `/ws/hear-it`**
+- Bidirectional communication for training session
+- Device sends morse patterns and validation results
+- Browser sends answers and control commands (replay/skip)
+
+### Character Generation Algorithm
+
+**Callsigns Mode:**
+```cpp
+String generateCharacterGroup() {
+  String prefix = randomPrefix();         // 1-2 letters (e.g., "W", "K", "VE")
+  String number = String(random(0, 10));  // 0-9
+  String suffix = randomSuffix();         // 1-4 letters
+  return prefix + number + suffix;        // e.g., "W1ABC"
+}
+```
+
+**Other Modes:**
+```cpp
+String generateCharacterGroup() {
+  String pool = getCharacterPool();  // Based on mode setting
+  String group = "";
+  for (int i = 0; i < hearItSettings.groupLength; i++) {
+    group += pool[random(0, pool.length())];
+  }
+  return group;
+}
+```
+
+**Character Pools:**
+- Random Letters: `"ABCDEFGHIJKLMNOPQRSTUVWXYZ"`
+- Random Numbers: `"0123456789"`
+- Letters+Numbers: `"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"`
+- Custom: `hearItSettings.customChars`
+
+### Use Cases
+
+**Beginner Training:**
+- Start with MODE_RANDOM_LETTERS, length 3-4
+- Focus on common letters ("ETIANMSURWDKGO")
+- Use custom mode to practice specific problem characters
+- Gradually increase length as proficiency improves
+
+**Number Practice:**
+- Use MODE_RANDOM_NUMBERS for contest exchanges
+- Practice RST reports (599, 579, etc.)
+- Build confidence with number recognition
+
+**Callsign Copy:**
+- Use MODE_CALLSIGNS to prepare for on-air work
+- Realistic patterns match FCC/international formats
+- Essential for contesting and casual QSOs
+
+**Advanced Training:**
+- Use MODE_LETTERS_NUMBERS with length 8-10
+- Increase WPM speed (30+ WPM)
+- Custom mode for procedural signs and punctuation
+
+**Remote Training:**
+- Use web interface to practice from computer
+- Larger display easier to read than device LCD
+- Settings adjustable without touching device
+- Browser audio quality excellent for recognition
+
+### Advantages of Web vs Device Mode
+
+**Web Interface:**
+- ✅ Larger display (computer monitor vs 240px LCD)
+- ✅ Full keyboard for fast typing
+- ✅ Settings panel always visible
+- ✅ Better audio quality (dedicated speakers)
+- ✅ Can train while device is across room
+- ⚠️ Requires WiFi connection (battery drain)
+- ⚠️ 10-50ms network latency for validation
+
+**Device Mode:**
+- ✅ Fully offline (no WiFi required)
+- ✅ Portable and self-contained
+- ✅ No computer needed
+- ✅ Settings overlay available via 'S' key
+- ⚠️ Small screen (harder to read)
+- ⚠️ CardKB keyboard less comfortable for extended typing
+
+### Implementation Status
+
+**Completed Features:**
+- ✅ 5 training modes with configurable settings
+- ✅ Device implementation with settings overlay
+- ✅ Web interface with full settings panel
+- ✅ WebSocket bidirectional communication
+- ✅ Browser audio playback using Web Audio API
+- ✅ Persistent settings (ESP32 Preferences)
+- ✅ Answer validation and feedback
+- ✅ Replay and skip functionality
+- ✅ Group length configuration (3-10 chars)
+- ✅ Custom character set support
+
+**Future Enhancements:**
+- ⏳ Session statistics (accuracy percentage, average WPM)
+- ⏳ Difficulty progression (auto-increase length/speed)
+- ⏳ Prosign support (<AR>, <SK>, etc.)
+- ⏳ Timed challenge mode (X correct answers in Y minutes)
+- ⏳ Leaderboard for web users
+
 ## Morse Code Decoder (Adaptive)
 
 ### Overview

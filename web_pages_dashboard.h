@@ -253,14 +253,13 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
                 <a href="/memory-chain" class="btn btn-primary">Start Game</a>
             </div>
 
-            <div class="feature-card" style="opacity: 0.6; cursor: not-allowed;">
+            <div class="feature-card">
                 <h3>
                     <span class="feature-icon">📻</span>
                     Hear It Type It
-                    <span class="feature-badge">Coming Soon</span>
                 </h3>
                 <p>Receive training with random callsigns. Listen to morse code and type what you hear for instant feedback.</p>
-                <button class="btn" disabled>Coming Soon</button>
+                <a href="/hear-it" class="btn btn-primary">Start Training</a>
             </div>
 
             <div class="feature-card" style="opacity: 0.6; cursor: not-allowed;">
