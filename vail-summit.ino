@@ -30,7 +30,6 @@
 
 // Menu system
 #include "menu_ui.h"
-#include "menu_navigation.h"
 
 // Training modes
 #include "training_hear_it_type_it.h"
@@ -76,6 +75,9 @@
 
 // Web Memory Chain Mode
 #include "web_memory_chain_mode.h"
+
+// Menu navigation (must come after all mode headers that define input handlers)
+#include "menu_navigation.h"
 
 // ============================================
 // Global Hardware Objects
