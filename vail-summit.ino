@@ -39,6 +39,7 @@
 
 // Games
 #include "game_morse_shooter.h"
+#include "game_morse_memory.h"
 
 // Settings modes
 #include "settings_wifi.h"
@@ -260,6 +261,7 @@ void loop() {
       currentMode != MODE_HEAR_IT_TYPE_IT &&
       currentMode != MODE_CW_ACADEMY_SENDING_PRACTICE &&
       currentMode != MODE_MORSE_SHOOTER &&
+      currentMode != MODE_MORSE_MEMORY &&
       currentMode != MODE_RADIO_OUTPUT &&
       millis() - lastStatusUpdate > 5000) { // Update every 5 seconds
     updateStatus();
@@ -299,6 +301,23 @@ void loop() {
     updateMorseShooterVisuals(tft);
   }
 
+  // Update Memory Chain game if in game mode
+  if (currentMode == MODE_MORSE_MEMORY) {
+    // Update game state machine
+    updateMemoryGame();
+    // Poll paddle input (same pattern as practice mode)
+    bool ditPressed = (digitalRead(DIT_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
+    bool dahPressed = (digitalRead(DAH_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DAH_PIN) > TOUCH_THRESHOLD);
+    handleMemoryPaddleInput(ditPressed, dahPressed);
+
+    // Update UI if state changed
+    extern bool memoryNeedsUIUpdate;
+    if (memoryNeedsUIUpdate) {
+      drawMemoryUI(tft);
+      memoryNeedsUIUpdate = false;
+    }
+  }
+
   // Update Radio Output if in radio output mode
   if (currentMode == MODE_RADIO_OUTPUT) {
     updateRadioOutput();
@@ -306,7 +325,7 @@ void loop() {
 
   // Check for keyboard input (reduce I2C polling frequency during practice/game/radio modes)
   static unsigned long lastKeyCheck = 0;
-  unsigned long keyCheckInterval = (currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_RADIO_OUTPUT) ? 50 : 10; // Slower polling in practice/game/radio
+  unsigned long keyCheckInterval = (currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT) ? 50 : 10; // Slower polling in practice/game/radio
 
   if (millis() - lastKeyCheck >= keyCheckInterval) {
     Wire.requestFrom(CARDKB_ADDR, 1);
@@ -327,5 +346,5 @@ void loop() {
   }
 
   // Minimal delay in practice, game, radio, and vail modes for better audio/graphics performance
-  delay((currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_VAIL_REPEATER) ? 1 : 10);
+  delay((currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_VAIL_REPEATER) ? 1 : 10);
 }

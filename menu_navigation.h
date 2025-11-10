@@ -37,6 +37,7 @@ int handleCWACopyPracticeInput(char key, Adafruit_ST7789& tft);
 int handleCWASendingPracticeInput(char key, Adafruit_ST7789& tft);
 int handleCWAQSOPracticeInput(char key, Adafruit_ST7789& tft);
 int handleMorseShooterInput(char key, Adafruit_ST7789& tft);
+int handleMemoryGameInput(char key, Adafruit_ST7789& tft);
 
 void drawHearItTypeItUI(Adafruit_ST7789& tft);
 void drawInputBox(Adafruit_ST7789& tft);
@@ -61,6 +62,7 @@ void startCallsignSettings(Adafruit_ST7789& tft);
 void startVailRepeater(Adafruit_ST7789& tft);
 void connectToVail(String channel);
 void startMorseShooter(Adafruit_ST7789& tft);
+void startMemoryGame(Adafruit_ST7789& tft);
 void startRadioOutput(Adafruit_ST7789& tft);  // Radio Output initialization
 int handleRadioOutputInput(char key, Adafruit_ST7789& tft);  // Radio Output input handler
 void startCWMemoriesMode(Adafruit_ST7789& tft);  // CW Memories initialization
@@ -222,6 +224,10 @@ void selectMenuItem() {
       // Morse Shooter
       currentMode = MODE_MORSE_SHOOTER;
       startMorseShooter(tft);
+    } else if (currentSelection == 1) {
+      // Memory Chain
+      currentMode = MODE_MORSE_MEMORY;
+      startMemoryGame(tft);
     }
   } else if (currentMode == MODE_SETTINGS_MENU) {
     selectedItem = settingsMenuOptions[currentSelection];
@@ -536,6 +542,19 @@ void handleKeyPress(char key) {
   // Handle Morse Shooter game
   if (currentMode == MODE_MORSE_SHOOTER) {
     int result = handleMorseShooterInput(key, tft);
+    if (result == -1) {
+      // Exit to games menu
+      currentMode = MODE_GAMES_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    }
+    return;
+  }
+
+  // Handle Memory Chain game
+  if (currentMode == MODE_MORSE_MEMORY) {
+    int result = handleMemoryGameInput(key, tft);
     if (result == -1) {
       // Exit to games menu
       currentMode = MODE_GAMES_MENU;

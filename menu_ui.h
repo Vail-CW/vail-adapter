@@ -30,6 +30,7 @@ enum MenuMode {
   MODE_CW_ACADEMY_QSO_PRACTICE,
   MODE_GAMES_MENU,
   MODE_MORSE_SHOOTER,
+  MODE_MORSE_MEMORY,
   MODE_RADIO_MENU,
   MODE_RADIO_OUTPUT,
   MODE_CW_MEMORIES,
@@ -67,6 +68,7 @@ void drawCWACopyPracticeUI(Adafruit_ST7789& tft);
 void drawCWASendingPracticeUI(Adafruit_ST7789& tft);
 void drawCWAQSOPracticeUI(Adafruit_ST7789& tft);
 void drawMorseShooterUI(Adafruit_ST7789& tft);
+void drawMemoryUI(Adafruit_ST7789& tft);
 void drawWiFiUI(Adafruit_ST7789& tft);
 void drawCWSettingsUI(Adafruit_ST7789& tft);
 void drawVolumeDisplay(Adafruit_ST7789& tft);
@@ -114,13 +116,15 @@ String trainingMenuIcons[TRAINING_MENU_ITEMS] = {
 };
 
 // Games submenu
-#define GAMES_MENU_ITEMS 1
+#define GAMES_MENU_ITEMS 2
 String gamesMenuOptions[GAMES_MENU_ITEMS] = {
-  "Morse Shooter"
+  "Morse Shooter",
+  "Memory Chain"
 };
 
 String gamesMenuIcons[GAMES_MENU_ITEMS] = {
-  "M"   // Morse Shooter
+  "M",  // Morse Shooter
+  "C"   // Memory Chain
 };
 
 // Settings submenu
@@ -436,6 +440,8 @@ void drawMenu() {
     drawCWAQSOPracticeUI(tft);
   } else if (currentMode == MODE_MORSE_SHOOTER) {
     drawMorseShooterUI(tft);
+  } else if (currentMode == MODE_MORSE_MEMORY) {
+    drawMemoryUI(tft);
   } else if (currentMode == MODE_RADIO_OUTPUT) {
     drawRadioOutputUI(tft);
   } else if (currentMode == MODE_CW_MEMORIES) {
