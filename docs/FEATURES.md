@@ -1,6 +1,6 @@
 # Features
 
-This document covers detailed documentation for major features including CW Academy, Morse Shooter, Radio Mode, and Morse Decoder.
+This document covers detailed documentation for major features including CW Academy, Morse Shooter, Memory Chain, Radio Mode, and Morse Decoder.
 
 ## CW Academy Training Mode
 
@@ -295,6 +295,202 @@ drawFallingLetters(tft);           // Redraw active letters only
 - Final score
 - High score (persisted across sessions)
 - Instructions: ENTER to play again, ESC to exit
+
+## Memory Chain Game
+
+### Overview
+
+Memory Chain is a progressive memory training game that challenges players to remember and reproduce increasingly long sequences of morse code characters. Similar to the classic "Simon Says" game but using CW, it tests both character recognition and short-term memory skills.
+
+### Module: `game_morse_memory.h`
+
+**Game Flow:**
+1. Device plays a morse code sequence
+2. Player must reproduce the exact sequence using their key
+3. On success: sequence grows by one character
+4. On failure: game over (Standard mode) or lose a life (Practice mode)
+
+### Game Modes
+
+**Standard Mode:**
+- One mistake = game over
+- Pure score chase for maximum chain length
+- High pressure, tests focus and accuracy
+
+**Practice Mode:**
+- 3 lives/hearts per game
+- Mistakes cost one life but game continues
+- Allows recovery and continued practice
+- Better for learning and improvement
+
+**Timed Challenge:**
+- Complete as many rounds as possible in 60 seconds
+- No game over on mistakes
+- Score = total successful chains completed
+
+### Difficulty Levels
+
+**Beginner:**
+- Letters only (A-Z)
+- 26 character pool
+- Ideal for character recognition practice
+
+**Intermediate:**
+- Letters + Numbers (A-Z, 0-9)
+- 36 character pool
+- Increased complexity
+
+**Advanced:**
+- Letters + Numbers + Prosigns
+- Includes: SK, AR, BT, BK, AS, SN, SOS, HH, CT
+- Full morse code challenge
+
+### Settings
+
+**Speed:** 5-40 WPM (adjustable in 5 WPM increments)
+**Sound:** ON/OFF (controls sequence playback audio)
+**Show Hints:** ON/OFF (default OFF)
+- OFF: True memory training - no visual hints
+- ON: Display character sequence on screen for reference
+
+All settings persist across power cycles via ESP32 Preferences.
+
+### Keyer Support
+
+Full integration with existing CW settings:
+- **Straight Key Mode:** Uses DIT pin only
+- **Iambic A/B Mode:** Full paddle squeeze support
+- Uses same keyer implementation as Practice Mode and Morse Shooter
+- Respects global key type setting from CW Settings menu
+
+### Decoder Integration
+
+**Real-time Adaptive Decoder:**
+```cpp
+MorseDecoderAdaptive memoryDecoder(15, 20, 30);
+```
+
+**Character Detection:**
+- Automatic character gap detection (5× dit duration)
+- Decoder flush after character gap for immediate recognition
+- Callback-based character processing
+- Immediate feedback on correct/incorrect input
+
+**Timing States:**
+- Tracks tone-on/tone-off transitions
+- Sends positive timing for tone duration
+- Sends negative timing for silence duration
+- Decoder adapts to player's sending speed
+
+### Visual Feedback
+
+**Game States:**
+- **READY:** Green - Game starting (1 second countdown)
+- **LISTEN:** Blue - Device playing sequence
+- **YOUR TURN:** Yellow/Orange - Awaiting player input
+- **CORRECT!:** Green - Successful sequence reproduction
+- **WRONG!:** Red - Incorrect character sent
+
+**Display Elements:**
+- Chain length (top right): "Chain: X"
+- Current score and all-time best (bottom)
+- Lives remaining (Practice mode only)
+- Optional character hints (if enabled)
+- Instructions: "ESC=Menu  S=Settings"
+
+### Audio Feedback
+
+**Success Sounds:**
+- Correct answer: High beep (1000 Hz, 200ms)
+- New high score: Victory fanfare (3 ascending tones)
+
+**Error Sounds:**
+- Wrong answer: Low buzz (200 Hz, 300ms)
+
+**Sidetone:**
+- Always plays during keying (regardless of Sound setting)
+- Uses global CW tone setting
+- Provides immediate audio feedback
+
+### Data Persistence
+
+**Saved Settings (ESP32 Preferences "memory" namespace):**
+- Difficulty level
+- Game mode
+- WPM speed
+- Sound enabled/disabled
+- Show hints enabled/disabled
+- All-time high score
+
+**High Score Tracking:**
+- Session high score (resets on game start)
+- All-time best (persists across power cycles)
+- Separate high scores per difficulty level (future enhancement)
+
+### State Machine
+
+```cpp
+enum MemoryGameState {
+  MEMORY_STATE_READY,      // Countdown before first round
+  MEMORY_STATE_PLAYING,    // Device playing sequence
+  MEMORY_STATE_LISTENING,  // Player's turn to reproduce
+  MEMORY_STATE_FEEDBACK,   // Show correct/wrong feedback
+  MEMORY_STATE_GAME_OVER   // Final score display
+};
+```
+
+**State Transitions:**
+1. READY → PLAYING (after 1 second)
+2. PLAYING → LISTENING (after sequence playback)
+3. LISTENING → FEEDBACK (on complete sequence or error)
+4. FEEDBACK → LISTENING (correct, next round) or GAME_OVER (out of lives)
+5. GAME_OVER → READY (ENTER to play again)
+
+### In-Game Menu (Press 'S')
+
+Navigate settings without exiting the game:
+- Up/Down arrows: Navigate menu
+- Left/Right arrows: Change values
+- Enter: Save & Return
+
+Allows quick adjustment of difficulty, mode, speed, and hints during practice sessions.
+
+### Technical Implementation
+
+**Character Pool Management:**
+```cpp
+const char* getMemoryCharacterSet(MemoryDifficulty difficulty);
+```
+Returns appropriate character set based on difficulty.
+
+**Sequence Generation:**
+```cpp
+void startNextRound() {
+  memoryGame.sequenceLength++;
+  char newChar = characterSet[random(0, setSize)];
+  memoryGame.sequence[memoryGame.sequenceLength - 1] = newChar;
+}
+```
+Adds one random character each round.
+
+**Input Validation:**
+```cpp
+bool checkPlayerSequence(char inputChar) {
+  char expected = memoryGame.sequence[memoryGame.playerPosition];
+  bool correct = (inputChar == expected);
+  memoryGame.playerPosition++;
+  return correct;
+}
+```
+Validates each character as it's decoded.
+
+### Menu Integration
+
+**Location:** Games Menu → Memory Chain
+**Menu Icon:** "C" (for Chain)
+**Menu Navigation:** Same as other game modes
+
+Access from main menu via right arrow on "Memory Chain" card.
 
 ## Radio Mode
 

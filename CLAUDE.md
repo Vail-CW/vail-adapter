@@ -107,6 +107,7 @@ All settings stored in ESP32 Preferences (non-volatile flash):
 - **"radio"** - Radio mode (Summit Keyer vs Radio Keyer)
 - **"cw_memories"** - CW message presets (10 slots, label + message)
 - **"qso_operator"** - Station info for QSO logging
+- **"memory"** - Memory Chain game settings (difficulty, mode, speed, sound, hints, high score)
 
 Settings loaded on startup, saved immediately when changed.
 
@@ -127,6 +128,7 @@ For WiFi state machine details, see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.m
 
 **CW Academy Training Mode** - 4-track, 16-session curriculum with progressive character introduction
 **Morse Shooter Game** - Arcade-style game with adaptive decoder, supports straight key and iambic keyer
+**Memory Chain Game** - Progressive memory training game with increasing sequence length and multiple difficulty modes
 **Radio Output Mode** - Key external ham radios via 3.5mm jack (Summit Keyer or Radio Keyer modes)
 **CW Memories** - Store and manage up to 10 reusable morse code message presets
 **Morse Decoder** - Real-time adaptive decoding of paddle input with WPM tracking
@@ -279,6 +281,7 @@ Each major feature is isolated in its own header file:
 
 **Games:**
 - `game_morse_shooter.h` - Arcade game with adaptive decoder, straight key and iambic keyer support, in-game settings
+- `game_morse_memory.h` - Memory Chain progressive sequence game with difficulty levels and game modes
 
 **Radio Integration:**
 - `radio_output.h` - Radio keying output (Summit Keyer and Radio Keyer modes)
