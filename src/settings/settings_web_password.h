@@ -121,21 +121,28 @@ void drawWebPasswordUI(Adafruit_ST7789 &display) {
 
   display.setFont(); // Reset font
 
+  // Username hint
+  display.setTextSize(1);
+  display.setTextColor(0x7BEF); // Light gray
+  String usernameHint = "Username: admin";
+  display.setCursor((SCREEN_WIDTH - usernameHint.length() * 6) / 2, 195);
+  display.print(usernameHint);
+
   // Footer with controls
   display.setTextSize(1);
   display.setTextColor(COLOR_WARNING);
   String footerText = "ENTER Save";
-  display.setCursor(40, SCREEN_HEIGHT - 30);
+  display.setCursor(40, SCREEN_HEIGHT - 15);
   display.print(footerText);
 
   display.setTextColor(ST77XX_RED);
   String clearText = "DEL Disable";
-  display.setCursor(130, SCREEN_HEIGHT - 30);
+  display.setCursor(130, SCREEN_HEIGHT - 15);
   display.print(clearText);
 
   display.setTextColor(0x7BEF);
   String escText = "ESC Cancel";
-  display.setCursor(230, SCREEN_HEIGHT - 30);
+  display.setCursor(230, SCREEN_HEIGHT - 15);
   display.print(escText);
 
   // Password strength indicator
@@ -260,13 +267,23 @@ int handleWebPasswordInput(char key, Adafruit_ST7789 &display) {
       display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
       display.setTextSize(2);
       display.setTextColor(ST77XX_GREEN);
-      display.setCursor(55, 110);
+      display.setCursor(55, 100);
       display.print("Password Set!");
       display.setTextSize(1);
       display.setTextColor(ST77XX_WHITE);
-      display.setCursor(45, 135);
+      display.setCursor(45, 125);
       display.print("Web access now protected");
-      delay(2000);
+
+      display.setTextColor(ST77XX_YELLOW);
+      display.setCursor(65, 150);
+      display.print("Login credentials:");
+      display.setTextColor(0x7BEF); // Light gray
+      display.setCursor(75, 170);
+      display.print("Username: admin");
+      display.setCursor(75, 185);
+      display.print("Password: (your password)");
+
+      delay(4000);
 
       return -1;  // Exit settings
     } else {
