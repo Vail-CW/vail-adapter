@@ -22,6 +22,7 @@
 extern bool saveQSO(const QSO& qso);                    // From qso_logger_storage.h
 extern String frequencyToBand(float freq);              // From qso_logger_validation.h
 extern String formatCurrentDateTime();                  // From qso_logger_validation.h
+extern bool checkWebAuth(AsyncWebServerRequest *request); // From web_server.h
 // Note: FileSystem is defined as a macro in qso_logger_storage.h
 
 /*
@@ -36,6 +37,8 @@ void setupQSOAPI(AsyncWebServer &webServer) {
 
   // Get station settings
   webServer.on("/api/settings/station", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
+
     JsonDocument doc;
 
     Preferences prefs;
@@ -61,8 +64,16 @@ void setupQSOAPI(AsyncWebServer &webServer) {
   });
 
   // Save station settings
-  webServer.on("/api/settings/station", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+  webServer.on("/api/settings/station", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"success\":false,\"error\":\"Unauthorized\"}");
+      }
+    },
+    NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       // Parse JSON body
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data, len);
@@ -98,8 +109,16 @@ void setupQSOAPI(AsyncWebServer &webServer) {
   // ============================================
 
   // Create new QSO
-  webServer.on("/api/qsos/create", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+  webServer.on("/api/qsos/create", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"success\":false,\"error\":\"Unauthorized\"}");
+      }
+    },
+    NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       // Parse JSON body
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data, len);
@@ -149,8 +168,16 @@ void setupQSOAPI(AsyncWebServer &webServer) {
     });
 
   // Update existing QSO
-  webServer.on("/api/qsos/update", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+  webServer.on("/api/qsos/update", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"success\":false,\"error\":\"Unauthorized\"}");
+      }
+    },
+    NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       // Parse JSON body
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data, len);
@@ -236,6 +263,8 @@ void setupQSOAPI(AsyncWebServer &webServer) {
 
   // Delete QSO
   webServer.on("/api/qsos/delete", HTTP_DELETE, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
+
     if (!request->hasParam("date") || !request->hasParam("id")) {
       request->send(400, "application/json", "{\"success\":false,\"error\":\"Missing date or id\"}");
       return;

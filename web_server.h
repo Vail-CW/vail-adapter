@@ -14,6 +14,9 @@
 #include <ESPmDNS.h>
 #include <ArduinoJson.h>
 
+// Include password protection module (must be before other includes)
+#include "settings_web_password.h"
+
 // Include modular web components
 #include "web_pages_dashboard.h"
 #include "web_pages_wifi.h"
@@ -52,12 +55,32 @@ bool webPracticeModeActive = false;
 // Forward declarations
 void setupWebServer();
 void stopWebServer();
+bool checkWebAuth(AsyncWebServerRequest *request);
 void onPracticeWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len);
 void sendPracticeDecoded(String morse, String text);
 void sendPracticeWPM(float wpm);
 void startWebPracticeMode(Adafruit_ST7789& tft);
 void startWebMemoryChainMode(Adafruit_ST7789& tft, int difficulty, int mode, int wpm, bool sound, bool hints);
 void startWebHearItMode(Adafruit_ST7789& tft);
+
+/*
+ * Check web authentication
+ * Returns true if request is authenticated or auth is disabled
+ */
+bool checkWebAuth(AsyncWebServerRequest *request) {
+  // If auth is disabled, allow all requests
+  if (!webAuthEnabled || webPassword.length() == 0) {
+    return true;
+  }
+
+  // Check for HTTP Basic Auth header
+  if (!request->authenticate("admin", webPassword.c_str())) {
+    request->requestAuthentication();
+    return false;
+  }
+
+  return true;
+}
 
 // Serve functions for modular pages
 void serveRadioPage(AsyncWebServerRequest *request) {
@@ -108,6 +131,7 @@ void setupWebServer() {
   // Main Dashboard Page
   // ============================================
   webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
     serveDashboard(request, FIRMWARE_VERSION, FIRMWARE_DATE, mdnsHostname);
   });
 
@@ -115,6 +139,7 @@ void setupWebServer() {
   // QSO Logger Page (Enhanced)
   // ============================================
   webServer.on("/logger", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
     request->send_P(200, "text/html", LOGGER_HTML);
   });
 
@@ -122,6 +147,7 @@ void setupWebServer() {
   // WiFi Setup Page
   // ============================================
   webServer.on("/wifi", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
     serveWiFiSetup(request);
   });
 
@@ -129,6 +155,7 @@ void setupWebServer() {
   // Radio Control Page
   // ============================================
   webServer.on("/radio", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
     serveRadioPage(request);
   });
 
@@ -136,6 +163,7 @@ void setupWebServer() {
   // Device Settings Page
   // ============================================
   webServer.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
     serveSettingsPage(request);
   });
 
@@ -143,6 +171,7 @@ void setupWebServer() {
   // System Info Page
   // ============================================
   webServer.on("/system", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
     serveSystemPage(request);
   });
 
@@ -150,6 +179,7 @@ void setupWebServer() {
   // Practice Mode Page
   // ============================================
   webServer.on("/practice", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
     request->send_P(200, "text/html", PRACTICE_PAGE_HTML);
   });
 
@@ -157,6 +187,7 @@ void setupWebServer() {
   // Memory Chain Game Page
   // ============================================
   webServer.on("/memory-chain", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
     request->send_P(200, "text/html", MEMORY_CHAIN_HTML);
   });
 
@@ -164,6 +195,7 @@ void setupWebServer() {
   // Hear It Type It Training Page
   // ============================================
   webServer.on("/hear-it", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
     request->send_P(200, "text/html", HEAR_IT_TYPE_IT_HTML);
   });
 
@@ -173,16 +205,19 @@ void setupWebServer() {
 
   // Device status endpoint
   webServer.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
     request->send(200, "application/json", getDeviceStatusJSON());
   });
 
   // QSO logs list endpoint
   webServer.on("/api/qsos", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
     request->send(200, "application/json", getQSOLogsJSON());
   });
 
   // ADIF export endpoint
   webServer.on("/api/export/adif", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
     String adif = generateADIF();
     AsyncWebServerResponse *response = request->beginResponse(200, "application/x-adif", adif);
     response->addHeader("Content-Disposition", "attachment; filename=vail-summit-logs.adi");
@@ -191,6 +226,7 @@ void setupWebServer() {
 
   // CSV export endpoint
   webServer.on("/api/export/csv", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
     String csv = generateCSV();
     AsyncWebServerResponse *response = request->beginResponse(200, "text/csv", csv);
     response->addHeader("Content-Disposition", "attachment; filename=vail-summit-logs.csv");
@@ -199,6 +235,7 @@ void setupWebServer() {
 
   // Practice mode API endpoint
   webServer.on("/api/practice/start", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
     extern MenuMode currentMode;
     extern Adafruit_ST7789 tft;
 
@@ -219,9 +256,15 @@ void setupWebServer() {
 
   // Memory Chain mode API endpoint
   webServer.on("/api/memory-chain/start", HTTP_POST,
-    [](AsyncWebServerRequest *request) {},
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      }
+    },
     NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       JsonDocument doc;
       deserializeJson(doc, data, len);
 
@@ -248,9 +291,15 @@ void setupWebServer() {
 
   // Hear It Type It mode API endpoint
   webServer.on("/api/hear-it/start", HTTP_POST,
-    [](AsyncWebServerRequest *request) {},
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      }
+    },
     NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       JsonDocument doc;
       deserializeJson(doc, data, len);
 

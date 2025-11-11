@@ -45,6 +45,7 @@
 #include "settings_cw.h"
 #include "settings_volume.h"
 #include "settings_general.h"
+#include "settings_web_password.h"
 
 // Connectivity
 #include "vail_repeater.h"
@@ -220,6 +221,10 @@ void setup() {
   // Load saved callsign
   Serial.println("Loading callsign...");
   loadSavedCallsign();
+
+  // Load saved web password
+  Serial.println("Loading web password...");
+  loadSavedWebPassword();
 
   // Initialize NTP time (if WiFi connected)
   Serial.println("Initializing NTP time...");

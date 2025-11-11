@@ -32,6 +32,7 @@ extern void saveCWSettings();
 extern void setVolume(int volume);
 extern int getVolume();
 extern void saveCallsign(String callsign);
+extern bool checkWebAuth(AsyncWebServerRequest *request);
 
 // ============================================
 // Setup Function - Register All Settings API Endpoints
@@ -45,6 +46,8 @@ void setupSettingsAPI(AsyncWebServer &webServer) {
 
   // Radio status endpoint
   webServer.on("/api/radio/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
+
     JsonDocument doc;
     doc["active"] = (currentMode == MODE_RADIO_OUTPUT && radioOutputActive);
     doc["mode"] = (currentMode == MODE_RADIO_OUTPUT) ? "radio_output" : "other";
@@ -56,6 +59,8 @@ void setupSettingsAPI(AsyncWebServer &webServer) {
 
   // Enter radio mode endpoint
   webServer.on("/api/radio/enter", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
+
     // Switch to radio output mode
     currentMode = MODE_RADIO_OUTPUT;
     startRadioOutput(tft);
@@ -66,8 +71,16 @@ void setupSettingsAPI(AsyncWebServer &webServer) {
   });
 
   // Send morse message endpoint
-  webServer.on("/api/radio/send", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+  webServer.on("/api/radio/send", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"success\":false,\"error\":\"Unauthorized\"}");
+      }
+    },
+    NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       // Parse JSON body
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data, len);
@@ -95,6 +108,8 @@ void setupSettingsAPI(AsyncWebServer &webServer) {
 
   // Get WPM speed endpoint
   webServer.on("/api/radio/wpm", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
+
     JsonDocument doc;
     doc["wpm"] = cwSpeed;
 
@@ -104,8 +119,16 @@ void setupSettingsAPI(AsyncWebServer &webServer) {
   });
 
   // Set WPM speed endpoint
-  webServer.on("/api/radio/wpm", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+  webServer.on("/api/radio/wpm", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"success\":false,\"error\":\"Unauthorized\"}");
+      }
+    },
+    NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       // Parse JSON body
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data, len);
@@ -140,6 +163,8 @@ void setupSettingsAPI(AsyncWebServer &webServer) {
 
   // Get CW settings
   webServer.on("/api/settings/cw", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
+
     JsonDocument doc;
     doc["wpm"] = cwSpeed;
     doc["tone"] = cwTone;
@@ -151,8 +176,16 @@ void setupSettingsAPI(AsyncWebServer &webServer) {
   });
 
   // Set CW settings
-  webServer.on("/api/settings/cw", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+  webServer.on("/api/settings/cw", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"success\":false,\"error\":\"Unauthorized\"}");
+      }
+    },
+    NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data, len);
 
@@ -199,6 +232,8 @@ void setupSettingsAPI(AsyncWebServer &webServer) {
 
   // Get volume
   webServer.on("/api/settings/volume", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
+
     JsonDocument doc;
     doc["volume"] = getVolume();
 
@@ -208,8 +243,16 @@ void setupSettingsAPI(AsyncWebServer &webServer) {
   });
 
   // Set volume
-  webServer.on("/api/settings/volume", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+  webServer.on("/api/settings/volume", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"success\":false,\"error\":\"Unauthorized\"}");
+      }
+    },
+    NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data, len);
 
@@ -236,6 +279,8 @@ void setupSettingsAPI(AsyncWebServer &webServer) {
 
   // Get callsign
   webServer.on("/api/settings/callsign", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
+
     JsonDocument doc;
     doc["callsign"] = vailCallsign;
 
@@ -245,8 +290,16 @@ void setupSettingsAPI(AsyncWebServer &webServer) {
   });
 
   // Set callsign
-  webServer.on("/api/settings/callsign", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+  webServer.on("/api/settings/callsign", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"success\":false,\"error\":\"Unauthorized\"}");
+      }
+    },
+    NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data, len);
 
@@ -286,6 +339,8 @@ void setupSettingsAPI(AsyncWebServer &webServer) {
 
   // Get system info
   webServer.on("/api/system/info", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
+
     JsonDocument doc;
 
     // Firmware

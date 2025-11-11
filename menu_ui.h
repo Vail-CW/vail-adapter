@@ -39,6 +39,7 @@ enum MenuMode {
   MODE_CW_SETTINGS,
   MODE_VOLUME_SETTINGS,
   MODE_CALLSIGN_SETTINGS,
+  MODE_WEB_PASSWORD_SETTINGS,
   MODE_VAIL_REPEATER,
   MODE_BLUETOOTH,
   MODE_TOOLS_MENU,
@@ -76,6 +77,7 @@ void drawWiFiUI(Adafruit_ST7789& tft);
 void drawCWSettingsUI(Adafruit_ST7789& tft);
 void drawVolumeDisplay(Adafruit_ST7789& tft);
 void drawCallsignUI(Adafruit_ST7789& tft);
+void drawWebPasswordUI(Adafruit_ST7789& tft);
 void drawVailUI(Adafruit_ST7789& tft);
 void drawToolsMenu(Adafruit_ST7789& tft);
 void drawQSOLoggerMenu(Adafruit_ST7789& tft);
@@ -132,11 +134,12 @@ String gamesMenuIcons[GAMES_MENU_ITEMS] = {
 };
 
 // Settings submenu
-#define SETTINGS_MENU_ITEMS 4
+#define SETTINGS_MENU_ITEMS 5
 String settingsMenuOptions[SETTINGS_MENU_ITEMS] = {
   "WiFi Setup",
   "CW Settings",
   "Volume",
+  "Web Password",
   "General"
 };
 
@@ -144,6 +147,7 @@ String settingsMenuIcons[SETTINGS_MENU_ITEMS] = {
   "W",  // WiFi Setup
   "C",  // CW Settings
   "V",  // Volume
+  "P",  // Web Password
   "G"   // General
 };
 
@@ -238,6 +242,8 @@ void drawHeader() {
     title = "VOLUME";
   } else if (currentMode == MODE_CALLSIGN_SETTINGS) {
     title = "GENERAL";
+  } else if (currentMode == MODE_WEB_PASSWORD_SETTINGS) {
+    title = "WEB PASSWORD";
   } else if (currentMode == MODE_VAIL_REPEATER) {
     title = "VAIL CHAT";
   } else if (currentMode == MODE_TOOLS_MENU) {
@@ -462,6 +468,8 @@ void drawMenu() {
     drawVolumeDisplay(tft);
   } else if (currentMode == MODE_CALLSIGN_SETTINGS) {
     drawCallsignUI(tft);
+  } else if (currentMode == MODE_WEB_PASSWORD_SETTINGS) {
+    drawWebPasswordUI(tft);
   } else if (currentMode == MODE_VAIL_REPEATER) {
     drawVailUI(tft);
   }

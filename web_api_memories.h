@@ -15,6 +15,7 @@ extern void deleteCWMemory(int slot);
 extern void previewCWMemory(int slot);
 extern bool isValidMorseMessage(const char* message);
 extern bool queueRadioMessage(const char* message);
+extern bool checkWebAuth(AsyncWebServerRequest *request);
 
 // ============================================
 // Setup Function - Register All CW Memories API Endpoints
@@ -27,6 +28,8 @@ void setupMemoriesAPI(AsyncWebServer &webServer) {
   // Returns all 10 memory presets
   // ============================================
   webServer.on("/api/memories/list", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
+
     JsonDocument doc;
     JsonArray presets = doc["presets"].to<JsonArray>();
 
@@ -48,8 +51,16 @@ void setupMemoriesAPI(AsyncWebServer &webServer) {
   // Creates or overwrites a memory preset
   // Body: { "slot": 1-10, "label": "...", "message": "..." }
   // ============================================
-  webServer.on("/api/memories/create", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+  webServer.on("/api/memories/create", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"success\":false,\"error\":\"Unauthorized\"}");
+      }
+    },
+    NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data, len);
 
@@ -113,8 +124,16 @@ void setupMemoriesAPI(AsyncWebServer &webServer) {
   // Updates an existing memory preset (same as create)
   // Body: { "slot": 1-10, "label": "...", "message": "..." }
   // ============================================
-  webServer.on("/api/memories/update", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+  webServer.on("/api/memories/update", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"success\":false,\"error\":\"Unauthorized\"}");
+      }
+    },
+    NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data, len);
 
@@ -178,8 +197,16 @@ void setupMemoriesAPI(AsyncWebServer &webServer) {
   // Deletes a memory preset (clears the slot)
   // Body: { "slot": 1-10 }
   // ============================================
-  webServer.on("/api/memories/delete", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+  webServer.on("/api/memories/delete", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"success\":false,\"error\":\"Unauthorized\"}");
+      }
+    },
+    NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data, len);
 
@@ -211,8 +238,16 @@ void setupMemoriesAPI(AsyncWebServer &webServer) {
   // Plays a memory preset on device speaker (not radio output)
   // Body: { "slot": 1-10 }
   // ============================================
-  webServer.on("/api/memories/preview", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+  webServer.on("/api/memories/preview", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"success\":false,\"error\":\"Unauthorized\"}");
+      }
+    },
+    NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data, len);
 
@@ -254,8 +289,16 @@ void setupMemoriesAPI(AsyncWebServer &webServer) {
   // Queues a memory preset for transmission via radio output
   // Body: { "slot": 1-10 }
   // ============================================
-  webServer.on("/api/memories/send", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+  webServer.on("/api/memories/send", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"success\":false,\"error\":\"Unauthorized\"}");
+      }
+    },
+    NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data, len);
 

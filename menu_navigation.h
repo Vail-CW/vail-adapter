@@ -27,6 +27,7 @@ int handleWiFiInput(char key, Adafruit_ST7789& tft);
 int handleCWSettingsInput(char key, Adafruit_ST7789& tft);
 int handleVolumeInput(char key, Adafruit_ST7789& tft);
 int handleCallsignInput(char key, Adafruit_ST7789& tft);
+int handleWebPasswordInput(char key, Adafruit_ST7789& tft);
 int handlePracticeInput(char key, Adafruit_ST7789& tft);
 int handleVailInput(char key, Adafruit_ST7789& tft);
 int handleCWATrackSelectInput(char key, Adafruit_ST7789& tft);
@@ -46,6 +47,7 @@ void drawWiFiUI(Adafruit_ST7789& tft);
 void drawCWSettingsUI(Adafruit_ST7789& tft);
 void drawVolumeDisplay(Adafruit_ST7789& tft);
 void drawCallsignUI(Adafruit_ST7789& tft);
+void drawWebPasswordUI(Adafruit_ST7789& tft);
 void drawVailUI(Adafruit_ST7789& tft);
 
 void startNewCallsign();
@@ -60,6 +62,7 @@ void startWiFiSettings(Adafruit_ST7789& tft);
 void startCWSettings(Adafruit_ST7789& tft);
 void initVolumeSettings(Adafruit_ST7789& tft);
 void startCallsignSettings(Adafruit_ST7789& tft);
+void startWebPasswordSettings(Adafruit_ST7789& tft);
 void startVailRepeater(Adafruit_ST7789& tft);
 void connectToVail(String channel);
 void startMorseShooter(Adafruit_ST7789& tft);
@@ -248,6 +251,10 @@ void selectMenuItem() {
       currentMode = MODE_VOLUME_SETTINGS;
       initVolumeSettings(tft);
     } else if (currentSelection == 3) {
+      // Web Password
+      currentMode = MODE_WEB_PASSWORD_SETTINGS;
+      startWebPasswordSettings(tft);
+    } else if (currentSelection == 4) {
       // General Settings
       currentMode = MODE_CALLSIGN_SETTINGS;
       startCallsignSettings(tft);
@@ -362,6 +369,19 @@ void handleKeyPress(char key) {
     int result = handleVolumeInput(key, tft);
     if (result == -1) {
       // Exit volume settings, back to settings menu
+      currentMode = MODE_SETTINGS_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    }
+    return;
+  }
+
+  // Handle Web Password settings mode
+  if (currentMode == MODE_WEB_PASSWORD_SETTINGS) {
+    int result = handleWebPasswordInput(key, tft);
+    if (result == -1) {
+      // Exit web password settings, back to settings menu
       currentMode = MODE_SETTINGS_MENU;
       currentSelection = 0;
       beep(TONE_MENU_NAV, BEEP_SHORT);

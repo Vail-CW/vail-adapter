@@ -103,6 +103,7 @@ All settings stored in ESP32 Preferences (non-volatile flash):
 - **"cwsettings"** - WPM speed, tone frequency, key type
 - **"audio"** - Volume percentage
 - **"callsign"** - User callsign for Vail repeater
+- **"webpw"** - Web interface password (optional, HTTP Basic Auth)
 - **"cwa"** - CW Academy progress (track, session, practice/message types)
 - **"radio"** - Radio mode (Summit Keyer vs Radio Keyer)
 - **"cw_memories"** - CW message presets (10 slots, label + message)
@@ -122,6 +123,13 @@ To enter AP mode: Settings → WiFi Setup → Press 'A' key
 **Web Server Access:**
 - mDNS: `http://vail-summit.local/` (Station mode only)
 - Direct IP: `http://192.168.4.1/` (AP mode) or device IP (Station mode)
+
+**Web Server Security:**
+- Optional password protection via HTTP Basic Auth
+- Configure via: Settings → Web Password
+- Password stored securely in flash (8-16 characters)
+- Device-only configuration (no web-based password changes)
+- Disable option available if password forgotten
 
 For WiFi state machine details, see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#wifi-configuration-and-ap-mode)**.
 

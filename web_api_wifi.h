@@ -10,9 +10,14 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 
+// External function declarations
+extern bool checkWebAuth(AsyncWebServerRequest *request);
+
 // WiFi status endpoint - check if in AP mode and if remote connection
 void setupWiFiStatusEndpoint(AsyncWebServer &server) {
   server.on("/api/wifi/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
+
     extern bool isAPMode;  // From settings_wifi.h
 
     JsonDocument doc;
@@ -44,6 +49,8 @@ void setupWiFiStatusEndpoint(AsyncWebServer &server) {
 // WiFi scan endpoint
 void setupWiFiScanEndpoint(AsyncWebServer &server) {
   server.on("/api/wifi/scan", HTTP_GET, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
+
     extern bool isAPMode;
 
     // Safety check: only allow scanning if in AP mode or not connected
@@ -86,9 +93,15 @@ void setupWiFiScanEndpoint(AsyncWebServer &server) {
 // WiFi connect endpoint
 void setupWiFiConnectEndpoint(AsyncWebServer &server) {
   server.on("/api/wifi/connect", HTTP_POST,
-    [](AsyncWebServerRequest *request) {},
+    [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) {
+        request->send(401, "application/json", "{\"success\":false,\"error\":\"Unauthorized\"}");
+      }
+    },
     NULL,
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+      if (!checkWebAuth(request)) return;
+
       extern bool isAPMode;
       extern void connectToWiFi(String ssid, String password);  // From settings_wifi.h
 
