@@ -40,6 +40,7 @@ int handleCWAQSOPracticeInput(char key, Adafruit_ST7789& tft);
 int handleMorseShooterInput(char key, Adafruit_ST7789& tft);
 int handleMemoryGameInput(char key, Adafruit_ST7789& tft);
 int handleWebPracticeInput(char key, Adafruit_ST7789& tft);
+int handleKochInput(char key, Adafruit_ST7789& tft);
 
 void drawHearItTypeItUI(Adafruit_ST7789& tft);
 void drawInputBox(Adafruit_ST7789& tft);
@@ -67,6 +68,7 @@ void startVailRepeater(Adafruit_ST7789& tft);
 void connectToVail(String channel);
 void startMorseShooter(Adafruit_ST7789& tft);
 void startMemoryGame(Adafruit_ST7789& tft);
+void startKochMethod(Adafruit_ST7789& tft);  // Koch Method initialization
 void startRadioOutput(Adafruit_ST7789& tft);  // Radio Output initialization
 int handleRadioOutputInput(char key, Adafruit_ST7789& tft);  // Radio Output input handler
 void startCWMemoriesMode(Adafruit_ST7789& tft);  // CW Memories initialization
@@ -217,6 +219,10 @@ void selectMenuItem() {
       currentMode = MODE_PRACTICE;
       startPracticeMode(tft);
     } else if (currentSelection == 2) {
+      // Koch Method
+      currentMode = MODE_KOCH_METHOD;
+      startKochMethod(tft);
+    } else if (currentSelection == 3) {
       // CW Academy
       currentMode = MODE_CW_ACADEMY_TRACK_SELECT;
       startCWAcademy(tft);
@@ -399,6 +405,25 @@ void handleKeyPress(char key) {
       currentSelection = 0;
       beep(TONE_MENU_NAV, BEEP_SHORT);
       drawMenu();
+    }
+    return;
+  }
+
+  // Handle Koch Method mode
+  if (currentMode == MODE_KOCH_METHOD) {
+    int result = handleKochInput(key, tft);
+    if (result == -1) {
+      // Exit Koch Method, back to training menu
+      currentMode = MODE_TRAINING_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    } else if (result == 2) {
+      // Full redraw requested
+      drawKochUI(tft);
+    } else if (result == 3) {
+      // Partial redraw (input box only)
+      drawKochUI(tft);
     }
     return;
   }

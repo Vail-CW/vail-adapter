@@ -34,6 +34,7 @@
 // Training modes
 #include "training_hear_it_type_it.h"
 #include "training_practice.h"
+#include "training_koch_method.h"
 #include "training_cwa.h"
 
 // Games
@@ -226,6 +227,10 @@ void setup() {
   Serial.println("Loading web password...");
   loadSavedWebPassword();
 
+  // Load Koch Method progress
+  Serial.println("Loading Koch Method progress...");
+  loadKochProgress();
+
   // Initialize NTP time (if WiFi connected)
   Serial.println("Initializing NTP time...");
   initNTPTime();
@@ -275,6 +280,7 @@ void loop() {
   static unsigned long lastStatusUpdate = 0;
   if (currentMode != MODE_PRACTICE &&
       currentMode != MODE_HEAR_IT_TYPE_IT &&
+      currentMode != MODE_KOCH_METHOD &&
       currentMode != MODE_CW_ACADEMY_SENDING_PRACTICE &&
       currentMode != MODE_MORSE_SHOOTER &&
       currentMode != MODE_MORSE_MEMORY &&

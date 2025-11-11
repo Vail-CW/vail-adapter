@@ -21,6 +21,7 @@ enum MenuMode {
   MODE_TRAINING_MENU,
   MODE_HEAR_IT_TYPE_IT,
   MODE_PRACTICE,
+  MODE_KOCH_METHOD,
   MODE_CW_ACADEMY_TRACK_SELECT,
   MODE_CW_ACADEMY_SESSION_SELECT,
   MODE_CW_ACADEMY_PRACTICE_TYPE_SELECT,
@@ -87,6 +88,7 @@ void drawQSOStatisticsUI(Adafruit_ST7789& tft);
 void drawRadioOutputUI(Adafruit_ST7789& tft);
 void drawCWMemoriesUI(Adafruit_ST7789& tft);
 void drawWebPracticeUI(Adafruit_ST7789& tft);
+void drawKochUI(Adafruit_ST7789& tft);
 
 // Menu Options and Icons
 String mainMenuOptions[MENU_ITEMS] = {
@@ -108,16 +110,18 @@ String mainMenuIcons[MENU_ITEMS] = {
 };
 
 // Training submenu
-#define TRAINING_MENU_ITEMS 3
+#define TRAINING_MENU_ITEMS 4
 String trainingMenuOptions[TRAINING_MENU_ITEMS] = {
   "Hear It Type It",
   "Practice",
+  "Koch Method",
   "CW Academy"
 };
 
 String trainingMenuIcons[TRAINING_MENU_ITEMS] = {
   "H",  // Hear It Type It
   "P",  // Practice
+  "K",  // Koch Method
   "A"   // CW Academy
 };
 
@@ -208,6 +212,8 @@ void drawHeader() {
     title = "TRAINING";
   } else if (currentMode == MODE_PRACTICE) {
     title = "PRACTICE";
+  } else if (currentMode == MODE_KOCH_METHOD) {
+    title = "KOCH METHOD";
   } else if (currentMode == MODE_CW_ACADEMY_TRACK_SELECT) {
     title = "CW ACADEMY";
   } else if (currentMode == MODE_CW_ACADEMY_SESSION_SELECT) {
