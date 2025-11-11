@@ -12,77 +12,77 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <WiFi.h>
-#include "config.h"
+#include "src/core/config.h"
 #include <Fonts/FreeSansBold12pt7b.h>
 #include <Fonts/FreeSans9pt7b.h>
 #include <Adafruit_LC709203F.h>
 #include <Adafruit_MAX1704X.h>
 
 // Core modules
-#include "i2s_audio.h"
-#include "morse_code.h"
+#include "src/audio/i2s_audio.h"
+#include "src/core/morse_code.h"
 
 // Hardware initialization
-#include "hardware_init.h"
+#include "src/core/hardware_init.h"
 
 // Status bar
-#include "status_bar.h"
+#include "src/ui/status_bar.h"
 
 // Menu system
-#include "menu_ui.h"
+#include "src/ui/menu_ui.h"
 
 // Training modes
-#include "training_hear_it_type_it.h"
-#include "training_practice.h"
-#include "training_koch_method.h"
-#include "training_cwa.h"
+#include "src/training/training_hear_it_type_it.h"
+#include "src/training/training_practice.h"
+#include "src/training/training_koch_method.h"
+#include "src/training/training_cwa.h"
 
 // Games
-#include "game_morse_shooter.h"
-#include "game_morse_memory.h"
+#include "src/games/game_morse_shooter.h"
+#include "src/games/game_morse_memory.h"
 
 // Settings modes
-#include "settings_wifi.h"
-#include "settings_cw.h"
-#include "settings_volume.h"
-#include "settings_general.h"
-#include "settings_web_password.h"
+#include "src/settings/settings_wifi.h"
+#include "src/settings/settings_cw.h"
+#include "src/settings/settings_volume.h"
+#include "src/settings/settings_general.h"
+#include "src/settings/settings_web_password.h"
 
 // Connectivity
-#include "vail_repeater.h"
+#include "src/network/vail_repeater.h"
 
 // Radio modes (CW memories must be included before radio_output)
-#include "radio_cw_memories.h"
-#include "radio_output.h"
+#include "src/radio/radio_cw_memories.h"
+#include "src/radio/radio_output.h"
 
 // NTP Time
-#include "ntp_time.h"
+#include "src/network/ntp_time.h"
 
 // QSO Logger (order matters - validation and API must come first)
-#include "qso_logger_validation.h"
-#include "pota_api.h"
-#include "qso_logger.h"
-#include "qso_logger_storage.h"
-#include "qso_logger_input.h"
-#include "qso_logger_ui.h"
-#include "qso_logger_view.h"
-#include "qso_logger_statistics.h"
-#include "qso_logger_settings.h"
+#include "src/qso/qso_logger_validation.h"
+#include "src/network/pota_api.h"
+#include "src/qso/qso_logger.h"
+#include "src/qso/qso_logger_storage.h"
+#include "src/qso/qso_logger_input.h"
+#include "src/qso/qso_logger_ui.h"
+#include "src/qso/qso_logger_view.h"
+#include "src/qso/qso_logger_statistics.h"
+#include "src/qso/qso_logger_settings.h"
 
 // Web Server (must come after QSO Logger to access storage)
-#include "web_server.h"
+#include "src/web/server/web_server.h"
 
 // Web Practice Mode
-#include "web_practice_mode.h"
+#include "src/web/modes/web_practice_mode.h"
 
 // Web Memory Chain Mode
-#include "web_memory_chain_mode.h"
+#include "src/web/modes/web_memory_chain_mode.h"
 
 // Web Hear It Type It Mode
-#include "web_hear_it_mode.h"
+#include "src/web/modes/web_hear_it_mode.h"
 
 // Menu navigation (must come after all mode headers that define input handlers)
-#include "menu_navigation.h"
+#include "src/ui/menu_navigation.h"
 
 // ============================================
 // Global Hardware Objects

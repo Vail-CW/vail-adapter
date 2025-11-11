@@ -6,16 +6,18 @@ This document covers development patterns, critical constraints, and troubleshoo
 
 ### Adding a New Menu Mode
 
-1. **Add enum value to `MenuMode`** in morse_trainer_menu.ino (around line 32-44)
-2. **Create header file** (e.g., `training_newmode.h`) with:
+1. **Add enum value to `MenuMode`** in vail-summit.ino
+2. **Create header file** in appropriate `src/` folder (e.g., `src/training/training_newmode.h`) with:
    - State variables
    - UI drawing functions
    - Input handler function
+   - Includes using relative paths (e.g., `#include "../core/config.h"`)
 3. **Add mode to menu arrays** (options and icons)
-4. **Update `selectMenuItem()`** to handle selection
-5. **Update `handleKeyPress()`** to route input to your handler
+4. **Update `selectMenuItem()`** in `src/ui/menu_navigation.h` to handle selection
+5. **Update `handleKeyPress()`** in `src/ui/menu_navigation.h` to route input to your handler
 6. **Update `drawMenu()`** to call your UI renderer
 7. **Add Preferences namespaces** for persistent settings (if needed)
+8. **Include your new header** in vail-summit.ino using `#include "src/folder/yourfile.h"`
 
 ### Creating Audio Feedback
 
@@ -42,10 +44,25 @@ stopTone();                       // Stop continuous tone
 - `2` - Full UI redraw requested
 - `3` - Partial UI update (e.g., input box only)
 
+**Color Constants:**
+Colors are defined in `src/core/config.h`:
+```cpp
+#define COLOR_BACKGROUND 0x0000    // Black
+#define COLOR_TEXT 0xFFFF          // White
+#define COLOR_HEADER 0x1082        // Dark blue
+#define COLOR_ACCENT 0x07FF        // Cyan
+#define COLOR_SUCCESS 0x07E0       // Green
+#define COLOR_ERROR 0xF800         // Red
+```
+
 ### Morse Code Generation
 
 ```cpp
-#include "morse_code.h"
+// From main .ino file
+#include "src/core/morse_code.h"
+
+// From header files (relative path)
+#include "../core/morse_code.h"
 
 // Get morse pattern for a character
 const char* pattern = getMorseCode('A');  // Returns ".-"
@@ -96,7 +113,14 @@ void loadMySettings() {
 ### Mode Implementation Template
 
 ```cpp
-// In your_mode.h
+// In src/training/your_mode.h (or appropriate folder)
+#ifndef YOUR_MODE_H
+#define YOUR_MODE_H
+
+// Include dependencies using relative paths
+#include "../core/config.h"
+#include "../audio/i2s_audio.h"
+#include "../core/morse_code.h"
 
 // State variables
 static int myModeState = 0;
@@ -144,6 +168,18 @@ void updateMyMode() {
   if (myModeState == 1) {
     // Do something
   }
+}
+
+#endif // YOUR_MODE_H
+```
+
+**Then in vail-summit.ino:**
+```cpp
+#include "src/training/your_mode.h"
+
+// In loop() or appropriate handler:
+if (currentMode == MODE_YOUR_MODE) {
+  updateMyMode();
 }
 ```
 
@@ -310,6 +346,8 @@ strcpy(newQSO.callsign, "W1ABC");  // Other fields have random values
 
 ## Audio System Details
 
+All audio functions are defined in `src/audio/i2s_audio.h`.
+
 ### Phase Continuity
 
 **Why `continueTone()` exists:**
@@ -326,7 +364,7 @@ stopTone();              // Final stop
 
 ### Volume Scaling
 
-Volume is applied during sample generation in `i2s_audio.h`:
+Volume is applied during sample generation in `src/audio/i2s_audio.h`:
 
 ```cpp
 // Volume range: 0-100
@@ -349,7 +387,7 @@ During audio-critical modes (Practice, Morse Shooter, Radio Output):
 
 ### Screen Rotation
 
-Display is rotated to landscape orientation:
+Display is rotated to landscape orientation (`src/core/config.h`):
 
 ```cpp
 #define SCREEN_ROTATION 1  // 0=portrait, 1=landscape, 2=portrait flip, 3=landscape flip
@@ -359,7 +397,7 @@ Display is rotated to landscape orientation:
 
 ### Color Scheme
 
-Colors defined in `config.h`:
+Colors defined in `src/core/config.h`:
 
 ```cpp
 #define COLOR_BACKGROUND 0x0000    // Black

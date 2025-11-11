@@ -163,8 +163,8 @@ For complete web interface documentation and API endpoints, see **[docs/WEB_INTE
 
 ### Adding a New Menu Mode
 
-1. Add enum value to `MenuMode` in morse_trainer_menu.ino
-2. Create header file (e.g., `training_newmode.h`) with state, UI, and input handler
+1. Add enum value to `MenuMode` in vail-summit.ino
+2. Create header file in appropriate `src/` folder (e.g., `src/training/training_newmode.h`) with state, UI, and input handler
 3. Add mode to menu arrays (options and icons)
 4. Update `selectMenuItem()` to handle selection
 5. Update `handleKeyPress()` to route input to your handler
@@ -191,12 +191,12 @@ Always use these functions instead of direct I2S manipulation. They handle volum
 ### Morse Code Generation
 
 ```cpp
-#include "morse_code.h"
+#include "src/core/morse_code.h"
 const char* pattern = getMorseCode('A');  // Returns ".-"
 MorseTiming timing(20);  // 20 WPM timing calculator
 ```
 
-Use `playMorseString()` in morse_code.h for automatic playback with proper spacing.
+Use `playMorseString()` in `src/core/morse_code.h` for automatic playback with proper spacing.
 
 For more development patterns, see **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)**.
 
@@ -214,7 +214,7 @@ For troubleshooting common issues, see **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.
 
 ## Firmware Version Management
 
-**Version Information:** `config.h` (lines 9-14)
+**Version Information:** `src/core/config.h` (lines 9-14)
 
 ```cpp
 #define FIRMWARE_VERSION "1.0.0"
@@ -269,51 +269,107 @@ Each mode implements three key functions:
 - `2` - Full UI redraw requested
 - `3` - Partial UI update (e.g., input box only)
 
-## Modular Header Files
+## Code Organization
 
-Each major feature is isolated in its own header file:
+The firmware uses a modular architecture with all header files organized into thematic folders under `src/`:
 
-**Core System:**
+```
+vail-summit/
+├── src/
+│   ├── core/           # Core system files
+│   ├── audio/          # Audio system and morse decoder
+│   ├── ui/             # UI components and menu system
+│   ├── training/       # Training modes
+│   ├── games/          # Games
+│   ├── radio/          # Radio integration
+│   ├── settings/       # Settings management
+│   ├── qso/            # QSO logging
+│   ├── web/            # Web interface
+│   │   ├── server/     # Web server core
+│   │   ├── api/        # REST API endpoints
+│   │   ├── pages/      # HTML/CSS/JS pages
+│   │   └── modes/      # WebSocket handlers
+│   └── network/        # Network services
+├── vail-summit.ino     # Main sketch file
+└── docs/               # Documentation
+```
+
+### Core System (`src/core/`)
+
 - `config.h` - Hardware configuration, pin assignments, timing constants, color scheme
 - `morse_code.h` - Morse lookup table and timing calculations (PARIS method)
+- `hardware_init.h` - Hardware initialization routines
 
-**Audio System:**
+### Audio System (`src/audio/`)
+
 - `i2s_audio.h` - I2S driver for MAX98357A with software volume control
 - `morse_wpm.h` - WPM timing utilities (PARIS/Farnsworth) - EUPL v1.2
 - `morse_decoder.h` - Base decoder class (timings → text) - EUPL v1.2
 - `morse_decoder_adaptive.h` - Adaptive speed tracking - EUPL v1.2
 
-**Training Modes:**
+### UI Components (`src/ui/`)
+
+- `menu_navigation.h` - Menu navigation and input routing
+- `menu_ui.h` - Menu rendering and card-based UI
+- `status_bar.h` - Status bar icons (WiFi, battery, audio)
+
+### Training Modes (`src/training/`)
+
 - `training_hear_it_type_it.h` - Configurable receive training (callsigns, letters, numbers, custom) with 5 modes
 - `training_practice.h` - Practice oscillator with iambic keyer and real-time decoding
-- `training_cwa.h` - CW Academy curriculum (4 tracks, 16 sessions each)
+- `training_cwa.h` - CW Academy main menu and session selection
+- `training_cwa_core.h` - CW Academy core functions and state management
+- `training_cwa_data.h` - CW Academy curriculum data (4 tracks, 16 sessions)
+- `training_cwa_copy_practice.h` - CW Academy copy practice mode (listen and type)
+- `training_cwa_send_practice.h` - CW Academy send practice mode (key what you see)
+- `training_cwa_qso_practice.h` - CW Academy QSO practice mode (simulated contacts)
+- `training_koch_method.h` - Koch Method main menu and mode selection
+- `training_koch_core.h` - Koch Method core logic and progression
+- `training_koch_ui.h` - Koch Method UI rendering
 
-**Games:**
-- `game_morse_shooter.h` - Arcade game with adaptive decoder, straight key and iambic keyer support, in-game settings
+### Games (`src/games/`)
+
+- `game_morse_shooter.h` - Arcade-style game with adaptive decoder, straight key and iambic keyer support, in-game settings
 - `game_morse_memory.h` - Memory Chain progressive sequence game with difficulty levels and game modes
 
-**Radio Integration:**
-- `radio_output.h` - Radio keying output (Summit Keyer and Radio Keyer modes)
-- `radio_cw_memories.h` - CW message memories (placeholder for future)
+### Radio Integration (`src/radio/`)
 
-**Settings:**
-- `settings_wifi.h` - WiFi scanning, connection, credential storage
+- `radio_output.h` - Radio keying output (Summit Keyer and Radio Keyer modes)
+- `radio_cw_memories.h` - CW message memories (10 programmable slots)
+
+### Settings Management (`src/settings/`)
+
+- `settings_wifi.h` - WiFi scanning, connection, credential storage, AP mode
 - `settings_cw.h` - CW speed, tone frequency, key type settings
 - `settings_volume.h` - Volume adjustment and persistence
-- `settings_general.h` - User callsign configuration
+- `settings_callsign.h` - User callsign configuration
+- `settings_general.h` - General device settings
+- `settings_web_password.h` - Web interface password protection
 
-**Network:**
-- `vail_repeater.h` - WebSocket client for vailmorse.com morse repeater
+### QSO Logging (`src/qso/`)
 
-**QSO Logging:**
 - `qso_logger.h` - Data structures and field definitions
 - `qso_logger_storage.h` - SPIFFS JSON storage for QSO logs
 - `qso_logger_input.h` - Device-side input forms and field navigation
 - `qso_logger_validation.h` - Validation functions for callsigns, frequencies, RST
+- `qso_logger_view.h` - QSO log viewing and browsing
+- `qso_logger_ui.h` - QSO logger UI rendering
+- `qso_logger_settings.h` - QSO logger settings (operator info, POTA)
+- `qso_logger_statistics.h` - QSO statistics and metrics
 
-**Web Interface (Modular):**
+### Web Interface (`src/web/`)
+
+**Server Core (`src/web/server/`):**
 - `web_server.h` - AsyncWebServer setup and routing (main coordinator)
 - `web_server_api.h` - Core API functions (device status, QSO logs, ADIF/CSV export)
+
+**REST API (`src/web/api/`):**
+- `web_api_wifi.h` - WiFi API endpoints (scan, connect, credentials)
+- `web_api_qso.h` - QSO logger API endpoints (create, read, update, delete)
+- `web_api_settings.h` - Settings API endpoints (CW, volume, callsign)
+- `web_api_memories.h` - CW memories API endpoints (CRUD operations)
+
+**HTML Pages (`src/web/pages/`):**
 - `web_pages_dashboard.h` - Main dashboard HTML/CSS/JS
 - `web_pages_wifi.h` - WiFi setup page HTML/CSS/JS
 - `web_pages_practice.h` - Practice mode page HTML/CSS/JS
@@ -322,11 +378,9 @@ Each major feature is isolated in its own header file:
 - `web_pages_radio.h` - Radio control page HTML/CSS/JS
 - `web_pages_settings.h` - Device settings page HTML/CSS/JS
 - `web_pages_system.h` - System diagnostics page HTML/CSS/JS
-- `web_api_wifi.h` - WiFi API endpoints (scan, connect, credentials)
-- `web_api_qso.h` - QSO logger API endpoints (create, read, update, delete)
-- `web_api_settings.h` - Settings API endpoints (CW, volume, callsign)
-- `web_api_memories.h` - CW memories API endpoints (CRUD operations)
 - `web_logger_enhanced.h` - Enhanced QSO logger HTML/CSS/JS
+
+**WebSocket Handlers (`src/web/modes/`):**
 - `web_practice_socket.h` - WebSocket handler for practice mode
 - `web_practice_mode.h` - Device-side web practice mode handler
 - `web_memory_chain_socket.h` - WebSocket handler for memory chain game
@@ -334,14 +388,37 @@ Each major feature is isolated in its own header file:
 - `web_hear_it_socket.h` - WebSocket handler for hear it type it mode
 - `web_hear_it_mode.h` - Device-side web hear it mode handler
 
+### Network Services (`src/network/`)
+
+- `vail_repeater.h` - WebSocket client for vailmorse.com morse repeater
+- `ntp_time.h` - NTP time synchronization
+- `pota_api.h` - Parks On The Air API integration
+
+### Include Path Conventions
+
+**From main .ino file:**
+```cpp
+#include "src/core/config.h"
+#include "src/audio/i2s_audio.h"
+#include "src/training/training_practice.h"
+```
+
+**Between header files (relative paths):**
+```cpp
+// From src/training/training_practice.h
+#include "../core/config.h"
+#include "../audio/i2s_audio.h"
+#include "../core/morse_code.h"
+```
+
 ## License Information
 
 **Main Firmware:** Proprietary (VAIL SUMMIT Contributors)
 
 **Morse Decoder Modules** (EUPL v1.2 - European Union Public Licence):
-- `morse_wpm.h`
-- `morse_decoder.h`
-- `morse_decoder_adaptive.h`
+- `src/audio/morse_wpm.h`
+- `src/audio/morse_decoder.h`
+- `src/audio/morse_decoder_adaptive.h`
 
 Original decoder code: Copyright (c) 2024 Stephen C Phillips
 ESP32 port: Copyright (c) 2025 VAIL SUMMIT Contributors

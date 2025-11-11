@@ -2,9 +2,44 @@
 
 This document covers the system architecture, state machine, main loop responsibilities, and critical subsystems.
 
+## Code Organization
+
+The firmware follows a modular architecture with all source code organized into thematic folders:
+
+```
+vail-summit/
+├── src/
+│   ├── core/           # Core system (config, morse code, hardware init)
+│   ├── audio/          # Audio system and morse decoder (I2S, WPM, adaptive decoder)
+│   ├── ui/             # UI components (menu system, status bar)
+│   ├── training/       # Training modes (Practice, CW Academy, Koch Method, Hear It Type It)
+│   ├── games/          # Games (Morse Shooter, Memory Chain)
+│   ├── radio/          # Radio integration (keying output, CW memories)
+│   ├── settings/       # Settings management (WiFi, CW, volume, callsign, web password)
+│   ├── qso/            # QSO logging (storage, input, validation, statistics)
+│   ├── web/            # Web interface
+│   │   ├── server/     # Web server core (AsyncWebServer, routing)
+│   │   ├── api/        # REST API endpoints (WiFi, QSO, settings, memories)
+│   │   ├── pages/      # HTML/CSS/JS pages (dashboard, logger, settings, games)
+│   │   └── modes/      # WebSocket handlers (practice, memory chain, hear it)
+│   └── network/        # Network services (Vail repeater, NTP, POTA API)
+├── vail-summit.ino     # Main sketch file (setup, loop, mode handlers)
+└── docs/               # Documentation
+```
+
+**Key Benefits:**
+- **Modularity:** Each folder contains related functionality
+- **Maintainability:** Easy to locate and modify specific features
+- **Scalability:** New features added to appropriate folders
+- **Clear dependencies:** Include paths reveal module relationships
+
+**Include Path Conventions:**
+- From `.ino` file: `#include "src/core/config.h"`
+- Between headers: `#include "../core/config.h"` (relative paths)
+
 ## Mode-Based State Machine
 
-The system operates as a state machine with different modes (`MenuMode` enum in morse_trainer_menu.ino:32-44). Each mode has its own input handler and UI renderer. The main loop delegates to the appropriate mode handler based on `currentMode`.
+The system operates as a state machine with different modes (`MenuMode` enum in vail-summit.ino). Each mode has its own input handler and UI renderer. The main loop delegates to the appropriate mode handler based on `currentMode`.
 
 ### Key Modes
 
@@ -45,7 +80,7 @@ The system operates as a state machine with different modes (`MenuMode` enum in 
 
 ## Main Loop Responsibilities
 
-The `loop()` function (morse_trainer_menu.ino:210-258) performs:
+The `loop()` function (vail-summit.ino) performs:
 
 1. **Status Icon Updates** - Every 5 seconds (except during practice/training to avoid audio interference)
 2. **Mode-Specific Updates** - Calls update functions (`updatePracticeOscillator()`, `updateVailRepeater()`, `updateMorseShooterInput()`, `updateMorseShooterVisuals()`, `updateRadioOutput()`)
@@ -101,7 +136,7 @@ All timing uses the **PARIS standard** (50 dit units per word):
 ### MorseTiming Class
 
 ```cpp
-#include "morse_code.h"
+#include "src/core/morse_code.h"
 MorseTiming timing(20);  // 20 WPM timing calculator
 
 // Available properties:
@@ -185,7 +220,7 @@ The right arrow visual matches the keyboard input - pressing the **Right arrow k
 
 ### Implementation
 
-Menu navigation is handled in `menu_navigation.h`:
+Menu navigation is handled in `src/ui/menu_navigation.h`:
 - `handleKeyPress()` routes input based on current mode
 - `selectMenuItem()` transitions to the selected mode
 - `drawMenuItems()` renders the card-based UI with arrow indicators
@@ -210,7 +245,7 @@ All user settings are stored in ESP32 Preferences (non-volatile flash storage).
   - Keys: "label1" through "label10", "message1" through "message10"
   - Each slot stores a label (max 15 chars) and message (max 100 chars)
   - Empty slots stored as empty strings
-  - Loaded at startup via `loadCWMemories()` in `radio_cw_memories.h`
+  - Loaded at startup via `loadCWMemories()` in `src/radio/radio_cw_memories.h`
   - Saved immediately on create/edit/delete
   - Debug logging: All load/save operations print to Serial for troubleshooting
 
@@ -294,7 +329,7 @@ When connecting to a WiFi network from AP mode (via web or device):
 - Accessible via mDNS or IP address
 - Stops via WiFi event handler on disconnection
 
-### WiFi Settings Module (settings_wifi.h)
+### WiFi Settings Module (src/settings/settings_wifi.h)
 
 **State Machine:**
 ```cpp
@@ -325,7 +360,7 @@ enum WiFiSettingsState {
 
 ## Vail Repeater Protocol
 
-The Vail repeater (vail_repeater.h) uses a WebSocket connection with JSON messages:
+The Vail repeater (`src/network/vail_repeater.h`) uses a WebSocket connection with JSON messages:
 
 ### Transmission Format
 
