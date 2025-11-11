@@ -56,8 +56,8 @@ jobs:
           # The .ino file is in the root directory on vail-summit branch
           # Arduino CLI requires the sketch to be in a folder with matching name
           mkdir -p vail-summit
-          cp *.h vail-summit/
           cp vail-summit.ino vail-summit/
+          cp -r src vail-summit/
 
           # Build for ESP32-S3 Feather
           arduino-cli compile \
