@@ -12,7 +12,7 @@
  */
 
 // Pin configuration for Advanced PCB (also works for other variants)
-#define BUTTON_PIN 3  // R2R button ladder input (pin 3 on QT Py)
+#define BUTTON_PIN 8  // R2R button ladder input (pin 3 on QT Py)
 #define SAMPLE_COUNT 50  // Number of samples to average per button test
 
 // Expected values for Advanced PCB (for reference)

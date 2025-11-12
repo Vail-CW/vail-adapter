@@ -143,11 +143,15 @@ bool ButtonDebouncer::isDoubleClick() {
 
 // Read analog pin and average 10 samples
 int readButtonAnalog() {
+#ifdef BUTTON_PIN
     long sum = 0;
     for (int i = 0; i < BUTTON_SAMPLE_COUNT; i++) {
         sum += analogRead(BUTTON_PIN);
     }
     return sum / BUTTON_SAMPLE_COUNT;
+#else
+    return 0;  // No button pin defined
+#endif
 }
 
 // Map analog value to button state based on calibrated thresholds
@@ -188,34 +192,35 @@ ButtonState getButtonState(int analogValue) {
     return BTN_NONE;
 }
 #else
-// Advanced PCB calibration: NONE=0, B3=280, B2=335, B1=414, B2+3=397, B1+3=490, B1+2=516
+// Advanced PCB calibration (pin 8 with wire mod): NONE=1, B3=514, B2=617, B1=683, B2+3=771, B1+3=821, B1+2=831
+// Wide tolerance ranges to accommodate wire length variations from PCB mod
 ButtonState getButtonState(int analogValue) {
-    // None: 0-100
-    if (analogValue >= 0 && analogValue <= 100) {
+    // None: 0-255 (very wide range below first button)
+    if (analogValue >= 0 && analogValue <= 255) {
         return BTN_NONE;
     }
-    // Button 3: 260-300 (measured: 280)
-    else if (analogValue >= 260 && analogValue <= 300) {
+    // Button 3: 256-565 (measured: 513-516, avg 514)
+    else if (analogValue >= 256 && analogValue <= 565) {
         return BTN_3;
     }
-    // Button 2: 315-355 (measured: 335)
-    else if (analogValue >= 315 && analogValue <= 355) {
+    // Button 2: 566-649 (measured: 615-620, avg 617)
+    else if (analogValue >= 566 && analogValue <= 649) {
         return BTN_2;
     }
-    // Buttons 2+3: 377-405 (measured: 397)
-    else if (analogValue >= 377 && analogValue <= 405) {
-        return BTN_2_3;
-    }
-    // Button 1: 406-435 (measured: 414)
-    else if (analogValue >= 406 && analogValue <= 435) {
+    // Button 1: 650-726 (measured: 683-685, avg 683)
+    else if (analogValue >= 650 && analogValue <= 726) {
         return BTN_1;
     }
-    // Buttons 1+3: 470-502 (measured: 490)
-    else if (analogValue >= 470 && analogValue <= 502) {
+    // Buttons 2+3: 727-794 (measured: 770-773, avg 771)
+    else if (analogValue >= 727 && analogValue <= 794) {
+        return BTN_2_3;
+    }
+    // Buttons 1+3: 795-824 (measured: 820-824, avg 821)
+    else if (analogValue >= 795 && analogValue <= 824) {
         return BTN_1_3;
     }
-    // Buttons 1+2: 503-650 (measured: 516)
-    else if (analogValue >= 503 && analogValue <= 650) {
+    // Buttons 1+2: 825-1023 (measured: 830-834, avg 831) - wide upper range
+    else if (analogValue >= 825 && analogValue <= 1023) {
         return BTN_1_2;
     }
 

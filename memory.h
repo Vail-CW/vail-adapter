@@ -11,12 +11,29 @@
 // encoding for efficient storage of key timing sequences.
 //
 // Storage Format:
-// - Each memory slot stores alternating key-down/key-up durations
-// - Durations are in milliseconds (uint16_t, max 65.5 seconds per event)
+// - Each memory slot stores alternating key-down/key-up durations WITH paddle info
+// - Format: uint16_t with bit 15 = paddle (0=DIT, 1=DAH), bits 0-14 = duration (ms)
+// - Max duration per transition: 32767ms (32.7 seconds, plenty for individual events)
 // - Recording is automatically trimmed to end at last key-release
 // - Maximum recording duration: 25 seconds
 // - Maximum transitions: 200 per slot (conservative estimate)
+//
+// Encoding/Decoding Macros:
+// - ENCODE_TRANSITION(paddle, duration): Combines paddle flag and duration into uint16_t
+// - DECODE_DURATION(encoded): Extracts duration from encoded value
+// - DECODE_PADDLE(encoded): Extracts paddle (0=DIT, 1=DAH) from encoded value
 // ============================================================================
+
+// Transition encoding constants
+#define PADDLE_BIT_MASK 0x8000    // Bit 15
+#define DURATION_MASK   0x7FFF    // Bits 0-14
+#define PADDLE_DIT_FLAG 0         // Paddle = DIT
+#define PADDLE_DAH_FLAG 1         // Paddle = DAH
+
+// Encoding/decoding macros
+#define ENCODE_TRANSITION(paddle, duration) (((paddle) << 15) | ((duration) & DURATION_MASK))
+#define DECODE_DURATION(encoded) ((encoded) & DURATION_MASK)
+#define DECODE_PADDLE(encoded) (((encoded) & PADDLE_BIT_MASK) >> 15)
 
 // EEPROM Memory Map
 // -----------------
@@ -76,7 +93,7 @@ struct CWMemory {
     // Calculate total duration of the memory in milliseconds
     uint32_t total = 0;
     for (uint16_t i = 0; i < transitionCount; i++) {
-      total += transitions[i];
+      total += DECODE_DURATION(transitions[i]);
     }
     return total;
   }
@@ -90,12 +107,13 @@ struct RecordingState {
   unsigned long lastEventTime;        // Time of last key event
   unsigned long lastKeyReleaseTime;   // Time of last key-release (for trimming)
   bool keyCurrentlyDown;              // Current state of the key
+  uint8_t currentPaddle;              // Which paddle is currently active (0=DIT, 1=DAH)
   uint16_t transitionCount;           // Number of transitions captured so far
-  uint16_t transitions[MAX_TRANSITIONS_PER_MEMORY];  // Captured transitions
+  uint16_t transitions[MAX_TRANSITIONS_PER_MEMORY];  // Captured transitions (encoded with paddle info)
 
   RecordingState() : slotNumber(0), isRecording(false), recordingStartTime(0),
                       lastEventTime(0), lastKeyReleaseTime(0), keyCurrentlyDown(false),
-                      transitionCount(0) {
+                      currentPaddle(0), transitionCount(0) {
     for (int i = 0; i < MAX_TRANSITIONS_PER_MEMORY; i++) {
       transitions[i] = 0;
     }
@@ -108,6 +126,7 @@ struct RecordingState {
     lastEventTime = recordingStartTime;
     lastKeyReleaseTime = recordingStartTime;
     keyCurrentlyDown = false;
+    currentPaddle = 0;  // Start with DIT as default
     transitionCount = 0;
   }
 
@@ -131,23 +150,31 @@ struct PlaybackState {
   uint16_t currentTransitionIndex;    // Which transition we're on
   unsigned long transitionStartTime;  // When current transition started
   bool keyCurrentlyDown;              // Current key state during playback
+  uint8_t currentPaddle;              // Current paddle being played (0=DIT, 1=DAH)
   CWMemory* memory;                   // Pointer to the memory being played
 
   PlaybackState() : isPlaying(false), slotNumber(0), currentTransitionIndex(0),
-                     transitionStartTime(0), keyCurrentlyDown(false), memory(nullptr) {}
+                     transitionStartTime(0), keyCurrentlyDown(false), currentPaddle(0), memory(nullptr) {}
 
   void startPlayback(uint8_t slot, CWMemory* mem) {
     slotNumber = slot;
     memory = mem;
     isPlaying = true;
     currentTransitionIndex = 0;
-    transitionStartTime = millis();
-    keyCurrentlyDown = true;  // First transition is always key-down
+    transitionStartTime = millis();  // Start timing for first transition
+    keyCurrentlyDown = true;  // First transition is always key-down, start with key down
+    // Decode paddle from first transition
+    if (mem->transitionCount > 0) {
+      currentPaddle = DECODE_PADDLE(mem->transitions[0]);
+    } else {
+      currentPaddle = 0;  // Default to DIT
+    }
   }
 
   void stopPlayback() {
     isPlaying = false;
     keyCurrentlyDown = false;
+    currentPaddle = 0;
     memory = nullptr;
   }
 };
@@ -160,7 +187,7 @@ struct PlaybackState {
 // Recording operations
 void startRecording(RecordingState& state, uint8_t slotNumber);
 void stopRecording(RecordingState& state, CWMemory& memory);
-void recordKeyEvent(RecordingState& state, bool keyDown);
+void recordKeyEvent(RecordingState& state, bool keyDown, uint8_t paddle);
 
 // Playback operations
 bool startPlayback(PlaybackState& state, uint8_t slotNumber, CWMemory& memory);

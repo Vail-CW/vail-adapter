@@ -681,9 +681,15 @@ void updateMenuHandler(unsigned long currentTime, ButtonDebouncer& buttonDebounc
     // B1+B3 combo toggles memory management mode
     if (currentState == BTN_1_3) {
       if (menuState.currentMode == MODE_NORMAL) {
-        Serial.println(" - Entering MEMORY MANAGEMENT mode");
-        playMorseWord("MEM");
-        menuState.currentMode = MODE_MEMORY_MANAGEMENT;
+        // Don't allow entering memory management mode in radio mode
+        if (adapter->isRadioModeActive()) {
+          Serial.println(" - Cannot enter MEMORY MANAGEMENT mode while in radio mode");
+          playErrorTone();
+        } else {
+          Serial.println(" - Entering MEMORY MANAGEMENT mode");
+          playMorseWord("MEM");
+          menuState.currentMode = MODE_MEMORY_MANAGEMENT;
+        }
       } else if (menuState.currentMode == MODE_MEMORY_MANAGEMENT) {
         Serial.println(" - Exiting MEMORY MANAGEMENT mode");
         playDescendingTones();
