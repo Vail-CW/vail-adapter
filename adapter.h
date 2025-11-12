@@ -34,6 +34,10 @@ private:
     bool txRelays[2] = {false, false}; // [dit, dah]
     int lastPaddlePressed = PADDLE_DIT; // Track last paddle for keyer transmission
 
+    // Track which keyboard keys are currently pressed
+    bool ditKeyPressed = false;
+    bool dahKeyPressed = false;
+
     // CW memory recording
     RecordingState* recordingState = nullptr;
 
@@ -76,4 +80,7 @@ public:
 
     // CW memory recording support
     void setRecordingState(RecordingState* state);
+
+    // Cleanup method to release all keys
+    void ReleaseAllKeys();
 };

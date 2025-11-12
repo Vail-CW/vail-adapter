@@ -11,6 +11,7 @@
 #include "morse_audio.h"
 #include "settings_eeprom.h"
 #include "menu_handler.h"
+#include "equal_temperament.h"
 
 bool trs = false;
 unsigned long dahGroundedStartTime = 0;  // Track how long DAH has been grounded
@@ -58,7 +59,9 @@ void setup() {
   // Attach capacitive touch with calibrated per-pad thresholds
   qt_dit.attach(QT_DIT_PIN, QT_DIT_THRESHOLD_PRESS, QT_DIT_THRESHOLD_RELEASE);
   qt_dah.attach(QT_DAH_PIN, QT_DAH_THRESHOLD_PRESS, QT_DAH_THRESHOLD_RELEASE);
+#ifdef QT_KEY_PIN
   qt_key.attach(QT_KEY_PIN, QT_DIT_THRESHOLD_PRESS, QT_DIT_THRESHOLD_RELEASE); // Use DIT thresholds for KEY
+#endif
 
 #ifdef HAS_RADIO_OUTPUT
   pinMode(RADIO_DIT_PIN, OUTPUT);
@@ -96,6 +99,9 @@ void setup() {
 
   Keyboard.begin();
   MidiUSB.flush();
+
+  // Ensure clean keyboard state on startup
+  adapter.ReleaseAllKeys();
 
   for (int i = 0; i < 16; i++) {
     delay(20);
@@ -209,17 +215,24 @@ void loop() {
       if (playbackState.keyCurrentlyDown) {
         // Key down
         if (menuState.currentMode == MODE_PLAYING_MEMORY) {
-          // Normal mode: use adapter (outputs to radio/MIDI/keyboard based on current mode)
-          adapter.BeginTx();
+          // Normal mode playback: use BeginTx(relay) to pass paddle info for radio mode
+          // Convert paddle flag (0=DIT, 1=DAH) to PADDLE enum (PADDLE_DIT=0, PADDLE_DAH=1)
+          int relay = (playbackState.currentPaddle == 0) ? PADDLE_DIT : PADDLE_DAH;
+          adapter.BeginTx(relay);
         } else {
-          // Memory management mode: piezo only
-          tone(PIEZO_PIN, adapter.getTxNote());
+          // Memory management mode: piezo only (bypass buzzer enable check)
+          // Convert MIDI note to frequency
+          uint8_t midiNote = adapter.getTxNote();
+          int frequency = equalTemperamentNote[midiNote];
+          tone(PIEZO_PIN, frequency);
         }
       } else {
         // Key up
         if (menuState.currentMode == MODE_PLAYING_MEMORY) {
-          // Normal mode: use adapter
-          adapter.EndTx();
+          // Normal mode playback: use EndTx(relay) to pass paddle info for radio mode
+          // Convert paddle flag (0=DIT, 1=DAH) to PADDLE enum (PADDLE_DIT=0, PADDLE_DAH=1)
+          int relay = (playbackState.currentPaddle == 0) ? PADDLE_DIT : PADDLE_DAH;
+          adapter.EndTx(relay);
         } else {
           // Memory management mode: piezo only
           noTone(PIEZO_PIN);
@@ -229,9 +242,10 @@ void loop() {
     }
   } else if (wasPlaying) {
     // Playback just finished
-    if (menuState.currentMode == MODE_PLAYING_MEMORY) {
-      adapter.EndTx();  // Make sure key is released
-    } else {
+    // The playback state machine ensures key is already released before stopping,
+    // so we don't need to call EndTx here (it would be a duplicate)
+    if (menuState.currentMode != MODE_PLAYING_MEMORY) {
+      // Memory management mode: ensure piezo is off
       noTone(PIEZO_PIN);
     }
     lastPlaybackKeyState = false;
@@ -319,6 +333,7 @@ void loop() {
     }
   }
 
+#ifdef QT_KEY_PIN
   if (qt_key.update()) {
     adapter.ProcessPaddleInput(PADDLE_STRAIGHT, qt_key.read(), true);
 #ifdef BUTTON_PIN
@@ -327,6 +342,7 @@ void loop() {
     }
 #endif
   }
+#endif
   if (qt_dit.update()) {
     adapter.ProcessPaddleInput(PADDLE_DIT, qt_dit.read(), true);
 #ifdef BUTTON_PIN
