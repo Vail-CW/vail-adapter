@@ -2,24 +2,22 @@
 
 This directory contains images referenced by `button-hat-mod.html`.
 
-## Required Images
+## Images Included
 
-Please add the following three images to this directory:
-
-### 1. `qtpy-pinout.jpg`
+### 1. `diagram.png`
 - **Description:** QT Py SAMD21 pinout diagram
 - **Purpose:** Reference diagram showing the location of pins A4 and A8
-- **Recommended content:** Clear pinout diagram with A4 and A8 pins highlighted or labeled
+- **Content:** Arduino pin diagram for QT Py SAMD21
 
-### 2. `button-hat-mod-example1.jpg`
+### 2. `1.jpg`
 - **Description:** Example of completed button hat modification (view 1)
 - **Purpose:** Show the jumper wire routing from A4 pad to A8 pin
-- **Recommended angle:** Top-down or side view showing the wire path and both solder joints
+- **Content:** Photo of actual solder job showing the modification
 
-### 3. `button-hat-mod-example2.jpg`
+### 3. `2.jpg`
 - **Description:** Example of completed button hat modification (view 2)
 - **Purpose:** Alternative angle showing wire routing and solder quality
-- **Recommended angle:** Close-up or different perspective from example1
+- **Content:** Photo of actual solder job from different angle
 
 ## Image Guidelines
 
