@@ -17,18 +17,27 @@
 <div class="container">
     <h1>Vail Adapter Firmware Update</h1>
 
+    <!-- Button Hat Warning -->
+    <div class="warning-box" style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+        <h3 style="margin-top: 0; color: #856404;">⚠️ Important: Button Hat Hardware Modification Required</h3>
+        <p style="margin-bottom: 10px;">If you have an <strong>Advanced PCB with Button Hat</strong>, firmware dated <strong>November 11, 2025 or later</strong> requires a simple hardware modification to continue working.</p>
+        <p style="margin-bottom: 15px;">This one-time modification involves adding a jumper wire from pin A4 to A8 and cutting the A4 header pin.</p>
+        <a href="button-hat-mod.html" class="btn-primary" style="display: inline-block; text-decoration: none;">📋 View Modification Guide</a>
+        <p style="margin-top: 10px; font-size: 14px; color: #856404;"><strong>Note:</strong> If you don't have a button hat, you can ignore this warning and proceed with the update.</p>
+    </div>
+
     <!-- What's New Section -->
     <details class="whats-new">
         <summary>
             <span class="expand-icon">▶</span>
-            <strong>Last Update:</strong> November 6, 2025
+            <strong>Last Update:</strong> November 11, 2025
             <span class="click-hint">— Click to see what's new</span>
         </summary>
         <ul>
-            <li><strong>Ultimatic Keyer Fix:</strong> Reverted regression in Ultimatic mode that was incorrectly applying ElBug logic - now works correctly again</li>
-            <li><strong>Improved Button Detection:</strong> Refined button threshold ranges for more reliable combo press detection (B1+B2, B1+B3)</li>
-            <li><strong>R2R Calibration Tool:</strong> New interactive calibration utility for measuring button ladder values</li>
-            <li><strong>Summit Firmware Updates:</strong> ESP32-S3 TinyUSB compatibility fixes for web flasher</li>
+            <li><strong>Stuck Key Fix:</strong> Resolved issue where Control keys would remain stuck after unplugging adapter or during mode changes</li>
+            <li><strong>CW Memory Enhancement:</strong> Memory recordings now store paddle info (DIT/DAH) for proper radio mode playback</li>
+            <li><strong>Advanced PCB Update:</strong> Button pin remapped (A4 → A8) to avoid conflicts - requires button hat hardware modification</li>
+            <li><strong>Button Calibration:</strong> Updated thresholds for improved reliability with modified button hats</li>
         </ul>
         <p class="manual-link">📖 <a href="https://vailadapter.com/manual" target="_blank">View User Manual</a></p>
     </details>

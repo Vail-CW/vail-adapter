@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Button Hat Hardware Modification Guide - Vail Adapter</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .mod-guide {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .warning-banner {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        .info-banner {
+            background: #d1ecf1;
+            border: 2px solid #17a2b8;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+        .step-section {
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+            padding: 20px;
+            margin: 30px 0;
+            border-radius: 4px;
+        }
+        .step-section h2 {
+            margin-top: 0;
+            color: #007bff;
+        }
+        .image-container {
+            text-align: center;
+            margin: 20px 0;
+            background: white;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .image-container img {
+            max-width: 100%;
+            height: auto;
+            border: 2px solid #007bff;
+            border-radius: 4px;
+        }
+        .image-caption {
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+            font-size: 14px;
+        }
+        .materials-list {
+            background: white;
+            border: 1px solid #ddd;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .materials-list h3 {
+            margin-top: 0;
+        }
+        .materials-list ul {
+            line-height: 1.8;
+        }
+        .contact-box {
+            background: #e7f3ff;
+            border: 2px solid #007bff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        .btn-back {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #6c757d;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        .btn-back:hover {
+            background: #5a6268;
+        }
+    </style>
+</head>
+<body>
+<nav>
+    <ul>
+        <li><a href="index.html">← Back to Updater</a></li>
+        <li><a href="https://vailadapter.com/manual" target="_blank">User Manual</a></li>
+    </ul>
+</nav>
+
+<div class="mod-guide">
+    <h1>Button Hat Hardware Modification Guide</h1>
+    <p style="color: #666; font-size: 18px;">Required for Advanced PCB with Button Hat - Firmware dated November 11, 2025 or later</p>
+
+    <!-- Why This is Needed -->
+    <div class="info-banner">
+        <h3 style="margin-top: 0;">📌 Why is this modification needed?</h3>
+        <p>The latest firmware moves the button input from pin A4 to pin A8 to avoid conflicts with radio output functionality on the Advanced PCB. This requires a simple one-time hardware modification to reroute the button signal.</p>
+        <p style="margin-bottom: 0;"><strong>If you don't have a button hat installed, you don't need this modification.</strong></p>
+    </div>
+
+    <!-- Materials Needed -->
+    <div class="materials-list">
+        <h3>🛠️ Materials Needed</h3>
+        <ul>
+            <li><strong>Soldering iron</strong> (temperature controlled, 350-400°C recommended)</li>
+            <li><strong>Wire cutters</strong> or flush cutters</li>
+            <li><strong>Short jumper wire</strong> (22-24 AWG, approximately 1 inch long)</li>
+            <li><strong>Solder</strong> (lead or lead-free)</li>
+            <li><strong>Helping hands</strong> or PCB holder (optional but helpful)</li>
+            <li><strong>Multimeter</strong> (optional, for testing continuity)</li>
+        </ul>
+        <p><strong>Skill Level:</strong> Basic soldering experience required</p>
+        <p><strong>Time Required:</strong> 10-15 minutes</p>
+    </div>
+
+    <!-- Reference: Pin Diagram -->
+    <div class="step-section">
+        <h2>Step 0: Understand the Pin Layout</h2>
+        <p>Before starting, familiarize yourself with the QT Py SAMD21 pinout. You'll be working with pins A4 and A8 on the bottom row of the board.</p>
+
+        <div class="image-container">
+            <img src="images/qtpy-pinout.jpg" alt="QT Py SAMD21 Pin Diagram" id="pinoutImage">
+            <div class="image-caption">QT Py SAMD21 pinout diagram - Note the location of A4 and A8 on the bottom edge</div>
+        </div>
+
+        <p><strong>Important pins to identify:</strong></p>
+        <ul>
+            <li><strong>A4</strong> - Currently connected to button hat, needs to be disconnected</li>
+            <li><strong>A8</strong> - New button input pin, needs connection from A4</li>
+        </ul>
+    </div>
+
+    <!-- Step 1: Cut the A4 Header Pin -->
+    <div class="step-section">
+        <h2>Step 1: Cut the A4 Header Pin</h2>
+        <p>The first step is to disconnect the button hat's A4 connection from the QT Py board.</p>
+
+        <h3>Procedure:</h3>
+        <ol>
+            <li><strong>Remove power:</strong> Ensure your Vail Adapter is completely unplugged from USB</li>
+            <li><strong>Identify pin A4:</strong> Locate the A4 header pin on the underside of the QT Py board (where the pins connect to the PCB)</li>
+            <li><strong>Cut the pin:</strong> Using wire cutters, carefully cut the A4 header pin between the QT Py board and the PCB
+                <ul>
+                    <li>Leave enough pin length on the QT Py side to solder a wire to (about 2-3mm)</li>
+                    <li>This disconnects the button hat from the old pin location</li>
+                </ul>
+            </li>
+            <li><strong>Verify the cut:</strong> Gently wiggle the QT Py board to confirm pin A4 is no longer physically connected</li>
+        </ol>
+
+        <div class="warning-banner">
+            <strong>⚠️ Important:</strong> Be very careful not to cut any other pins! Double-check you're cutting A4 before making the cut.
+        </div>
+    </div>
+
+    <!-- Step 2: Solder Jumper Wire -->
+    <div class="step-section">
+        <h2>Step 2: Solder Jumper Wire from A4 to A8</h2>
+        <p>Now you'll create a new connection from the button hat signal (A4 pin on button hat side) to the new button input (A8 on the QT Py).</p>
+
+        <h3>Procedure:</h3>
+        <ol>
+            <li><strong>Prepare the wire:</strong> Cut and strip a short jumper wire (approximately 1 inch / 25mm long)</li>
+            <li><strong>Tin both ends:</strong> Apply a small amount of solder to both ends of the wire</li>
+            <li><strong>Solder to A4 pad:</strong> On the PCB side (where the button hat connects), solder one end of the wire to the A4 pad/pin stub
+                <ul>
+                    <li>This is the button hat side that was just disconnected</li>
+                    <li>The signal needs to come from the button hat to route to the new pin</li>
+                </ul>
+            </li>
+            <li><strong>Route the wire:</strong> Run the wire along the bottom of the board toward pin A8</li>
+            <li><strong>Solder to A8 pin:</strong> Solder the other end of the wire to the A8 header pin on the QT Py side
+                <ul>
+                    <li>A8 is located on the bottom edge of the QT Py (see pinout diagram)</li>
+                    <li>Make sure you have a good solder connection with electrical continuity</li>
+                </ul>
+            </li>
+        </ol>
+
+        <div class="image-container">
+            <img src="images/button-hat-mod-example1.jpg" alt="Example of completed modification - view 1" id="example1Image">
+            <div class="image-caption">Example 1: Completed modification showing jumper wire from A4 to A8</div>
+        </div>
+
+        <div class="image-container">
+            <img src="images/button-hat-mod-example2.jpg" alt="Example of completed modification - view 2" id="example2Image">
+            <div class="image-caption">Example 2: Alternative angle showing wire routing and solder joints</div>
+        </div>
+    </div>
+
+    <!-- Step 3: Testing -->
+    <div class="step-section">
+        <h2>Step 3: Test Your Modification</h2>
+        <p>After completing the modification, test to ensure everything works correctly.</p>
+
+        <h3>Testing Procedure:</h3>
+        <ol>
+            <li><strong>Visual inspection:</strong> Check that:
+                <ul>
+                    <li>A4 pin is fully cut and disconnected</li>
+                    <li>Jumper wire has good solder joints at both A4 and A8</li>
+                    <li>No solder bridges between adjacent pins</li>
+                </ul>
+            </li>
+            <li><strong>Continuity test (optional):</strong> Use a multimeter to verify:
+                <ul>
+                    <li>Continuity between button hat A4 pad and QT Py A8 pin</li>
+                    <li>No continuity between button hat A4 and QT Py A4</li>
+                </ul>
+            </li>
+            <li><strong>Flash firmware:</strong> Return to the <a href="index.html">firmware updater</a> and flash the latest firmware</li>
+            <li><strong>Test buttons:</strong> After flashing:
+                <ul>
+                    <li>Press each button (B1, B2, B3) individually to verify detection</li>
+                    <li>Test combo presses (B1+B2, B1+B3, B2+B3)</li>
+                    <li>Buttons should respond reliably without double-triggering</li>
+                </ul>
+            </li>
+        </ol>
+
+        <div class="info-banner">
+            <h3 style="margin-top: 0;">✅ Success Indicators</h3>
+            <ul style="margin-bottom: 0;">
+                <li>Adapter powers on normally (LED indicator working)</li>
+                <li>All three buttons respond when pressed</li>
+                <li>Long press on B3 enters speed adjustment mode (plays speed in morse)</li>
+                <li>No false button triggers or erratic behavior</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Troubleshooting -->
+    <div class="step-section">
+        <h2>❓ Troubleshooting</h2>
+
+        <h3>Buttons don't respond at all</h3>
+        <ul>
+            <li>Check that jumper wire has good solder connections at both ends</li>
+            <li>Verify continuity between button hat A4 pad and QT Py A8 pin with multimeter</li>
+            <li>Ensure you flashed the latest firmware (November 11, 2025 or newer)</li>
+            <li>Check that the button hat ribbon cable is fully seated</li>
+        </ul>
+
+        <h3>Buttons trigger erratically or give wrong values</h3>
+        <ul>
+            <li>Check for solder bridges between A8 and adjacent pins</li>
+            <li>Verify A4 pin on QT Py side is fully disconnected from PCB</li>
+            <li>Ensure jumper wire is not shorting to other components</li>
+            <li>Try reflashing the firmware to reset calibration</li>
+        </ul>
+
+        <h3>One specific button doesn't work</h3>
+        <ul>
+            <li>This is likely a button hat resistor issue, not related to the modification</li>
+            <li>Test with the button troubleshooting sketch to verify resistor values</li>
+            <li>Check button hat solder joints for the non-working button</li>
+        </ul>
+    </div>
+
+    <!-- Need Help? -->
+    <div class="contact-box">
+        <h3 style="margin-top: 0;">📞 Need Help?</h3>
+        <p>If you run into issues or have questions about this modification:</p>
+        <ul>
+            <li><strong>Email:</strong> <a href="mailto:ke9bois@pigelradio.org">ke9bois@pigelradio.org</a></li>
+            <li><strong>Discord:</strong> Join the Vail community Discord for real-time assistance (link in the GitHub repository)</li>
+            <li><strong>GitHub Issues:</strong> Report bugs or request clarification at <a href="https://github.com/nealey/vail-adapter" target="_blank">github.com/nealey/vail-adapter</a></li>
+        </ul>
+        <p style="margin-bottom: 0;">Photos of your setup can be very helpful for troubleshooting - feel free to include them when reaching out!</p>
+    </div>
+
+    <a href="index.html" class="btn-back">← Return to Firmware Updater</a>
+</div>
+
+<script>
+// Check if images exist and show placeholder if not
+function checkImage(id, fallbackText) {
+    const img = document.getElementById(id);
+    if (img) {
+        img.onerror = function() {
+            this.style.display = 'none';
+            const caption = this.nextElementSibling;
+            if (caption) {
+                caption.innerHTML = '<strong>Image pending upload</strong> - ' + fallbackText;
+                caption.style.color = '#856404';
+            }
+        };
+    }
+}
+
+// Check all images on load
+window.addEventListener('load', function() {
+    checkImage('pinoutImage', 'Reference QT Py SAMD21 pinout diagram to identify A4 and A8 pins');
+    checkImage('example1Image', 'Photo showing completed wire mod from button hat A4 pad to QT Py A8 pin');
+    checkImage('example2Image', 'Alternative angle of the completed modification');
+});
+</script>
+
+</body>
+</html>
