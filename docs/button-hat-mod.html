@@ -10,71 +10,93 @@
             max-width: 900px;
             margin: 0 auto;
             padding: 20px;
+            background-color: #2c2c2c;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
         .warning-banner {
-            background: #fff3cd;
+            background: linear-gradient(135deg, #4a3800 0%, #5c4a00 100%);
             border: 2px solid #ffc107;
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 30px;
+            color: #e0e0e0;
+        }
+        .warning-banner strong {
+            color: #ffc107;
         }
         .info-banner {
-            background: #d1ecf1;
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d4a7c 100%);
             border: 2px solid #17a2b8;
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 30px;
+            color: #e0e0e0;
+        }
+        .info-banner h3 {
+            color: #6cb2f7;
         }
         .step-section {
-            background: #f8f9fa;
-            border-left: 4px solid #007bff;
+            background: #383838;
+            border-left: 4px solid #0d6efd;
             padding: 20px;
             margin: 30px 0;
             border-radius: 4px;
         }
         .step-section h2 {
             margin-top: 0;
-            color: #007bff;
+            color: #6cb2f7;
         }
         .image-container {
             text-align: center;
             margin: 20px 0;
-            background: white;
+            background: #1e1e1e;
             padding: 15px;
-            border: 1px solid #ddd;
+            border: 1px solid #484848;
             border-radius: 8px;
         }
         .image-container img {
             max-width: 100%;
             height: auto;
-            border: 2px solid #007bff;
+            border: 2px solid #0d6efd;
             border-radius: 4px;
         }
         .image-caption {
             margin-top: 10px;
             font-style: italic;
-            color: #666;
+            color: #aaa;
             font-size: 14px;
         }
         .materials-list {
-            background: white;
-            border: 1px solid #ddd;
+            background: #383838;
+            border: 1px solid #484848;
             padding: 20px;
             border-radius: 8px;
             margin: 20px 0;
         }
         .materials-list h3 {
             margin-top: 0;
+            color: #6cb2f7;
         }
         .materials-list ul {
             line-height: 1.8;
         }
         .contact-box {
-            background: #e7f3ff;
-            border: 2px solid #007bff;
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d4a7c 100%);
+            border: 2px solid #0d6efd;
             border-radius: 8px;
             padding: 20px;
             margin-top: 30px;
+            color: #e0e0e0;
+        }
+        .contact-box h3 {
+            color: #6cb2f7;
+        }
+        .contact-box a {
+            color: #6cb2f7;
+        }
+        .contact-box a:hover {
+            color: #5cadff;
         }
         .btn-back {
             display: inline-block;
@@ -82,11 +104,14 @@
             background: #6c757d;
             color: white;
             text-decoration: none;
-            border-radius: 4px;
+            border-radius: 8px;
             margin-top: 20px;
+            font-weight: 500;
+            transition: all 0.3s ease;
         }
         .btn-back:hover {
             background: #5a6268;
+            transform: translateY(-2px);
         }
     </style>
 </head>
@@ -100,12 +125,14 @@
 
 <div class="mod-guide">
     <h1>Button Hat Hardware Modification Guide</h1>
-    <p style="color: #666; font-size: 18px;">Required for Advanced PCB with Button Hat - Firmware dated November 11, 2025 or later</p>
+    <p style="color: #aaa; font-size: 18px;">Required for Basic PCB V2 and Advanced PCB with Button Hat purchased in 2025 - Firmware dated November 11, 2025 or later</p>
 
     <!-- Why This is Needed -->
     <div class="info-banner">
         <h3 style="margin-top: 0;">📌 Why is this modification needed?</h3>
-        <p>The latest firmware moves the button input from pin A4 to pin A8 to avoid conflicts with radio output functionality on the Advanced PCB. This requires a simple one-time hardware modification to reroute the button signal.</p>
+        <p>The latest firmware moves the button input from pin A3 to pin A8. For the Advanced PCB, this avoids conflicts with radio output functionality. For the Basic PCB V2, this ensures consistent pin mapping across all button hat installations.</p>
+        <p>This requires a simple one-time hardware modification to reroute the button signal.</p>
+        <p><strong>This modification is only required for button hats purchased in 2025.</strong> Button hats from 2026 onward will use updated PCBs with the correct pin routing and will not require any user modification.</p>
         <p style="margin-bottom: 0;"><strong>If you don't have a button hat installed, you don't need this modification.</strong></p>
     </div>
 
@@ -115,65 +142,75 @@
         <ul>
             <li><strong>Soldering iron</strong> (temperature controlled, 350-400°C recommended)</li>
             <li><strong>Wire cutters</strong> or flush cutters</li>
-            <li><strong>Short jumper wire</strong> (22-24 AWG, approximately 1 inch long)</li>
+            <li><strong>Jumper wire</strong> - <strong style="color: #ffc107;">CRITICAL: 22-24 AWG, exactly 25mm (1 inch) long</strong></li>
             <li><strong>Solder</strong> (lead or lead-free)</li>
             <li><strong>Helping hands</strong> or PCB holder (optional but helpful)</li>
             <li><strong>Multimeter</strong> (optional, for testing continuity)</li>
         </ul>
         <p><strong>Skill Level:</strong> Basic soldering experience required</p>
         <p><strong>Time Required:</strong> 10-15 minutes</p>
+
+        <div class="warning-banner" style="margin-top: 15px;">
+            <strong>⚠️ Wire Length is Critical!</strong>
+            <p style="margin-bottom: 0;">The jumper wire MUST be 25mm (1 inch) long. Longer or shorter wires will change the electrical characteristics and may cause the buttons to malfunction with the current firmware calibration values.</p>
+        </div>
     </div>
 
     <!-- Reference: Pin Diagram -->
     <div class="step-section">
         <h2>Step 0: Understand the Pin Layout</h2>
-        <p>Before starting, familiarize yourself with the QT Py SAMD21 pinout. You'll be working with pins A4 and A8 on the bottom row of the board.</p>
+        <p>Before starting, familiarize yourself with the QT Py SAMD21 pinout. You'll be working with pins A3 and A8 on the bottom row of the board.</p>
 
         <div class="image-container">
             <img src="images/diagram.png" alt="QT Py SAMD21 Pin Diagram" id="pinoutImage">
-            <div class="image-caption">QT Py SAMD21 pinout diagram - Note the location of A4 and A8 on the bottom edge</div>
+            <div class="image-caption">QT Py SAMD21 pinout diagram - Note the location of A3 and A8 on the bottom edge</div>
         </div>
 
         <p><strong>Important pins to identify:</strong></p>
         <ul>
-            <li><strong>A4</strong> - Currently connected to button hat, needs to be disconnected</li>
-            <li><strong>A8</strong> - New button input pin, needs connection from A4</li>
+            <li><strong>A3</strong> - Currently connected to button hat, needs to be disconnected</li>
+            <li><strong>A8</strong> - New button input pin, needs connection from A3</li>
         </ul>
     </div>
 
-    <!-- Step 1: Cut the A4 Header Pin -->
+    <!-- Step 1: Cut the A3 Header Pin -->
     <div class="step-section">
-        <h2>Step 1: Cut the A4 Header Pin</h2>
-        <p>The first step is to disconnect the button hat's A4 connection from the QT Py board.</p>
+        <h2>Step 1: Cut the A3 Header Pin</h2>
+        <p>The first step is to disconnect the button hat's A3 connection from the QT Py board.</p>
 
         <h3>Procedure:</h3>
         <ol>
             <li><strong>Remove power:</strong> Ensure your Vail Adapter is completely unplugged from USB</li>
-            <li><strong>Identify pin A4:</strong> Locate the A4 header pin on the underside of the QT Py board (where the pins connect to the PCB)</li>
-            <li><strong>Cut the pin:</strong> Using wire cutters, carefully cut the A4 header pin between the QT Py board and the PCB
+            <li><strong>Identify pin A3:</strong> Locate the A3 header pin on the underside of the QT Py board (where the pins connect to the PCB)</li>
+            <li><strong>Cut the pin:</strong> Using wire cutters, carefully cut the A3 header pin between the QT Py board and the PCB
                 <ul>
                     <li>Leave enough pin length on the QT Py side to solder a wire to (about 2-3mm)</li>
                     <li>This disconnects the button hat from the old pin location</li>
                 </ul>
             </li>
-            <li><strong>Verify the cut:</strong> Gently wiggle the QT Py board to confirm pin A4 is no longer physically connected</li>
+            <li><strong>Verify the cut:</strong> Gently wiggle the QT Py board to confirm pin A3 is no longer physically connected</li>
         </ol>
 
         <div class="warning-banner">
-            <strong>⚠️ Important:</strong> Be very careful not to cut any other pins! Double-check you're cutting A4 before making the cut.
+            <strong>⚠️ Important:</strong> Be very careful not to cut any other pins! Double-check you're cutting A3 before making the cut.
         </div>
     </div>
 
     <!-- Step 2: Solder Jumper Wire -->
     <div class="step-section">
-        <h2>Step 2: Solder Jumper Wire from A4 to A8</h2>
-        <p>Now you'll create a new connection from the button hat signal (A4 pin on button hat side) to the new button input (A8 on the QT Py).</p>
+        <h2>Step 2: Solder Jumper Wire from A3 to A8</h2>
+        <p>Now you'll create a new connection from the button hat signal (A3 pin on button hat side) to the new button input (A8 on the QT Py).</p>
 
         <h3>Procedure:</h3>
         <ol>
-            <li><strong>Prepare the wire:</strong> Cut and strip a short jumper wire (approximately 1 inch / 25mm long)</li>
+            <li><strong>Prepare the wire:</strong> Cut a jumper wire to <strong>exactly 25mm (1 inch)</strong> length and strip both ends
+                <ul>
+                    <li style="color: #ffc107;"><strong>Important:</strong> Wire length must be 25mm for proper button calibration</li>
+                    <li>Use 22-24 AWG solid core wire for best results</li>
+                </ul>
+            </li>
             <li><strong>Tin both ends:</strong> Apply a small amount of solder to both ends of the wire</li>
-            <li><strong>Solder to A4 pad:</strong> On the PCB side (where the button hat connects), solder one end of the wire to the A4 pad/pin stub
+            <li><strong>Solder to A3 pad:</strong> On the PCB side (where the button hat connects), solder one end of the wire to the A3 pad/pin stub
                 <ul>
                     <li>This is the button hat side that was just disconnected</li>
                     <li>The signal needs to come from the button hat to route to the new pin</li>
@@ -190,7 +227,7 @@
 
         <div class="image-container">
             <img src="images/1.jpg" alt="Example of completed modification - view 1" id="example1Image">
-            <div class="image-caption">Example 1: Completed modification showing jumper wire from A4 to A8</div>
+            <div class="image-caption">Example 1: Completed modification showing jumper wire from A3 to A8</div>
         </div>
 
         <div class="image-container">
@@ -208,15 +245,15 @@
         <ol>
             <li><strong>Visual inspection:</strong> Check that:
                 <ul>
-                    <li>A4 pin is fully cut and disconnected</li>
-                    <li>Jumper wire has good solder joints at both A4 and A8</li>
+                    <li>A3 pin is fully cut and disconnected</li>
+                    <li>Jumper wire has good solder joints at both A3 and A8</li>
                     <li>No solder bridges between adjacent pins</li>
                 </ul>
             </li>
             <li><strong>Continuity test (optional):</strong> Use a multimeter to verify:
                 <ul>
-                    <li>Continuity between button hat A4 pad and QT Py A8 pin</li>
-                    <li>No continuity between button hat A4 and QT Py A4</li>
+                    <li>Continuity between button hat A3 pad and QT Py A8 pin</li>
+                    <li>No continuity between button hat A3 and QT Py A3</li>
                 </ul>
             </li>
             <li><strong>Flash firmware:</strong> Return to the <a href="index.html">firmware updater</a> and flash the latest firmware</li>
@@ -247,15 +284,16 @@
         <h3>Buttons don't respond at all</h3>
         <ul>
             <li>Check that jumper wire has good solder connections at both ends</li>
-            <li>Verify continuity between button hat A4 pad and QT Py A8 pin with multimeter</li>
+            <li>Verify continuity between button hat A3 pad and QT Py A8 pin with multimeter</li>
             <li>Ensure you flashed the latest firmware (November 11, 2025 or newer)</li>
             <li>Check that the button hat ribbon cable is fully seated</li>
         </ul>
 
         <h3>Buttons trigger erratically or give wrong values</h3>
         <ul>
+            <li><strong>Verify jumper wire is exactly 25mm long</strong> - incorrect length is the most common cause of erratic button behavior</li>
             <li>Check for solder bridges between A8 and adjacent pins</li>
-            <li>Verify A4 pin on QT Py side is fully disconnected from PCB</li>
+            <li>Verify A3 pin on QT Py side is fully disconnected from PCB</li>
             <li>Ensure jumper wire is not shorting to other components</li>
             <li>Try reflashing the firmware to reset calibration</li>
         </ul>
@@ -273,9 +311,9 @@
         <h3 style="margin-top: 0;">📞 Need Help?</h3>
         <p>If you run into issues or have questions about this modification:</p>
         <ul>
-            <li><strong>Email:</strong> <a href="mailto:ke9bois@pigelradio.org">ke9bois@pigelradio.org</a></li>
+            <li><strong>Email:</strong> <a href="mailto:ke9bos@pigletradio.org">ke9bos@pigletradio.org</a></li>
             <li><strong>Discord:</strong> Join the Vail community Discord for real-time assistance (link in the GitHub repository)</li>
-            <li><strong>GitHub Issues:</strong> Report bugs or request clarification at <a href="https://github.com/nealey/vail-adapter" target="_blank">github.com/nealey/vail-adapter</a></li>
+            <li><strong>GitHub Issues:</strong> Report bugs or request clarification at <a href="https://github.com/Vail-CW/vail-adapter" target="_blank">github.com/Vail-CW/vail-adapter</a></li>
         </ul>
         <p style="margin-bottom: 0;">Photos of your setup can be very helpful for troubleshooting - feel free to include them when reaching out!</p>
     </div>

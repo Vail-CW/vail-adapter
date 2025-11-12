@@ -31,9 +31,9 @@
   #define KEY_PIN 0
   #define QT_DIT_PIN A6
   #define QT_DAH_PIN A7
-  #define QT_KEY_PIN A8
+  // #define QT_KEY_PIN A8  // Not used on V2 Basic PCB with button hat
   #define PIEZO_PIN 10
-  #define BUTTON_PIN 3  // R2R button ladder input (pin 3 on QT Py)
+  #define BUTTON_PIN 8  // R2R button ladder input (A8, requires button hat wire mod from A4)
   #define LED_ON true
   #define LED_OFF (!LED_ON)
   #define BOARD_NAME "V2 Basic PCB"
