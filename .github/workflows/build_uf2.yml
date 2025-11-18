@@ -58,7 +58,7 @@ jobs:
             uf2_name: "qtpy_non_pcb.uf2"
           # --- Adafruit TRRS Trinkey SAMD21 Configuration ---
           - board_name: "TRRS_TRINKEY"
-            fqbn: "adafruit:samd:adafruit_trinkey_m0"
+            fqbn: "adafruit:samd:adafruit_TRRStrinkey_m0"
             hw_define: "TRRS_TRINKEY"
             uf2_name: "trinkey_vail_adapter.uf2"
     steps:

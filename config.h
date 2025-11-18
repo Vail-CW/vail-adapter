@@ -5,8 +5,8 @@
 // Uncomment only one of the following lines based on your build:
 // #define V1_Basic_PCB
 // #define V2_Basic_PCB
-#define Advanced_PCB
-// #define NO_PCB_GITHUB_SPECS
+// #define Advanced_PCB
+#define NO_PCB_GITHUB_SPECS
 // #define TRRS_TRINKEY
 
 // --- PIN DEFINITIONS BASED ON SELECTION ---

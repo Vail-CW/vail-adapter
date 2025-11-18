@@ -11,10 +11,10 @@ echo "=========================================="
 echo ""
 
 # Configuration arrays
-BOARDS=("Seeeduino:samd:seeed_XIAO_m0" "adafruit:samd:adafruit_qtpy_m0")
-BOARD_NAMES=("xiao" "qtpy")
-HW_CONFIGS=("V1_Basic_PCB" "V2_Basic_PCB" "Advanced_PCB" "NO_PCB_GITHUB_SPECS")
-HW_NAMES=("basic_pcb_v1" "basic_pcb_v2" "advanced_pcb" "non_pcb")
+BOARDS=("Seeeduino:samd:seeed_XIAO_m0" "adafruit:samd:adafruit_qtpy_m0" "adafruit:samd:adafruit_TRRStrinkey_m0")
+BOARD_NAMES=("xiao" "qtpy" "trinkey")
+HW_CONFIGS=("V1_Basic_PCB" "V2_Basic_PCB" "Advanced_PCB" "NO_PCB_GITHUB_SPECS" "TRRS_TRINKEY")
+HW_NAMES=("basic_pcb_v1" "basic_pcb_v2" "advanced_pcb" "non_pcb" "vail_adapter")
 
 # UF2 conversion parameters
 UF2_FAMILY_ID="0x68ED2B88"
@@ -30,7 +30,7 @@ set_hardware_define() {
     echo "  Setting hardware define to: $define"
 
     # Comment out all defines first
-    sed -i.bak -E 's/^(\s*#define\s+(V1_Basic_PCB|V2_Basic_PCB|Advanced_PCB|NO_PCB_GITHUB_SPECS))/\/\/ #define \2/' config.h
+    sed -i.bak -E 's/^(\s*#define\s+(V1_Basic_PCB|V2_Basic_PCB|Advanced_PCB|NO_PCB_GITHUB_SPECS|TRRS_TRINKEY))/\/\/ #define \2/' config.h
 
     # Uncomment the target define
     sed -i -E "s|^(\s*)//\s*#define\s+${define}|\1#define ${define}|" config.h
@@ -48,6 +48,15 @@ for board_idx in "${!BOARDS[@]}"; do
     for hw_idx in "${!HW_CONFIGS[@]}"; do
         HW_CONFIG="${HW_CONFIGS[$hw_idx]}"
         HW_NAME="${HW_NAMES[$hw_idx]}"
+
+        # Skip incompatible board/hardware combinations
+        if [ "$BOARD_NAME" = "trinkey" ] && [ "$HW_CONFIG" != "TRRS_TRINKEY" ]; then
+            continue
+        fi
+        if [ "$BOARD_NAME" != "trinkey" ] && [ "$HW_CONFIG" = "TRRS_TRINKEY" ]; then
+            continue
+        fi
+
         UF2_NAME="${BOARD_NAME}_${HW_NAME}.uf2"
 
         BUILD_COUNT=$((BUILD_COUNT + 1))

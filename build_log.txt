@@ -1,0 +1,167 @@
+==========================================
+Vail Adapter Firmware Builder
+==========================================
+
+
+==========================================
+Build 1 of 15
+Board: xiao
+Hardware: V1_Basic_PCB
+Output: xiao_basic_pcb_v1.uf2
+==========================================
+  Setting hardware define to: V1_Basic_PCB
+  Compiling...
+Sketch uses 59932 bytes (22%) of program storage space. Maximum is 262144 bytes.
+  Compilation successful
+  Found binary: build_output/vail-adapter.ino.bin
+  Converting to UF2...
+Converted to uf2, output size: 121344, start address: 0x2000
+Wrote 121344 bytes to firmware_uf2_files/xiao_basic_pcb_v1.uf2
+  ✓ Success! Size: 119K
+
+==========================================
+Build 2 of 15
+Board: xiao
+Hardware: V2_Basic_PCB
+Output: xiao_basic_pcb_v2.uf2
+==========================================
+  Setting hardware define to: V2_Basic_PCB
+  Compiling...
+c:/users/brettSketch uses 59932 bytes (22%) of program storage space. Maximum is 262144 bytes.
+  Compilation successful
+  Found binary: build_output/vail-adapter.ino.bin
+  Converting to UF2...
+Converted to uf2, output size: 121344, start address: 0x2000
+Wrote 121344 bytes to firmware_uf2_files/xiao_basic_pcb_v2.uf2
+  ✓ Success! Size: 119K
+
+==========================================
+Build 3 of 15
+Board: xiao
+Hardware: Advanced_PCB
+Output: xiao_advanced_pcb.uf2
+==========================================
+  Setting hardware define to: Advanced_PCB
+  Compiling...
+cSketch uses 62548 bytes (23%) of program storage space. Maximum is 262144 bytes.
+  Compilation successful
+  Found binary: build_output/vail-adapter.ino.bin
+  Converting to UF2...
+Converted to uf2, output size: 126976, start address: 0x2000
+Wrote 126976 bytes to firmware_uf2_files/xiao_advanced_pcb.uf2
+  ✓ Success! Size: 124K
+
+==========================================
+Build 4 of 15
+Board: xiao
+Hardware: NO_PCB_GITHUB_SPECS
+Output: xiao_non_pcb.uf2
+==========================================
+  Setting hardware define to: NO_PCB_GITHUB_SPECS
+  Compiling...
+cSketch uses 59948 bytes (22%) of program storage space. Maximum is 262144 bytes.
+  Compilation successful
+  Found binary: build_output/vail-adapter.ino.bin
+  Converting to UF2...
+Converted to uf2, output size: 121344, start address: 0x2000
+Wrote 121344 bytes to firmware_uf2_files/xiao_non_pcb.uf2
+  ✓ Success! Size: 119K
+
+==========================================
+Build 5 of 15
+Board: qtpy
+Hardware: V1_Basic_PCB
+Output: qtpy_basic_pcb_v1.uf2
+==========================================
+  Setting hardware define to: V1_Basic_PCB
+  Compiling...
+Sketch uses 35768 bytes (13%) of program storage space. Maximum is 262144 bytes.
+  Compilation successful
+  Found binary: build_output/vail-adapter.ino.bin
+  Converting to UF2...
+Converted to uf2, output size: 72704, start address: 0x2000
+Wrote 72704 bytes to firmware_uf2_files/qtpy_basic_pcb_v1.uf2
+  ✓ Success! Size: 71K
+
+==========================================
+Build 6 of 15
+Board: qtpy
+Hardware: V2_Basic_PCB
+Output: qtpy_basic_pcb_v2.uf2
+==========================================
+  Setting hardware define to: V2_Basic_PCB
+  Compiling...
+Sketch uses 35768 bytes (13%) of program storage space. Maximum is 262144 bytes.
+  Compilation successful
+  Found binary: build_output/vail-adapter.ino.bin
+  Converting to UF2...
+Converted to uf2, output size: 72704, start address: 0x2000
+Wrote 72704 bytes to firmware_uf2_files/qtpy_basic_pcb_v2.uf2
+  ✓ Success! Size: 71K
+
+==========================================
+Build 7 of 15
+Board: qtpy
+Hardware: Advanced_PCB
+Output: qtpy_advanced_pcb.uf2
+==========================================
+  Setting hardware define to: Advanced_PCB
+  Compiling...
+Sketch uses 38380 bytes (14%) of program storage space. Maximum is 262144 bytes.
+  Compilation successful
+  Found binary: build_output/vail-adapter.ino.bin
+  Converting to UF2...
+Converted to uf2, output size: 77824, start address: 0x2000
+Wrote 77824 bytes to firmware_uf2_files/qtpy_advanced_pcb.uf2
+  ✓ Success! Size: 76K
+
+==========================================
+Build 8 of 15
+Board: qtpy
+Hardware: NO_PCB_GITHUB_SPECS
+Output: qtpy_non_pcb.uf2
+==========================================
+  Setting hardware define to: NO_PCB_GITHUB_SPECS
+  Compiling...
+Sketch uses 35776 bytes (13%) of program storage space. Maximum is 262144 bytes.
+  Compilation successful
+  Found binary: build_output/vail-adapter.ino.bin
+  Converting to UF2...
+Converted to uf2, output size: 72704, start address: 0x2000
+Wrote 72704 bytes to firmware_uf2_files/qtpy_non_pcb.uf2
+  ✓ Success! Size: 71K
+
+==========================================
+Build 9 of 15
+Board: trinkey
+Hardware: TRRS_TRINKEY
+Output: trinkey_vail_adapter.uf2
+==========================================
+  Setting hardware define to: TRRS_TRINKEY
+  Compiling...
+Sketch uses 21612 bytes (8%) of program storage space. Maximum is 262144 bytes.
+  Compilation successful
+  Found binary: build_output/vail-adapter.ino.bin
+  Converting to UF2...
+Converted to uf2, output size: 44032, start address: 0x2000
+Wrote 44032 bytes to firmware_uf2_files/trinkey_vail_adapter.uf2
+  ✓ Success! Size: 43K
+
+Restored original config.h
+
+==========================================
+Build Complete!
+==========================================
+Generated 9 UF2 files in firmware_uf2_files/
+
+-rw-r--r-- 1 brett 197609  76K Nov 18 08:51 firmware_uf2_files/qtpy_advanced_pcb.uf2
+-rw-r--r-- 1 brett 197609  71K Nov 18 08:51 firmware_uf2_files/qtpy_basic_pcb_v1.uf2
+-rw-r--r-- 1 brett 197609  71K Nov 18 08:51 firmware_uf2_files/qtpy_basic_pcb_v2.uf2
+-rw-r--r-- 1 brett 197609  71K Nov 18 08:51 firmware_uf2_files/qtpy_non_pcb.uf2
+-rw-r--r-- 1 brett 197609  43K Nov 18 08:51 firmware_uf2_files/trinkey_vail_adapter.uf2
+-rw-r--r-- 1 brett 197609 124K Nov 18 08:50 firmware_uf2_files/xiao_advanced_pcb.uf2
+-rw-r--r-- 1 brett 197609 119K Nov 18 08:50 firmware_uf2_files/xiao_basic_pcb_v1.uf2
+-rw-r--r-- 1 brett 197609 119K Nov 18 08:50 firmware_uf2_files/xiao_basic_pcb_v2.uf2
+-rw-r--r-- 1 brett 197609 119K Nov 18 08:50 firmware_uf2_files/xiao_non_pcb.uf2
+
+Done!
