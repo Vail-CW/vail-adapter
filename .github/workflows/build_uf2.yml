@@ -56,6 +56,11 @@ jobs:
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
             hw_define: "NO_PCB_GITHUB_SPECS"
             uf2_name: "qtpy_non_pcb.uf2"
+          # --- Adafruit TRRS Trinkey SAMD21 Configuration ---
+          - board_name: "TRRS_TRINKEY"
+            fqbn: "adafruit:samd:adafruit_trinkey_m0"
+            hw_define: "TRRS_TRINKEY"
+            uf2_name: "trinkey_vail_adapter.uf2"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -81,7 +86,7 @@ jobs:
         env:
           CONFIG_FILE: "config.h"
           CONFIG_DEFINE: ${{ matrix.hw_define }}
-          DEFINES_LIST: "V1_Basic_PCB V2_Basic_PCB Advanced_PCB NO_PCB_GITHUB_SPECS"
+          DEFINES_LIST: "V1_Basic_PCB V2_Basic_PCB Advanced_PCB NO_PCB_GITHUB_SPECS TRRS_TRINKEY"
         run: |
           echo "Setting Hardware Define to: ${CONFIG_DEFINE} in ${CONFIG_FILE}"
           if [ ! -f "$CONFIG_FILE" ]; then echo "Error: $CONFIG_FILE not found!"; exit 1; fi

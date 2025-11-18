@@ -7,6 +7,7 @@
 // #define V2_Basic_PCB
 #define Advanced_PCB
 // #define NO_PCB_GITHUB_SPECS
+// #define TRRS_TRINKEY
 
 // --- PIN DEFINITIONS BASED ON SELECTION ---
 
@@ -70,6 +71,28 @@
   #define LED_ON false // Xiao inverts this logic
   #define LED_OFF (!LED_ON)
   #define BOARD_NAME "No PCB (GitHub Specs)"
+  // Radio pins not defined, so HAS_RADIO_OUTPUT will not be defined
+#endif
+
+#ifdef TRRS_TRINKEY
+  // TRRS Jack Pins (using TIP and RING1 for dit/dah)
+  #define DIT_PIN 0       // PIN_TIP - connected to tip of TRRS jack
+  #define DAH_PIN 2       // PIN_RING1 - connected to ring 1 of TRRS jack
+  #define KEY_PIN 0       // Same as DIT_PIN for straight key mode (TRS cable uses tip only)
+  // TRRS Jack ground pins - must be driven LOW for proper operation
+  #define SLEEVE_PIN 5    // PIN_SLEEVE - ground for TRS/TRRS cable
+  #define RING2_PIN 4     // PIN_RING2 - additional ground (optional)
+  // Trinkey doesn't have capacitive touch hardware - disable it
+  #define NO_CAPACITIVE_TOUCH
+  #define PIEZO_PIN 7     // SDA/PA08 on STEMMA QT connector (D7) - wire buzzer here
+  // Trinkey uses NeoPixel (requires special library) - disable LED control
+  #define NO_LED
+  #define LED_BUILTIN 1   // Define but don't use - Trinkey has NeoPixel on pin 1
+  #define LED_ON true
+  #define LED_OFF (!LED_ON)
+  #define BOARD_NAME "TRRS Trinkey"
+  // No button ladder on Trinkey - menu functionality not available
+  // BUTTON_PIN intentionally not defined
   // Radio pins not defined, so HAS_RADIO_OUTPUT will not be defined
 #endif
 

@@ -8,6 +8,15 @@ const wizardState = {
 
 // Firmware file mapping
 function getFirmwareFile() {
+    // Vail Lite only has one firmware variant (Trinkey)
+    if (wizardState.model === 'vail_lite') {
+        return {
+            url: 'firmware_files/trinkey_vail_adapter.uf2',
+            filename: 'trinkey_vail_adapter.uf2'
+        };
+    }
+
+    // Other models require board selection
     if (!wizardState.model || !wizardState.board) return null;
 
     // Build firmware filename based on selections
@@ -32,6 +41,7 @@ function getModelName(model) {
     const names = {
         'basic_pcb': 'Basic PCB',
         'advanced_pcb': 'Advanced PCB',
+        'vail_lite': 'Vail Lite',
         'non_pcb': 'DIY No PCB'
     };
     return names[model] || model;
@@ -117,7 +127,13 @@ function updateProgressBar(stepNumber) {
 
 function updateStep3Content() {
     // Update selected configuration display
-    const configText = `${getModelName(wizardState.model)} + ${getBoardName(wizardState.board)}`;
+    let configText;
+    if (wizardState.model === 'vail_lite') {
+        // Vail Lite only has one variant, no need to show board
+        configText = getModelName(wizardState.model);
+    } else {
+        configText = `${getModelName(wizardState.model)} + ${getBoardName(wizardState.board)}`;
+    }
     document.getElementById('selectedConfig').textContent = configText;
 
     // Update download button
@@ -246,10 +262,18 @@ document.addEventListener('DOMContentLoaded', () => {
             card.classList.add('selected');
             wizardState.model = card.dataset.model;
 
-            // Advance to step 2 (board selection) after a short delay
-            setTimeout(() => {
-                goToStep(2);
-            }, 300);
+            // Vail Lite skips board selection (only one hardware variant)
+            if (wizardState.model === 'vail_lite') {
+                wizardState.board = 'trinkey'; // Set board for internal tracking
+                setTimeout(() => {
+                    goToStep(3); // Go directly to firmware flash step
+                }, 300);
+            } else {
+                // Other models need board selection
+                setTimeout(() => {
+                    goToStep(2);
+                }, 300);
+            }
         });
     });
 
@@ -282,7 +306,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('backToStep2')?.addEventListener('click', () => {
-        goToStep(2);
+        // If user selected Vail Lite, skip board selection step when going back
+        if (wizardState.model === 'vail_lite') {
+            goToStep(1.5); // Go back to model selection
+        } else {
+            goToStep(2); // Go back to board selection
+        }
     });
 
     document.getElementById('backToStep1FromSummit')?.addEventListener('click', () => {

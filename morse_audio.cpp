@@ -85,19 +85,27 @@ void playMorseWord(const char* word) {
 // ============================================================================
 
 void playDot(uint8_t noteNumber) {
+#ifndef NO_LED
   digitalWrite(LED_BUILTIN, LED_ON);
+#endif
   tone(piezoPin, equalTemperamentNote[noteNumber]);
   delay(DOT_DURATION);
+#ifndef NO_LED
   digitalWrite(LED_BUILTIN, LED_OFF);
+#endif
   noTone(piezoPin);
   delay(ELEMENT_SPACE);
 }
 
 void playDash(uint8_t noteNumber) {
+#ifndef NO_LED
   digitalWrite(LED_BUILTIN, LED_ON);
+#endif
   tone(piezoPin, equalTemperamentNote[noteNumber]);
   delay(DASH_DURATION);
+#ifndef NO_LED
   digitalWrite(LED_BUILTIN, LED_OFF);
+#endif
   noTone(piezoPin);
   delay(ELEMENT_SPACE);
 }

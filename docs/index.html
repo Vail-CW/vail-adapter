@@ -30,14 +30,13 @@
     <details class="whats-new">
         <summary>
             <span class="expand-icon">▶</span>
-            <strong>Last Update:</strong> November 11, 2025
+            <strong>Last Update:</strong> November 18, 2025
             <span class="click-hint">— Click to see what's new</span>
         </summary>
         <ul>
-            <li><strong>Stuck Key Fix:</strong> Resolved issue where Control keys would remain stuck after unplugging adapter or during mode changes</li>
-            <li><strong>CW Memory Enhancement:</strong> Memory recordings now store paddle info (DIT/DAH) for proper radio mode playback</li>
-            <li><strong>Advanced PCB Update:</strong> Button pin remapped (A4 → A8) to avoid conflicts - requires button hat hardware modification</li>
-            <li><strong>Button Calibration:</strong> Updated thresholds for improved reliability with modified button hats</li>
+            <li><strong>New Hardware Support:</strong> Added support for Adafruit TRRS Trinkey USB stick (Vail Lite) - ultra-compact form factor with basic paddle input functionality</li>
+            <li><strong>Vail Lite Limitations:</strong> The Trinkey variant has no buttons, capacitive touch, headphone jack output, or radio output - only buzzer sidetone and MIDI/keyboard paddle input via TRRS jack</li>
+            <li><strong>Previous Update (Nov 11):</strong> Stuck key fix, CW memory enhancements, Advanced PCB button remapping, and button calibration improvements</li>
         </ul>
         <p class="manual-link">📖 <a href="https://vailadapter.com/manual" target="_blank">View User Manual</a></p>
     </details>
@@ -87,7 +86,7 @@
 
         <div class="card-grid">
             <div class="selection-card" data-model="basic_pcb">
-                <div class="card-icon">📦</div>
+                <div class="card-icon">🎛️</div>
                 <h3>Basic PCB</h3>
                 <p>Standard Vail Adapter PCB with paddle inputs and sidetone</p>
             </div>
@@ -96,6 +95,12 @@
                 <div class="card-icon">⚡</div>
                 <h3>Advanced PCB</h3>
                 <p>Includes radio output port and built-in capacitive touch points</p>
+            </div>
+
+            <div class="selection-card" data-model="vail_lite">
+                <div class="card-icon">🪶</div>
+                <h3>Vail Lite</h3>
+                <p>USB stick form factor with buzzer sidetone only - no buttons, capacitive touch, headphone jack, or radio output</p>
             </div>
 
             <div class="selection-card" data-model="non_pcb">

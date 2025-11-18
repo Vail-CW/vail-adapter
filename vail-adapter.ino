@@ -23,9 +23,11 @@ const unsigned long TRS_CHECK_INTERVAL = 500;        // Check every 500ms
 Bounce dit = Bounce();
 Bounce dah = Bounce();
 Bounce key = Bounce();
+#ifndef NO_CAPACITIVE_TOUCH
 TouchBounce qt_dit = TouchBounce();
 TouchBounce qt_dah = TouchBounce();
 TouchBounce qt_key = TouchBounce();
+#endif
 
 VailAdapter adapter = VailAdapter(PIEZO_PIN);
 
@@ -44,8 +46,10 @@ void setup() {
   Serial.print("\n\nVail Adapter starting on: ");
   Serial.println(BOARD_NAME);
 
+#ifndef NO_LED
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LED_OFF);
+#endif
 
 #ifdef BUTTON_PIN
   pinMode(BUTTON_PIN, INPUT);
@@ -54,13 +58,33 @@ void setup() {
 
   dit.attach(DIT_PIN, INPUT_PULLUP);
   dah.attach(DAH_PIN, INPUT_PULLUP);
+#ifndef TRRS_TRINKEY
+  // Trinkey doesn't need separate straight key pin - KEY_PIN same as DIT_PIN
   key.attach(KEY_PIN, INPUT_PULLUP);
+#endif
 
+#ifdef TRRS_TRINKEY
+  // Configure TRRS jack ground pins - required for switched TRRS jack
+  pinMode(SLEEVE_PIN, OUTPUT);
+  digitalWrite(SLEEVE_PIN, LOW);
+  pinMode(RING2_PIN, OUTPUT);
+  digitalWrite(RING2_PIN, LOW);
+  Serial.println("TRRS ground pins (SLEEVE, RING2) configured as OUTPUT LOW");
+
+  // Increase debounce interval for TRRS jack pins - they have different electrical characteristics
+  dit.interval(25);  // Increased from default 10ms to 25ms
+  dah.interval(25);
+  key.interval(25);
+  Serial.println("Debounce intervals increased to 25ms for TRRS jack stability");
+#endif
+
+#ifndef NO_CAPACITIVE_TOUCH
   // Attach capacitive touch with calibrated per-pad thresholds
   qt_dit.attach(QT_DIT_PIN, QT_DIT_THRESHOLD_PRESS, QT_DIT_THRESHOLD_RELEASE);
   qt_dah.attach(QT_DAH_PIN, QT_DAH_THRESHOLD_PRESS, QT_DAH_THRESHOLD_RELEASE);
 #ifdef QT_KEY_PIN
   qt_key.attach(QT_KEY_PIN, QT_DIT_THRESHOLD_PRESS, QT_DIT_THRESHOLD_RELEASE); // Use DIT thresholds for KEY
+#endif
 #endif
 
 #ifdef HAS_RADIO_OUTPUT
@@ -126,6 +150,7 @@ void flushBounceState() {
 }
 
 void setLED() {
+#ifndef NO_LED
   bool finalLedState = false;
 
   if (adapter.isRadioModeActive()) {
@@ -136,6 +161,7 @@ void setLED() {
     finalLedState = adapter.KeyboardMode();
   }
   digitalWrite(LED_BUILTIN, finalLedState ? LED_ON : LED_OFF);
+#endif
 }
 
 void loop() {
@@ -286,6 +312,8 @@ void loop() {
     adapter.HandleMIDI(event);
   }
 
+#ifndef TRRS_TRINKEY
+  // Trinkey doesn't process separate straight key input
   if (key.update()) {
     adapter.ProcessPaddleInput(PADDLE_STRAIGHT, !key.read(), false);
 #ifdef BUTTON_PIN
@@ -295,6 +323,7 @@ void loop() {
     }
 #endif
   }
+#endif
 
   if (trs) {
     // TRS mode: DAH pin is grounded (ring shorted to sleeve)
@@ -333,6 +362,7 @@ void loop() {
     }
   }
 
+#ifndef NO_CAPACITIVE_TOUCH
 #ifdef QT_KEY_PIN
   if (qt_key.update()) {
     adapter.ProcessPaddleInput(PADDLE_STRAIGHT, qt_key.read(), true);
@@ -359,4 +389,5 @@ void loop() {
     }
 #endif
   }
+#endif
 }
