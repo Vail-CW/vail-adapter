@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This repository contains firmware and tooling for two devices in the Vail ecosystem:
 
 ### Vail Adapter (Master Branch)
-Arduino-based firmware for Morse code key/paddle to USB conversion. It runs on SAMD21-based microcontrollers (Seeeduino XIAO SAMD21 and Adafruit QT Py SAMD21) and provides:
+Arduino-based firmware for Morse code key/paddle to USB conversion. It runs on SAMD21-based microcontrollers (Seeeduino XIAO SAMD21, Adafruit QT Py SAMD21, and Adafruit TRRS Trinkey SAMD21) and provides:
 - USB HID keyboard output (Ctrl keys for dit/dah)
 - USB MIDI control and output for DAW integration
 - Multiple keyer modes (straight key, bug, iambic A/B, ultimatic, etc.)
@@ -79,6 +79,11 @@ arduino-cli compile --fqbn Seeeduino:samd:seeed_XIAO_m0 --output-dir build_outpu
 arduino-cli compile --fqbn adafruit:samd:adafruit_qtpy_m0 --output-dir build_output --export-binaries .
 ```
 
+**Build for TRRS Trinkey SAMD21:**
+```bash
+arduino-cli compile --fqbn adafruit:samd:adafruit_TRRStrinkey_m0 --output-dir build_output --export-binaries .
+```
+
 **Convert .bin to .uf2 (for drag-and-drop flashing):**
 ```bash
 python3 uf2conv.py -c -f 0x68ED2B88 -b 0x2000 build_output/*.bin -o firmware.uf2
@@ -91,8 +96,18 @@ Before building, you MUST edit `config.h` and uncomment exactly ONE hardware con
 - `V2_Basic_PCB` - Revised PCB with updated pin mappings
 - `Advanced_PCB` - Advanced PCB with radio output pins (A2/A3)
 - `NO_PCB_GITHUB_SPECS` - Breadboard/hand-wired setup
+- `TRRS_TRINKEY` - Adafruit TRRS Trinkey with built-in TRRS jack (see TRRS_TRINKEY_BUILD.md)
 
 Each configuration sets different pin mappings for dit/dah/key inputs, piezo, and optional radio outputs.
+
+**TRRS Trinkey Specific Notes:**
+- Uses built-in TRRS jack for paddle/key input (TIP=dit on pin 0, RING1=dah on pin 2)
+- Requires SLEEVE (pin 5) and RING2 (pin 4) to be driven LOW for proper TRRS jack operation
+- Piezo buzzer connects to SDA (pin 7/PA08) via STEMMA QT connector
+- No capacitive touch support (`NO_CAPACITIVE_TOUCH` defined)
+- No LED control (`NO_LED` defined - NeoPixel requires special library)
+- No button menu (no physical buttons on Trinkey)
+- KEY_PIN not attached to prevent duplicate processing of pin 0 (dit timing fix)
 
 For Advanced_PCB builds, also configure `RADIO_KEYING_ACTIVE_LOW` in config.h based on your radio's keying polarity.
 
@@ -151,6 +166,13 @@ This system prevents the "stuck key" bug that occurred when:
 
 **Important**: TRS hot-plug detection will NEVER trigger during paddle operation (iambic/bug modes) because it only runs when the adapter is already in Straight Key mode. This eliminates all false positive scenarios.
 
+**TRRS Trinkey Exception:**
+On the TRRS Trinkey configuration, the KEY_PIN bouncer is not attached at all (vail-adapter.ino:61-64, 315-326). This is because KEY_PIN and DIT_PIN are both pin 0 on Trinkey, and processing the same pin twice caused a bug where:
+- The keyer would correctly enforce minimum dit duration (e.g., 170ms)
+- But the straight key handler would call `EndTx()` immediately when the paddle was released
+- This stopped the buzzer prematurely, overriding the keyer's timing logic
+- By not attaching KEY_PIN on Trinkey, only the paddle handler processes pin 0, allowing proper keyer timing
+
 **Keyer System (keyers.cpp/h)**
 Nine keyer algorithms are implemented as separate classes inheriting from base `Keyer`:
 1. **Passthrough** (0) - Manual control, no automation
@@ -167,8 +189,9 @@ Nine keyer algorithms are implemented as separate classes inheriting from base `
 All keyers use the `Transmitter` interface to control output (BeginTx/EndTx), allowing the same keyer logic to work for keyboard, MIDI, and radio outputs.
 
 **Input Debouncing**
-- `Bounce` class (bounce2.cpp/h) - Software debouncing for physical switches
+- `Bounce` class (bounce2.cpp/h) - Software debouncing for physical switches (default 10ms interval)
 - `TouchBounce` class (touchbounce.cpp/h) - Debouncing for Adafruit FreeTouch capacitive sensors
+- **TRRS Trinkey:** Debounce interval increased to 25ms (vail-adapter.ino:69-78) due to different electrical characteristics of the switched TRRS jack
 
 **Audio Output**
 - `PolyBuzzer` class (polybuzzer.cpp/h) - Manages piezo buzzer tone generation using Arduino `tone()` function
@@ -305,13 +328,14 @@ No automated test suite exists. Manual testing procedures are documented in `doc
 ## CI/CD
 
 GitHub Actions workflow (`.github/workflows/build_uf2.yml`) automatically:
-1. Builds firmware for all 8 hardware configurations (4 configs × 2 boards)
+1. Builds firmware for all 9 hardware configurations (4 configs × 2 boards + Trinkey)
 2. Converts .bin files to .uf2 format
 3. Commits resulting firmware files to `docs/firmware_files/` on every push to master
 
 Firmware naming convention:
 - `xiao_basic_pcb_v1.uf2`, `xiao_basic_pcb_v2.uf2`, `xiao_advanced_pcb.uf2`, `xiao_non_pcb.uf2`
 - `qtpy_basic_pcb_v1.uf2`, `qtpy_basic_pcb_v2.uf2`, `qtpy_advanced_pcb.uf2`, `qtpy_non_pcb.uf2`
+- `trinkey_vail_adapter.uf2`
 
 ## GitHub Pages Maintenance
 

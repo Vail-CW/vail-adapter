@@ -35,6 +35,12 @@ License: MIT
 * Buzzer Speaker
 * [Panel Aux Jack](https://www.amazon.com/dp/B01C3RFHDC)
 
+# Vail Lite: Ultra-Compact USB Stick Option
+* [Adafruit TRRS Trinkey M0](https://www.adafruit.com/product/5954) - USB key-sized board with built-in TRRS jack
+* Piezo buzzer (connect via STEMMA QT connector)
+* **Note:** No buttons, capacitive touch, headphone jack, or radio output. Settings changed via MIDI only.
+* See [TRRS_TRINKEY_BUILD.md](TRRS_TRINKEY_BUILD.md) for detailed instructions
+
 # Setting Up
 
 * [Easy Setup](doc/easy-install.md)
