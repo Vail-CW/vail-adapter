@@ -47,15 +47,6 @@ License: MIT
 * [Advanced Setup](doc/advanced-install.md)
 
 
-# Future Work
-
-Things I plan to add:
-
-* [x] PCB to ease assembly and make a more robust shippable product
-* [ ] Advanced PCB with capacitive touch built into pcb and enclosure, as well as radio passthrough
-* [ ] Wireless Vail Adapter
-
-
 # Contributing
 To contribute to this project please contact ke9bos@pigletradio.org
 Feel free to buy me a coffee if you find value in this project and want to see more improvements made with time. https://buymeacoffee.com/ke9bos
