@@ -22,8 +22,8 @@ The Vail Adapter responds to the following MIDI message types:
 
 - **Message**: `B0 00 xx`
 - **Values**:
-  - `00-3F` (0-63): Enable Keyboard mode (sends USB HID keyboard events)
-  - `40-7F` (64-127): Enable MIDI mode (sends MIDI note events)
+  - `00-3F` (0-63): Enable MIDI mode (sends MIDI note events)
+  - `40-7F` (64-127): Enable Keyboard mode (sends USB HID keyboard events)
 - **Default**: Keyboard mode on startup
 - **Example**: `B0 00 7F` enables MIDI mode
 
@@ -116,3 +116,4 @@ When in MIDI mode, the adapter sends:
 - **Concurrent Notes**: Single note playback (monophonic)
 - **Power Requirements**: USB bus powered
 - **Operating System**: Windows, macOS, Linux (class-compliant)
+
