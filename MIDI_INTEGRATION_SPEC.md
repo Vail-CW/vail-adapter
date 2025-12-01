@@ -93,14 +93,7 @@ B0 02 3C
 C0 08
 ```
 
-## Output Messages
 
-When in MIDI mode, the adapter sends:
-
-### Keyer Output (Passthrough Mode)
-- **Dit**: Note On/Off C# (MIDI note 1)
-- **Dah**: Note On/Off D (MIDI note 2)
-- **Straight Key**: Note On/Off C (MIDI note 0)
 
 ### Implementation Notes
 
@@ -116,4 +109,5 @@ When in MIDI mode, the adapter sends:
 - **Concurrent Notes**: Single note playback (monophonic)
 - **Power Requirements**: USB bus powered
 - **Operating System**: Windows, macOS, Linux (class-compliant)
+
 
