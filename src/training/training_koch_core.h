@@ -256,7 +256,7 @@ void playKochGroup() {
 }
 
 // Check user's answer
-void checkKochAnswer(Adafruit_ST7789& tft) {
+void checkKochAnswer(LGFX& tft) {
   kochUserInput.toUpperCase();
   kochCorrectAnswer = kochUserInput.equals(kochCurrentGroup);
 

@@ -74,7 +74,7 @@ void startCWASendRound() {
 /*
  * Draw sending practice UI updates
  */
-void drawCWASendingPracticeUI(Adafruit_ST7789& tft) {
+void drawCWASendingPracticeUI(LGFX& tft) {
   // Clear main area
   tft.fillRect(0, 35, SCREEN_WIDTH, 130, COLOR_BACKGROUND);
 
@@ -155,7 +155,7 @@ void drawCWASendingPracticeUI(Adafruit_ST7789& tft) {
 /*
  * Start CWA Sending Practice mode
  */
-void startCWASendingPractice(Adafruit_ST7789& tft) {
+void startCWASendingPractice(LGFX& tft) {
   cwaSendRound = 0;
   cwaSendCorrect = 0;
   cwaSendTotal = 0;
@@ -172,13 +172,6 @@ void startCWASendingPractice(Adafruit_ST7789& tft) {
       cwaSendDecoded += text[i];
     }
   };
-
-  // Disable WiFi for clean audio
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    delay(100);
-  }
 
   // Reinitialize I2S
   i2s_zero_dma_buffer(I2S_NUM_0);
@@ -414,7 +407,7 @@ void updateCWASendingPractice() {
 /*
  * Handle input for sending practice mode
  */
-int handleCWASendingPracticeInput(char key, Adafruit_ST7789& tft) {
+int handleCWASendingPracticeInput(char key, LGFX& tft) {
   if (key == 0x1B) {  // ESC
     stopTone();  // Ensure tone is stopped
     return -1;  // Exit

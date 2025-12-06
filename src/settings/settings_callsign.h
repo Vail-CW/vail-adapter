@@ -17,14 +17,14 @@ bool cursorVisible = true;
 Preferences callsignPrefs;
 
 // Forward declarations
-void startCallsignSettings(Adafruit_ST7789 &display);
-void drawCallsignUI(Adafruit_ST7789 &display);
-int handleCallsignInput(char key, Adafruit_ST7789 &display);
+void startCallsignSettings(LGFX &display);
+void drawCallsignUI(LGFX &display);
+int handleCallsignInput(char key, LGFX &display);
 void saveCallsign(String callsign);
 bool loadCallsign(String &callsign);
 
 // Start callsign settings mode
-void startCallsignSettings(Adafruit_ST7789 &display) {
+void startCallsignSettings(LGFX &display) {
   // Load current callsign
   loadCallsign(callsignInput);
   if (callsignInput.length() == 0) {
@@ -38,22 +38,22 @@ void startCallsignSettings(Adafruit_ST7789 &display) {
 }
 
 // Draw callsign input UI
-void drawCallsignUI(Adafruit_ST7789 &display) {
+void drawCallsignUI(LGFX &display) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   // Title
-  display.setFont(&FreeSansBold12pt7b);
+  display.setFont(nullptr);  // Use default font
   display.setTextColor(COLOR_TITLE);
   display.setTextSize(1);
 
   int16_t x1, y1;
   uint16_t w, h;
   String title = "Enter Callsign";
-  display.getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, title.c_str(), 0, 0, &x1, &y1, &w, &h);
   display.setCursor((SCREEN_WIDTH - w) / 2, 75);
   display.print(title);
-  display.setFont(); // Reset font
+  display.setFont(nullptr); // Reset font
 
   // Instructions
   display.setTextSize(1);
@@ -72,11 +72,11 @@ void drawCallsignUI(Adafruit_ST7789 &display) {
   display.drawRoundRect(boxX, boxY, boxW, boxH, 8, 0x34BF); // Light blue outline
 
   // Display callsign input
-  display.setFont(&FreeSansBold12pt7b);
+  display.setFont(nullptr);  // Use default font
   display.setTextColor(ST77XX_WHITE);
   display.setTextSize(1);
 
-  display.getTextBounds(callsignInput.c_str(), 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, callsignInput.c_str(), 0, 0, &x1, &y1, &w, &h);
   int textX = boxX + 15;
   int textY = boxY + (boxH / 2) + (h / 2) + 5;
   display.setCursor(textX, textY);
@@ -90,20 +90,20 @@ void drawCallsignUI(Adafruit_ST7789 &display) {
     }
   }
 
-  display.setFont(); // Reset font
+  display.setFont(nullptr); // Reset font
 
   // Footer with controls
   display.setTextSize(1);
   display.setTextColor(COLOR_WARNING);
   String footerText = "Type callsign  ENTER Save  ESC Cancel";
-  display.getTextBounds(footerText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, footerText, 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, SCREEN_HEIGHT - 12);
   display.print(footerText);
 }
 
 // Handle callsign settings input
-int handleCallsignInput(char key, Adafruit_ST7789 &display) {
+int handleCallsignInput(char key, LGFX &display) {
   // Update cursor blink
   if (millis() - lastBlink > 500) {
     cursorVisible = !cursorVisible;

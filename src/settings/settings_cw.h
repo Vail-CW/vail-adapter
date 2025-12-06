@@ -35,9 +35,9 @@ int cwSettingSelection = 0;
 #define CW_SETTINGS_COUNT 3
 
 // Forward declarations
-void startCWSettings(Adafruit_ST7789 &display);
-void drawCWSettingsUI(Adafruit_ST7789 &display);
-int handleCWSettingsInput(char key, Adafruit_ST7789 &display);
+void startCWSettings(LGFX &display);
+void drawCWSettingsUI(LGFX &display);
+int handleCWSettingsInput(char key, LGFX &display);
 void saveCWSettings();
 void loadCWSettings();
 
@@ -75,13 +75,13 @@ void saveCWSettings() {
 }
 
 // Start CW settings mode
-void startCWSettings(Adafruit_ST7789 &display) {
+void startCWSettings(LGFX &display) {
   cwSettingSelection = 0;
   drawCWSettingsUI(display);
 }
 
 // Draw CW settings UI
-void drawCWSettingsUI(Adafruit_ST7789 &display) {
+void drawCWSettingsUI(LGFX &display) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -163,14 +163,14 @@ void drawCWSettingsUI(Adafruit_ST7789 &display) {
 
   int16_t x1, y1;
   uint16_t w, h;
-  display.getTextBounds(footerText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, footerText.c_str(), 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, SCREEN_HEIGHT - 12);
   display.print(footerText);
 }
 
 // Handle CW settings input
-int handleCWSettingsInput(char key, Adafruit_ST7789 &display) {
+int handleCWSettingsInput(char key, LGFX &display) {
   bool changed = false;
 
   if (key == KEY_UP) {

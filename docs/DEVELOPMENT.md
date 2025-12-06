@@ -127,7 +127,7 @@ static int myModeState = 0;
 static String myModeInput = "";
 
 // Start function - called when entering mode
-void startMyMode(Adafruit_ST7789& tft) {
+void startMyMode(LGFX& tft) {
   // Initialize state
   myModeState = 0;
   myModeInput = "";
@@ -143,7 +143,7 @@ void startMyMode(Adafruit_ST7789& tft) {
 }
 
 // Input handler - called when key pressed
-int handleMyModeInput(char key, Adafruit_ST7789& tft) {
+int handleMyModeInput(char key, LGFX& tft) {
   // ESC exits mode
   if (key == 0x1B) {
     return -1;  // Return to parent menu

@@ -6,8 +6,6 @@
 #ifndef TRAINING_CWA_CORE_H
 #define TRAINING_CWA_CORE_H
 
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7789.h>
 #include <Preferences.h>
 #include "../core/config.h"
 #include "../audio/i2s_audio.h"

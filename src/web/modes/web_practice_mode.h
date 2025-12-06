@@ -7,7 +7,6 @@
 #ifndef WEB_PRACTICE_MODE_H
 #define WEB_PRACTICE_MODE_H
 
-#include <Adafruit_ST7789.h>
 #include "../../audio/morse_decoder_adaptive.h"
 #include "../../audio/morse_wpm.h"
 #include "../../core/config.h"
@@ -48,7 +47,7 @@ void onWebPracticeSpeed(float wpm, float fwpm) {
 /*
  * Initialize web practice mode
  */
-void startWebPracticeMode(Adafruit_ST7789& tft) {
+void startWebPracticeMode(LGFX& tft) {
   Serial.println("Starting web practice mode");
 
   // Clear screen
@@ -68,7 +67,7 @@ void startWebPracticeMode(Adafruit_ST7789& tft) {
 /*
  * Draw web practice mode UI (static display)
  */
-void drawWebPracticeUI(Adafruit_ST7789& tft) {
+void drawWebPracticeUI(LGFX& tft) {
   tft.fillScreen(COLOR_BACKGROUND);
 
   // Header
@@ -103,7 +102,7 @@ void drawWebPracticeUI(Adafruit_ST7789& tft) {
  * Handle web practice mode input
  * Returns: -1 to exit mode, 0 otherwise
  */
-int handleWebPracticeInput(char key, Adafruit_ST7789& tft) {
+int handleWebPracticeInput(char key, LGFX& tft) {
   if (key == 0x1B) {  // ESC key
     Serial.println("Exiting web practice mode");
     webPracticeDecoder.reset();

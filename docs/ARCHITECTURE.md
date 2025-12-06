@@ -168,7 +168,7 @@ Input handlers return:
 ### Example Implementation
 
 ```cpp
-void startMyMode(Adafruit_ST7789& tft) {
+void startMyMode(LGFX& tft) {
   // Initialize state variables
   myModeState = 0;
 
@@ -177,7 +177,7 @@ void startMyMode(Adafruit_ST7789& tft) {
   // ... draw UI elements
 }
 
-int handleMyModeInput(char key, Adafruit_ST7789& tft) {
+int handleMyModeInput(char key, LGFX& tft) {
   if (key == 0x1B) {  // ESC key
     return -1;  // Exit mode
   }

@@ -6,13 +6,15 @@
 #ifndef MENU_NAVIGATION_H
 #define MENU_NAVIGATION_H
 
-#include <Adafruit_ST7789.h>
+#define LGFX_USE_V1
+#include <LovyanGFX.hpp>
 #include <WiFi.h>
 #include <esp_sleep.h>
-#include <Fonts/FreeSansBold12pt7b.h>
 #include "../core/config.h"
 #include "../audio/i2s_audio.h"
 #include "menu_ui.h"  // Same folder - Get MenuMode definition and menu UI functions
+#include "../storage/sd_card.h"  // SD card functions for QSO logger
+#include "../settings/settings_brightness.h"  // Brightness settings
 
 // Forward declarations from main file
 extern int currentSelection;
@@ -22,67 +24,74 @@ extern MenuMode currentMode;
 // No forward declarations needed
 
 // Forward declarations for mode-specific handlers
-int handleHearItTypeItInput(char key, Adafruit_ST7789& tft);
-int handleWiFiInput(char key, Adafruit_ST7789& tft);
-int handleCWSettingsInput(char key, Adafruit_ST7789& tft);
-int handleVolumeInput(char key, Adafruit_ST7789& tft);
-int handleCallsignInput(char key, Adafruit_ST7789& tft);
-int handleWebPasswordInput(char key, Adafruit_ST7789& tft);
-int handlePracticeInput(char key, Adafruit_ST7789& tft);
-int handleVailInput(char key, Adafruit_ST7789& tft);
-int handleCWATrackSelectInput(char key, Adafruit_ST7789& tft);
-int handleCWASessionSelectInput(char key, Adafruit_ST7789& tft);
-int handleCWAPracticeTypeSelectInput(char key, Adafruit_ST7789& tft);
-int handleCWAMessageTypeSelectInput(char key, Adafruit_ST7789& tft);
-int handleCWACopyPracticeInput(char key, Adafruit_ST7789& tft);
-int handleCWASendingPracticeInput(char key, Adafruit_ST7789& tft);
-int handleCWAQSOPracticeInput(char key, Adafruit_ST7789& tft);
-int handleMorseShooterInput(char key, Adafruit_ST7789& tft);
-int handleMemoryGameInput(char key, Adafruit_ST7789& tft);
-int handleWebPracticeInput(char key, Adafruit_ST7789& tft);
-int handleKochInput(char key, Adafruit_ST7789& tft);
+int handleHearItTypeItInput(char key, LGFX& tft);
+int handleWiFiInput(char key, LGFX& tft);
+int handleCWSettingsInput(char key, LGFX& tft);
+int handleVolumeInput(char key, LGFX& tft);
+int handleCallsignInput(char key, LGFX& tft);
+int handleWebPasswordInput(char key, LGFX& tft);
+int handlePracticeInput(char key, LGFX& tft);
+int handleVailInput(char key, LGFX& tft);
+int handleCWATrackSelectInput(char key, LGFX& tft);
+int handleCWASessionSelectInput(char key, LGFX& tft);
+int handleCWAPracticeTypeSelectInput(char key, LGFX& tft);
+int handleCWAMessageTypeSelectInput(char key, LGFX& tft);
+int handleCWACopyPracticeInput(char key, LGFX& tft);
+int handleCWASendingPracticeInput(char key, LGFX& tft);
+int handleCWAQSOPracticeInput(char key, LGFX& tft);
+int handleMorseShooterInput(char key, LGFX& tft);
+int handleMemoryGameInput(char key, LGFX& tft);
+int handleWebPracticeInput(char key, LGFX& tft);
+int handleKochInput(char key, LGFX& tft);
 
-void drawHearItTypeItUI(Adafruit_ST7789& tft);
-void drawInputBox(Adafruit_ST7789& tft);
-void drawWiFiUI(Adafruit_ST7789& tft);
-void drawCWSettingsUI(Adafruit_ST7789& tft);
-void drawVolumeDisplay(Adafruit_ST7789& tft);
-void drawCallsignUI(Adafruit_ST7789& tft);
-void drawWebPasswordUI(Adafruit_ST7789& tft);
-void drawVailUI(Adafruit_ST7789& tft);
+void drawHearItTypeItUI(LGFX& tft);
+void drawInputBox(LGFX& tft);
+void drawWiFiUI(LGFX& tft);
+void drawCWSettingsUI(LGFX& tft);
+void drawVolumeDisplay(LGFX& tft);
+void drawCallsignUI(LGFX& tft);
+void drawWebPasswordUI(LGFX& tft);
+void drawVailUI(LGFX& tft);
 
 void startNewCallsign();
 void playCurrentCallsign();
-void startPracticeMode(Adafruit_ST7789& tft);
-void startCWAcademy(Adafruit_ST7789& tft);
-void startCWACopyPractice(Adafruit_ST7789& tft);
-void startCWACopyRound(Adafruit_ST7789& tft);
-void startCWASendingPractice(Adafruit_ST7789& tft);
-void startCWAQSOPractice(Adafruit_ST7789& tft);
-void startWiFiSettings(Adafruit_ST7789& tft);
-void startCWSettings(Adafruit_ST7789& tft);
-void initVolumeSettings(Adafruit_ST7789& tft);
-void startCallsignSettings(Adafruit_ST7789& tft);
-void startWebPasswordSettings(Adafruit_ST7789& tft);
-void startVailRepeater(Adafruit_ST7789& tft);
+void startPracticeMode(LGFX& tft);
+void startCWAcademy(LGFX& tft);
+void startCWACopyPractice(LGFX& tft);
+void startCWACopyRound(LGFX& tft);
+void startCWASendingPractice(LGFX& tft);
+void startCWAQSOPractice(LGFX& tft);
+void startWiFiSettings(LGFX& tft);
+void startCWSettings(LGFX& tft);
+void initVolumeSettings(LGFX& tft);
+void startCallsignSettings(LGFX& tft);
+void startWebPasswordSettings(LGFX& tft);
+void startVailRepeater(LGFX& tft);
 void connectToVail(String channel);
-void startMorseShooter(Adafruit_ST7789& tft);
-void startMemoryGame(Adafruit_ST7789& tft);
-void startKochMethod(Adafruit_ST7789& tft);  // Koch Method initialization
-void startRadioOutput(Adafruit_ST7789& tft);  // Radio Output initialization
-int handleRadioOutputInput(char key, Adafruit_ST7789& tft);  // Radio Output input handler
-void startCWMemoriesMode(Adafruit_ST7789& tft);  // CW Memories initialization
-int handleCWMemoriesInput(char key, Adafruit_ST7789& tft);  // CW Memories input handler
-void drawCWMemoriesUI(Adafruit_ST7789& tft);  // CW Memories UI
+void startMorseShooter(LGFX& tft);
+void startMemoryGame(LGFX& tft);
+void startKochMethod(LGFX& tft);  // Koch Method initialization
+void startRadioOutput(LGFX& tft);  // Radio Output initialization
+int handleRadioOutputInput(char key, LGFX& tft);  // Radio Output input handler
+void startCWMemoriesMode(LGFX& tft);  // CW Memories initialization
+int handleCWMemoriesInput(char key, LGFX& tft);  // CW Memories input handler
+void drawCWMemoriesUI(LGFX& tft);  // CW Memories UI
 void initLogEntry();  // QSO Logger initialization
-int handleQSOLogEntryInput(char key, Adafruit_ST7789& tft);  // QSO log entry input handler
-void startViewLogs(Adafruit_ST7789& tft);  // QSO view logs initialization
-int handleViewLogsInput(char key, Adafruit_ST7789& tft);  // QSO view logs input handler
-void startStatistics(Adafruit_ST7789& tft);  // QSO statistics initialization
-int handleStatisticsInput(char key, Adafruit_ST7789& tft);  // QSO statistics input handler
-void startLoggerSettings(Adafruit_ST7789& tft);  // QSO logger settings initialization
-int handleLoggerSettingsInput(char key, Adafruit_ST7789& tft);  // QSO logger settings input handler
-void drawLoggerSettingsUI(Adafruit_ST7789& tft);  // QSO logger settings UI
+int handleQSOLogEntryInput(char key, LGFX& tft);  // QSO log entry input handler
+void startViewLogs(LGFX& tft);  // QSO view logs initialization
+int handleViewLogsInput(char key, LGFX& tft);  // QSO view logs input handler
+void startStatistics(LGFX& tft);  // QSO statistics initialization
+int handleStatisticsInput(char key, LGFX& tft);  // QSO statistics input handler
+void startLoggerSettings(LGFX& tft);  // QSO logger settings initialization
+int handleLoggerSettingsInput(char key, LGFX& tft);  // QSO logger settings input handler
+void drawLoggerSettingsUI(LGFX& tft);  // QSO logger settings UI
+void startBTHID(LGFX& tft);  // BT HID mode initialization
+int handleBTHIDInput(char key, LGFX& tft);  // BT HID input handler
+void startBTMIDI(LGFX& tft);  // BT MIDI mode initialization
+int handleBTMIDIInput(char key, LGFX& tft);  // BT MIDI input handler
+void startBTKeyboardSettings(LGFX& tft);  // BT Keyboard settings initialization
+int handleBTKeyboardSettingsInput(char key, LGFX& tft);  // BT Keyboard settings input handler
+void updateBTKeyboardSettingsUI(LGFX& tft);  // BT Keyboard settings UI update
 
 extern String vailChannel;
 
@@ -90,6 +99,51 @@ extern String vailChannel;
 int escPressCount = 0;
 unsigned long lastEscPressTime = 0;
 #define TRIPLE_ESC_TIMEOUT 2000  // 2 seconds window for 3 presses
+
+/*
+ * Show SD card required error screen
+ * Returns true if SD card becomes available after user presses key
+ */
+bool showSDCardRequiredScreen() {
+  tft.fillScreen(COLOR_BACKGROUND);
+
+  // Draw error icon (SD card with X)
+  tft.setTextColor(ST77XX_RED);
+  tft.setFont(&FreeSansBold12pt7b);
+  tft.setCursor(140, 100);
+  tft.print("SD Card Required");
+
+  tft.setFont(nullptr);
+  tft.setTextSize(2);
+  tft.setTextColor(ST77XX_WHITE);
+  tft.setCursor(80, 150);
+  tft.print("Insert SD card to use");
+  tft.setCursor(120, 180);
+  tft.print("QSO Logger");
+
+  tft.setTextSize(1);
+  tft.setTextColor(0x7BEF);  // Gray
+  tft.setCursor(100, 250);
+  tft.print("Press any key to retry");
+  tft.setCursor(120, 270);
+  tft.print("ESC to go back");
+
+  beep(TONE_ERROR, BEEP_MEDIUM);
+  return false;
+}
+
+/*
+ * Check if QSO storage is ready, show error if not
+ * Returns true if storage is ready
+ */
+bool checkQSOStorageReady() {
+  // Try to initialize SD card if not already done
+  if (!sdCardAvailable) {
+    initSDCard();
+  }
+
+  return sdCardAvailable;
+}
 
 /*
  * Enter deep sleep mode with wake on DIT paddle
@@ -114,7 +168,7 @@ void enterDeepSleep() {
   tft.setCursor(50, 140);
   tft.print("Sleep...");
 
-  tft.setFont();
+  tft.setFont(nullptr);
   tft.setTextSize(1);
   tft.setTextColor(0x7BEF);
   tft.setCursor(30, 180);
@@ -124,7 +178,10 @@ void enterDeepSleep() {
 
   // Turn off display
   tft.fillScreen(ST77XX_BLACK);
-  // Note: Backlight is hardwired to 3.3V and cannot be turned off via software
+
+  // Turn off backlight (GPIO 39)
+  digitalWrite(TFT_BL, LOW);  // LOW = backlight OFF (active HIGH logic)
+  Serial.println("Backlight turned off for deep sleep");
 
   // Configure wake on DIT paddle press (active LOW)
   esp_sleep_enable_ext0_wakeup((gpio_num_t)DIT_PIN, LOW);
@@ -146,10 +203,10 @@ void selectMenuItem() {
   if (currentMode == MODE_MAIN_MENU) {
     selectedItem = mainMenuOptions[currentSelection];
 
-    // Handle main menu selections
+    // Handle main menu selections (4 items: CW, Games, Ham Tools, Settings)
     if (currentSelection == 0) {
-      // Training
-      currentMode = MODE_TRAINING_MENU;
+      // CW
+      currentMode = MODE_CW_MENU;
       currentSelection = 0;
       drawMenu();
 
@@ -160,25 +217,35 @@ void selectMenuItem() {
       drawMenu();
 
     } else if (currentSelection == 2) {
-      // Radio
-      currentMode = MODE_RADIO_MENU;
+      // Ham Tools
+      currentMode = MODE_HAM_TOOLS_MENU;
       currentSelection = 0;
       drawMenu();
 
     } else if (currentSelection == 3) {
-      // Tools
-      currentMode = MODE_TOOLS_MENU;
-      currentSelection = 0;
-      drawMenu();
-
-    } else if (currentSelection == 4) {
       // Settings
       currentMode = MODE_SETTINGS_MENU;
       currentSelection = 0;
       drawMenu();
+    }
 
-    } else if (currentSelection == 5) {
-      // WiFi (Vail Repeater)
+  } else if (currentMode == MODE_CW_MENU) {
+    selectedItem = cwMenuOptions[currentSelection];
+
+    // Handle CW menu selections (6 items: Training, Practice, Vail Repeater, Bluetooth, Radio Output, CW Memories)
+    if (currentSelection == 0) {
+      // Training submenu
+      currentMode = MODE_TRAINING_MENU;
+      currentSelection = 0;
+      drawMenu();
+
+    } else if (currentSelection == 1) {
+      // Practice (direct link)
+      currentMode = MODE_PRACTICE;
+      startPracticeMode(tft);
+
+    } else if (currentSelection == 2) {
+      // Vail Repeater
       if (WiFi.status() != WL_CONNECTED) {
         // Not connected to WiFi
         tft.fillScreen(COLOR_BACKGROUND);
@@ -198,6 +265,22 @@ void selectMenuItem() {
         startVailRepeater(tft);
         connectToVail(vailChannel);  // Use default channel
       }
+
+    } else if (currentSelection == 3) {
+      // Bluetooth submenu
+      currentMode = MODE_BLUETOOTH_MENU;
+      currentSelection = 0;
+      drawMenu();
+
+    } else if (currentSelection == 4) {
+      // Radio Output
+      currentMode = MODE_RADIO_OUTPUT;
+      startRadioOutput(tft);
+
+    } else if (currentSelection == 5) {
+      // CW Memories
+      currentMode = MODE_CW_MEMORIES;
+      startCWMemoriesMode(tft);
     }
 
   } else if (currentMode == MODE_TRAINING_MENU) {
@@ -245,73 +328,154 @@ void selectMenuItem() {
 
     // Handle settings menu selections
     if (currentSelection == 0) {
-      // WiFi Setup
-      currentMode = MODE_WIFI_SETTINGS;
-      startWiFiSettings(tft);
+      // Device Settings submenu
+      currentMode = MODE_DEVICE_SETTINGS_MENU;
+      currentSelection = 0;
+      drawMenu();
     } else if (currentSelection == 1) {
       // CW Settings
       currentMode = MODE_CW_SETTINGS;
       startCWSettings(tft);
+    }
+
+  } else if (currentMode == MODE_DEVICE_SETTINGS_MENU) {
+    selectedItem = deviceSettingsMenuOptions[currentSelection];
+
+    // Handle device settings menu selections (3 items: WiFi, General, Bluetooth)
+    if (currentSelection == 0) {
+      // WiFi submenu
+      currentMode = MODE_WIFI_SUBMENU;
+      currentSelection = 0;
+      drawMenu();
+    } else if (currentSelection == 1) {
+      // General submenu
+      currentMode = MODE_GENERAL_SUBMENU;
+      currentSelection = 0;
+      drawMenu();
     } else if (currentSelection == 2) {
-      // Volume Settings
-      currentMode = MODE_VOLUME_SETTINGS;
-      initVolumeSettings(tft);
-    } else if (currentSelection == 3) {
+      // Bluetooth submenu
+      currentMode = MODE_DEVICE_BT_SUBMENU;
+      currentSelection = 0;
+      drawMenu();
+    }
+
+  } else if (currentMode == MODE_DEVICE_BT_SUBMENU) {
+    selectedItem = deviceBTSubmenuOptions[currentSelection];
+
+    // Handle Device Bluetooth submenu selections (1 item: External Keyboard)
+    if (currentSelection == 0) {
+      // External Keyboard
+      currentMode = MODE_BT_KEYBOARD_SETTINGS;
+      startBTKeyboardSettings(tft);
+    }
+
+  } else if (currentMode == MODE_WIFI_SUBMENU) {
+    selectedItem = wifiSubmenuOptions[currentSelection];
+
+    // Handle WiFi submenu selections
+    if (currentSelection == 0) {
+      // WiFi Setup
+      currentMode = MODE_WIFI_SETTINGS;
+      startWiFiSettings(tft);
+    } else if (currentSelection == 1) {
       // Web Password
       currentMode = MODE_WEB_PASSWORD_SETTINGS;
       startWebPasswordSettings(tft);
-    } else if (currentSelection == 4) {
-      // General Settings
+    }
+
+  } else if (currentMode == MODE_GENERAL_SUBMENU) {
+    selectedItem = generalSubmenuOptions[currentSelection];
+
+    // Handle General submenu selections
+    if (currentSelection == 0) {
+      // Callsign
       currentMode = MODE_CALLSIGN_SETTINGS;
       startCallsignSettings(tft);
-    }
-
-  } else if (currentMode == MODE_RADIO_MENU) {
-    selectedItem = radioMenuOptions[currentSelection];
-
-    // Handle radio menu selections
-    if (currentSelection == 0) {
-      // Radio Output
-      currentMode = MODE_RADIO_OUTPUT;
-      startRadioOutput(tft);
     } else if (currentSelection == 1) {
-      // CW Memories
-      currentMode = MODE_CW_MEMORIES;
-      startCWMemoriesMode(tft);
+      // Volume
+      currentMode = MODE_VOLUME_SETTINGS;
+      initVolumeSettings(tft);
+    } else if (currentSelection == 2) {
+      // Brightness
+      currentMode = MODE_BRIGHTNESS_SETTINGS;
+      initBrightnessSettings(tft);
     }
 
-  } else if (currentMode == MODE_TOOLS_MENU) {
-    selectedItem = toolsMenuOptions[currentSelection];
+  } else if (currentMode == MODE_HAM_TOOLS_MENU) {
+    selectedItem = hamToolsMenuOptions[currentSelection];
 
-    // Handle tools menu selections
+    // Handle Ham Tools menu selections (6 items)
     if (currentSelection == 0) {
       // QSO Logger
       currentMode = MODE_QSO_LOGGER_MENU;
       currentSelection = 0;
       drawMenu();
+    } else if (currentSelection == 1) {
+      // Band Plans - Coming Soon
+      currentMode = MODE_BAND_PLANS;
+      drawComingSoon("Band Plans");
+    } else if (currentSelection == 2) {
+      // Propagation - Coming Soon
+      currentMode = MODE_PROPAGATION;
+      drawComingSoon("Propagation");
+    } else if (currentSelection == 3) {
+      // Antennas - Coming Soon
+      currentMode = MODE_ANTENNAS;
+      drawComingSoon("Antennas");
+    } else if (currentSelection == 4) {
+      // License Study - Coming Soon
+      currentMode = MODE_LICENSE_STUDY;
+      drawComingSoon("License Study");
+    } else if (currentSelection == 5) {
+      // Summit Chat - Coming Soon
+      currentMode = MODE_SUMMIT_CHAT;
+      drawComingSoon("Summit Chat");
     }
 
   } else if (currentMode == MODE_QSO_LOGGER_MENU) {
     selectedItem = qsoLoggerMenuOptions[currentSelection];
 
     // Handle QSO Logger menu selections
+    // All QSO logger functions require SD card
     if (currentSelection == 0) {
-      // New Log Entry
+      // New Log Entry - requires SD card
+      if (!checkQSOStorageReady()) {
+        showSDCardRequiredScreen();
+        return;
+      }
       currentMode = MODE_QSO_LOG_ENTRY;
       initLogEntry();  // Initialize form with defaults
       drawMenu();
     } else if (currentSelection == 1) {
-      // View Logs
+      // View Logs - requires SD card
+      if (!checkQSOStorageReady()) {
+        showSDCardRequiredScreen();
+        return;
+      }
       currentMode = MODE_QSO_VIEW_LOGS;
       startViewLogs(tft);
     } else if (currentSelection == 2) {
-      // Statistics
+      // Statistics - can work without SD card (uses cached metadata)
       currentMode = MODE_QSO_STATISTICS;
       startStatistics(tft);
     } else if (currentSelection == 3) {
-      // Logger Settings
+      // Logger Settings - doesn't require SD card
       currentMode = MODE_QSO_LOGGER_SETTINGS;
       startLoggerSettings(tft);
+    }
+
+  } else if (currentMode == MODE_BLUETOOTH_MENU) {
+    selectedItem = bluetoothMenuOptions[currentSelection];
+
+    // Handle Bluetooth menu selections (2 items: HID (Keyboard), MIDI)
+    if (currentSelection == 0) {
+      // HID (Keyboard)
+      currentMode = MODE_BT_HID;
+      startBTHID(tft);
+    } else if (currentSelection == 1) {
+      // MIDI
+      currentMode = MODE_BT_MIDI;
+      startBTMIDI(tft);
     }
   }
 }
@@ -345,8 +509,8 @@ void handleKeyPress(char key) {
   if (currentMode == MODE_WIFI_SETTINGS) {
     int result = handleWiFiInput(key, tft);
     if (result == -1) {
-      // Exit WiFi settings, back to settings menu
-      currentMode = MODE_SETTINGS_MENU;
+      // Exit WiFi settings, back to WiFi submenu
+      currentMode = MODE_WIFI_SUBMENU;
       currentSelection = 0;
       beep(TONE_MENU_NAV, BEEP_SHORT);
       drawMenu();
@@ -363,7 +527,7 @@ void handleKeyPress(char key) {
     if (result == -1) {
       // Exit CW settings, back to settings menu
       currentMode = MODE_SETTINGS_MENU;
-      currentSelection = 0;
+      currentSelection = 1;  // Stay on CW Settings position
       beep(TONE_MENU_NAV, BEEP_SHORT);
       drawMenu();
     }
@@ -374,9 +538,22 @@ void handleKeyPress(char key) {
   if (currentMode == MODE_VOLUME_SETTINGS) {
     int result = handleVolumeInput(key, tft);
     if (result == -1) {
-      // Exit volume settings, back to settings menu
-      currentMode = MODE_SETTINGS_MENU;
-      currentSelection = 0;
+      // Exit volume settings, back to General submenu
+      currentMode = MODE_GENERAL_SUBMENU;
+      currentSelection = 1;  // Stay on Volume position
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    }
+    return;
+  }
+
+  // Handle Brightness settings mode
+  if (currentMode == MODE_BRIGHTNESS_SETTINGS) {
+    int result = handleBrightnessInput(key, tft);
+    if (result == -1) {
+      // Exit brightness settings, back to General submenu
+      currentMode = MODE_GENERAL_SUBMENU;
+      currentSelection = 2;  // Stay on Brightness position
       beep(TONE_MENU_NAV, BEEP_SHORT);
       drawMenu();
     }
@@ -387,22 +564,22 @@ void handleKeyPress(char key) {
   if (currentMode == MODE_WEB_PASSWORD_SETTINGS) {
     int result = handleWebPasswordInput(key, tft);
     if (result == -1) {
-      // Exit web password settings, back to settings menu
-      currentMode = MODE_SETTINGS_MENU;
-      currentSelection = 0;
+      // Exit web password settings, back to WiFi submenu
+      currentMode = MODE_WIFI_SUBMENU;
+      currentSelection = 1;  // Stay on Web Password position
       beep(TONE_MENU_NAV, BEEP_SHORT);
       drawMenu();
     }
     return;
   }
 
-  // Handle General settings mode (Callsign)
+  // Handle Callsign settings mode
   if (currentMode == MODE_CALLSIGN_SETTINGS) {
     int result = handleCallsignInput(key, tft);
     if (result == -1) {
-      // Exit general settings, back to settings menu
-      currentMode = MODE_SETTINGS_MENU;
-      currentSelection = 0;
+      // Exit callsign settings, back to General submenu
+      currentMode = MODE_GENERAL_SUBMENU;
+      currentSelection = 0;  // Stay on Callsign position
       beep(TONE_MENU_NAV, BEEP_SHORT);
       drawMenu();
     }
@@ -432,9 +609,9 @@ void handleKeyPress(char key) {
   if (currentMode == MODE_PRACTICE) {
     int result = handlePracticeInput(key, tft);
     if (result == -1) {
-      // Exit practice mode, back to training menu
-      currentMode = MODE_TRAINING_MENU;
-      currentSelection = 0;
+      // Exit practice mode, back to CW menu
+      currentMode = MODE_CW_MENU;
+      currentSelection = 1;  // Practice position in CW menu
       beep(TONE_MENU_NAV, BEEP_SHORT);
       drawMenu();
     }
@@ -445,9 +622,9 @@ void handleKeyPress(char key) {
   if (currentMode == MODE_VAIL_REPEATER) {
     int result = handleVailInput(key, tft);
     if (result == -1) {
-      // Exit Vail mode, back to main menu
-      currentMode = MODE_MAIN_MENU;
-      currentSelection = 0;
+      // Exit Vail mode, back to CW menu
+      currentMode = MODE_CW_MENU;
+      currentSelection = 2;  // Vail Repeater position in CW menu
       beep(TONE_MENU_NAV, BEEP_SHORT);
       drawMenu();
     }
@@ -674,9 +851,9 @@ void handleKeyPress(char key) {
   if (currentMode == MODE_RADIO_OUTPUT) {
     int result = handleRadioOutputInput(key, tft);
     if (result == -1) {
-      // Exit to Radio menu
-      currentMode = MODE_RADIO_MENU;
-      currentSelection = 0;
+      // Exit to CW menu
+      currentMode = MODE_CW_MENU;
+      currentSelection = 3;  // Radio Output position in CW menu
       beep(TONE_MENU_NAV, BEEP_SHORT);
       drawMenu();
     } else if (result == 2) {
@@ -690,9 +867,9 @@ void handleKeyPress(char key) {
   if (currentMode == MODE_CW_MEMORIES) {
     int result = handleCWMemoriesInput(key, tft);
     if (result == -1) {
-      // Exit to Radio menu
-      currentMode = MODE_RADIO_MENU;
-      currentSelection = 0;
+      // Exit to CW menu
+      currentMode = MODE_CW_MENU;
+      currentSelection = 4;  // CW Memories position in CW menu
       beep(TONE_MENU_NAV, BEEP_SHORT);
       drawMenu();
     }
@@ -740,18 +917,86 @@ void handleKeyPress(char key) {
     return;
   }
 
-  // Menu navigation (for MAIN_MENU, TRAINING_MENU, GAMES_MENU, RADIO_MENU, SETTINGS_MENU, TOOLS_MENU, QSO_LOGGER_MENU)
+  // Handle BT HID mode
+  if (currentMode == MODE_BT_HID) {
+    int result = handleBTHIDInput(key, tft);
+    if (result == -1) {
+      // Exit to Bluetooth menu
+      currentMode = MODE_BLUETOOTH_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    } else if (result == 2) {
+      // Redraw requested
+      drawBTHIDUI(tft);
+    }
+    return;
+  }
+
+  // Handle BT MIDI mode
+  if (currentMode == MODE_BT_MIDI) {
+    int result = handleBTMIDIInput(key, tft);
+    if (result == -1) {
+      // Exit to Bluetooth menu
+      currentMode = MODE_BLUETOOTH_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    } else if (result == 2) {
+      // Redraw requested
+      drawBTMIDIUI(tft);
+    }
+    return;
+  }
+
+  // Handle BT Keyboard settings mode
+  if (currentMode == MODE_BT_KEYBOARD_SETTINGS) {
+    int result = handleBTKeyboardSettingsInput(key, tft);
+    if (result == -1) {
+      // Exit to Device Bluetooth submenu
+      currentMode = MODE_DEVICE_BT_SUBMENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    } else if (result == 2) {
+      // Redraw requested
+      drawBTKeyboardSettingsUI(tft);
+    }
+    return;
+  }
+
+  // Handle placeholder "Coming Soon" modes - ESC returns to Ham Tools menu
+  if (currentMode == MODE_BAND_PLANS || currentMode == MODE_PROPAGATION ||
+      currentMode == MODE_ANTENNAS || currentMode == MODE_LICENSE_STUDY ||
+      currentMode == MODE_SUMMIT_CHAT) {
+    if (key == KEY_ESC) {
+      currentMode = MODE_HAM_TOOLS_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    }
+    return;
+  }
+
+  // Menu navigation (for all menu modes)
   if (currentMode == MODE_MAIN_MENU || currentMode == MODE_TRAINING_MENU ||
-      currentMode == MODE_GAMES_MENU || currentMode == MODE_RADIO_MENU ||
-      currentMode == MODE_SETTINGS_MENU ||
-      currentMode == MODE_TOOLS_MENU || currentMode == MODE_QSO_LOGGER_MENU) {
-    int maxItems = MENU_ITEMS;
+      currentMode == MODE_GAMES_MENU || currentMode == MODE_CW_MENU ||
+      currentMode == MODE_SETTINGS_MENU || currentMode == MODE_DEVICE_SETTINGS_MENU ||
+      currentMode == MODE_WIFI_SUBMENU || currentMode == MODE_GENERAL_SUBMENU ||
+      currentMode == MODE_HAM_TOOLS_MENU || currentMode == MODE_QSO_LOGGER_MENU ||
+      currentMode == MODE_BLUETOOTH_MENU || currentMode == MODE_DEVICE_BT_SUBMENU) {
+    int maxItems = MAIN_MENU_ITEMS;
+    if (currentMode == MODE_CW_MENU) maxItems = CW_MENU_ITEMS;
     if (currentMode == MODE_TRAINING_MENU) maxItems = TRAINING_MENU_ITEMS;
     if (currentMode == MODE_GAMES_MENU) maxItems = GAMES_MENU_ITEMS;
-    if (currentMode == MODE_RADIO_MENU) maxItems = RADIO_MENU_ITEMS;
     if (currentMode == MODE_SETTINGS_MENU) maxItems = SETTINGS_MENU_ITEMS;
-    if (currentMode == MODE_TOOLS_MENU) maxItems = TOOLS_MENU_ITEMS;
+    if (currentMode == MODE_DEVICE_SETTINGS_MENU) maxItems = DEVICE_SETTINGS_MENU_ITEMS;
+    if (currentMode == MODE_WIFI_SUBMENU) maxItems = WIFI_SUBMENU_ITEMS;
+    if (currentMode == MODE_GENERAL_SUBMENU) maxItems = GENERAL_SUBMENU_ITEMS;
+    if (currentMode == MODE_HAM_TOOLS_MENU) maxItems = HAM_TOOLS_MENU_ITEMS;
     if (currentMode == MODE_QSO_LOGGER_MENU) maxItems = QSO_LOGGER_MENU_ITEMS;
+    if (currentMode == MODE_BLUETOOTH_MENU) maxItems = BLUETOOTH_MENU_ITEMS;
+    if (currentMode == MODE_DEVICE_BT_SUBMENU) maxItems = DEVICE_BT_SUBMENU_ITEMS;
 
     // Arrow key navigation
     if (key == KEY_UP) {
@@ -772,18 +1017,53 @@ void handleKeyPress(char key) {
       selectMenuItem();
     }
     else if (key == KEY_ESC) {
-      if (currentMode == MODE_TRAINING_MENU || currentMode == MODE_GAMES_MENU ||
-          currentMode == MODE_RADIO_MENU || currentMode == MODE_SETTINGS_MENU ||
-          currentMode == MODE_TOOLS_MENU) {
+      if (currentMode == MODE_CW_MENU || currentMode == MODE_BLUETOOTH_MENU ||
+          currentMode == MODE_GAMES_MENU ||
+          currentMode == MODE_HAM_TOOLS_MENU || currentMode == MODE_SETTINGS_MENU) {
         // Back to main menu
         currentMode = MODE_MAIN_MENU;
         currentSelection = 0;
         beep(TONE_MENU_NAV, BEEP_SHORT);
         drawMenu();
         return;
+      } else if (currentMode == MODE_TRAINING_MENU) {
+        // Back to CW menu
+        currentMode = MODE_CW_MENU;
+        currentSelection = 0;
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+        drawMenu();
+        return;
+      } else if (currentMode == MODE_DEVICE_SETTINGS_MENU) {
+        // Back to settings menu
+        currentMode = MODE_SETTINGS_MENU;
+        currentSelection = 0;
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+        drawMenu();
+        return;
+      } else if (currentMode == MODE_WIFI_SUBMENU) {
+        // Back to device settings menu
+        currentMode = MODE_DEVICE_SETTINGS_MENU;
+        currentSelection = 0;
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+        drawMenu();
+        return;
+      } else if (currentMode == MODE_GENERAL_SUBMENU) {
+        // Back to device settings menu
+        currentMode = MODE_DEVICE_SETTINGS_MENU;
+        currentSelection = 1;
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+        drawMenu();
+        return;
+      } else if (currentMode == MODE_DEVICE_BT_SUBMENU) {
+        // Back to device settings menu
+        currentMode = MODE_DEVICE_SETTINGS_MENU;
+        currentSelection = 2;
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+        drawMenu();
+        return;
       } else if (currentMode == MODE_QSO_LOGGER_MENU) {
-        // Back to tools menu
-        currentMode = MODE_TOOLS_MENU;
+        // Back to Ham Tools menu
+        currentMode = MODE_HAM_TOOLS_MENU;
         currentSelection = 0;
         beep(TONE_MENU_NAV, BEEP_SHORT);
         drawMenu();
@@ -806,19 +1086,29 @@ void handleKeyPress(char key) {
 
     if (redraw) {
       if (currentMode == MODE_MAIN_MENU) {
-        drawMenuItems(mainMenuOptions, mainMenuIcons, MENU_ITEMS);
+        drawMenuItems(mainMenuOptions, mainMenuIcons, MAIN_MENU_ITEMS);
+      } else if (currentMode == MODE_CW_MENU) {
+        drawMenuItems(cwMenuOptions, cwMenuIcons, CW_MENU_ITEMS);
       } else if (currentMode == MODE_TRAINING_MENU) {
         drawMenuItems(trainingMenuOptions, trainingMenuIcons, TRAINING_MENU_ITEMS);
       } else if (currentMode == MODE_GAMES_MENU) {
         drawMenuItems(gamesMenuOptions, gamesMenuIcons, GAMES_MENU_ITEMS);
-      } else if (currentMode == MODE_RADIO_MENU) {
-        drawMenuItems(radioMenuOptions, radioMenuIcons, RADIO_MENU_ITEMS);
       } else if (currentMode == MODE_SETTINGS_MENU) {
         drawMenuItems(settingsMenuOptions, settingsMenuIcons, SETTINGS_MENU_ITEMS);
-      } else if (currentMode == MODE_TOOLS_MENU) {
-        drawMenuItems(toolsMenuOptions, toolsMenuIcons, TOOLS_MENU_ITEMS);
+      } else if (currentMode == MODE_DEVICE_SETTINGS_MENU) {
+        drawMenuItems(deviceSettingsMenuOptions, deviceSettingsMenuIcons, DEVICE_SETTINGS_MENU_ITEMS);
+      } else if (currentMode == MODE_WIFI_SUBMENU) {
+        drawMenuItems(wifiSubmenuOptions, wifiSubmenuIcons, WIFI_SUBMENU_ITEMS);
+      } else if (currentMode == MODE_GENERAL_SUBMENU) {
+        drawMenuItems(generalSubmenuOptions, generalSubmenuIcons, GENERAL_SUBMENU_ITEMS);
+      } else if (currentMode == MODE_HAM_TOOLS_MENU) {
+        drawMenuItems(hamToolsMenuOptions, hamToolsMenuIcons, HAM_TOOLS_MENU_ITEMS);
       } else if (currentMode == MODE_QSO_LOGGER_MENU) {
         drawMenuItems(qsoLoggerMenuOptions, qsoLoggerMenuIcons, QSO_LOGGER_MENU_ITEMS);
+      } else if (currentMode == MODE_BLUETOOTH_MENU) {
+        drawMenuItems(bluetoothMenuOptions, bluetoothMenuIcons, BLUETOOTH_MENU_ITEMS);
+      } else if (currentMode == MODE_DEVICE_BT_SUBMENU) {
+        drawMenuItems(deviceBTSubmenuOptions, deviceBTSubmenuIcons, DEVICE_BT_SUBMENU_ITEMS);
       }
     }
   }

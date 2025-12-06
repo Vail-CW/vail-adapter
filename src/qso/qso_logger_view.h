@@ -5,7 +5,6 @@
 #define QSO_LOGGER_VIEW_H
 
 #include <Arduino.h>
-#include <Adafruit_ST7789.h>
 #include "../core/config.h"
 #include "qso_logger.h"  // Same folder
 #include "qso_logger_storage.h"  // Same folder
@@ -39,15 +38,15 @@ ViewState viewState;
 // Forward declarations
 void loadQSOsForView();
 void freeQSOsFromView();
-void drawListView(Adafruit_ST7789& tft);
-void drawDetailView(Adafruit_ST7789& tft);
+void drawListView(LGFX& tft);
+void drawDetailView(LGFX& tft);
 void scrollListUp();
 void scrollListDown();
 void scrollDetailUp();
 void scrollDetailDown();
 
 // Initialize view state and load QSOs
-void startViewLogs(Adafruit_ST7789& tft) {
+void startViewLogs(LGFX& tft) {
   Serial.println("Starting View Logs mode");
 
   viewState.mode = VIEW_MODE_LIST;
@@ -72,7 +71,7 @@ void loadQSOsForView() {
 
   // First, count total QSOs
   int totalCount = 0;
-  File root = FileSystem.open("/logs");
+  File root = SD.open("/logs");
   if (!root || !root.isDirectory()) {
     Serial.println("Failed to open /logs directory");
     return;
@@ -98,7 +97,7 @@ void loadQSOsForView() {
       if (filename.startsWith("qso_") && filename.endsWith(".json")) {
         Serial.println("  -> Loading this file");
         // Load this file and count entries
-        File logFile = FileSystem.open(file.path(), "r");
+        File logFile = SD.open(file.path(), "r");
         if (logFile) {
           String content = logFile.readString();
           logFile.close();
@@ -148,7 +147,7 @@ void loadQSOsForView() {
 
   // Load QSOs into array
   int qsoIndex = 0;
-  root = FileSystem.open("/logs");
+  root = SD.open("/logs");
   file = root.openNextFile();
 
   while (file && qsoIndex < totalCount) {
@@ -162,7 +161,7 @@ void loadQSOsForView() {
       }
 
       if (filename.startsWith("qso_") && filename.endsWith(".json")) {
-        File logFile = FileSystem.open(file.path(), "r");
+        File logFile = SD.open(file.path(), "r");
         if (logFile) {
           String content = logFile.readString();
           logFile.close();
@@ -203,7 +202,7 @@ void freeQSOsFromView() {
 }
 
 // Draw list view with scrollable QSOs
-void drawListView(Adafruit_ST7789& tft) {
+void drawListView(LGFX& tft) {
   // Header
   tft.fillRect(0, 0, SCREEN_WIDTH, 40, 0x1082); // Dark blue header
   tft.setTextSize(2);
@@ -320,7 +319,7 @@ void drawListView(Adafruit_ST7789& tft) {
 }
 
 // Draw detail view for selected QSO
-void drawDetailView(Adafruit_ST7789& tft) {
+void drawDetailView(LGFX& tft) {
   if (viewState.selectedIndex < 0 || viewState.selectedIndex >= viewState.totalQSOs) {
     return;
   }
@@ -524,7 +523,7 @@ void drawDetailView(Adafruit_ST7789& tft) {
 }
 
 // Draw delete confirmation dialog
-void drawDeleteConfirmation(Adafruit_ST7789& tft) {
+void drawDeleteConfirmation(LGFX& tft) {
   // Semi-transparent overlay effect (dark rectangle)
   tft.fillRect(20, 80, SCREEN_WIDTH - 40, 80, 0x2104); // Dark blue-gray
   tft.drawRect(20, 80, SCREEN_WIDTH - 40, 80, ST77XX_RED);
@@ -561,13 +560,13 @@ bool deleteCurrentQSO() {
   // Get the log filename for this QSO's date
   String filename = getLogFilename(qsoToDelete.date);
 
-  if (!FileSystem.exists(filename)) {
+  if (!SD.exists(filename)) {
     Serial.println("Log file doesn't exist!");
     return false;
   }
 
   // Read the entire log file
-  File file = FileSystem.open(filename, "r");
+  File file = SD.open(filename, "r");
   if (!file) {
     Serial.println("Failed to open log file for reading");
     return false;
@@ -616,7 +615,7 @@ bool deleteCurrentQSO() {
   }
 
   // Write back to file
-  file = FileSystem.open(filename, "w");
+  file = SD.open(filename, "w");
   if (!file) {
     Serial.println("Failed to open log file for writing");
     return false;
@@ -661,7 +660,7 @@ void scrollListDown() {
 }
 
 // Handle input for view logs mode
-int handleViewLogsInput(char key, Adafruit_ST7789& tft) {
+int handleViewLogsInput(char key, LGFX& tft) {
   Serial.print("View Logs key: 0x");
   Serial.println(key, HEX);
 

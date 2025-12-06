@@ -33,12 +33,14 @@ This project uses modular documentation. For detailed information on specific to
 - Upload Speed: **921600**
 
 **Required Libraries** (Install via Arduino Library Manager):
-1. Adafruit GFX Library
-2. Adafruit ST7735 and ST7789 Library
-3. Adafruit MAX1704X (battery monitoring)
-4. Adafruit LC709203F (backup battery monitor support)
-5. WebSockets by Markus Sattler
-6. ArduinoJson by Benoit Blanchon
+1. LovyanGFX by lovyan03 (display graphics for ST7796S)
+2. Adafruit MAX1704X (battery monitoring)
+3. Adafruit LC709203F (backup battery monitor support)
+4. WebSockets by Markus Sattler
+5. ArduinoJson by Benoit Blanchon
+6. ESPAsyncWebServer (install from GitHub)
+
+**Arduino ESP32 Core:** Version 2.0.14 (required for ST7796S display compatibility)
 
 **Compilation:**
 ```bash
@@ -70,13 +72,16 @@ For detailed architecture information, see **[docs/ARCHITECTURE.md](docs/ARCHITE
 
 ### Hardware Interfaces
 
-**Display:** ST7789V 240×320 LCD (rotated to 320×240 landscape)
+**Display:** ST7796S 4.0" 480×320 LCD (landscape orientation) - uses LovyanGFX library
+**SD Card:** Integrated on display board (CS=38, shares SPI with display, FAT32 format required)
 **Keyboard:** CardKB I2C (address 0x5F)
 **Paddle Input:** GPIO 6 (DIT), GPIO 9 (DAH)
 **Capacitive Touch:** GPIO 8 (DIT), GPIO 5 (DAH)
 **Radio Output:** GPIO 18 (DIT), GPIO 17 (DAH)
 **I2S Audio:** MAX98357A amplifier (BCK=14, LRC=15, DIN=16)
 **Battery Monitor:** MAX17048 or LC709203F (I2C auto-detected)
+**Display SPI:** MOSI=35, SCK=36, MISO=37, CS=10, RST=11, DC=12
+**SD Card SPI:** MOSI=35, SCK=36, MISO=37, CS=38 (shares bus with display)
 
 For complete pin assignments and hardware details, see **[docs/HARDWARE.md](docs/HARDWARE.md)**.
 
@@ -133,6 +138,33 @@ To enter AP mode: Settings → WiFi Setup → Press 'A' key
 
 For WiFi state machine details, see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#wifi-configuration-and-ap-mode)**.
 
+### SD Card Storage
+
+**Format:** FAT32 (required - exFAT not supported)
+**Recommended Size:** 4-32 GB SDHC (Class 10 or higher)
+**Initialization:** On-demand (lazy init when storage page accessed to avoid SPI conflicts with display)
+**Access:** Web interface at `http://vail-summit.local/storage`
+
+**Supported Operations:**
+- File browser with size and type display
+- Upload files from computer to SD card
+- Download files from SD card to computer
+- Delete files from SD card
+- View storage statistics (total/used/free space)
+
+**Use Cases:**
+- Data logging (training sessions, practice stats)
+- QSO log backups (export logs to SD card)
+- Configuration backups (save/restore device settings)
+- Firmware updates (store firmware files for future updates)
+- Custom content (callsign lists, practice text files)
+
+**Important Notes:**
+- Cards larger than 32 GB must be reformatted from exFAT to FAT32
+- SD card shares SPI bus with display (uses separate chip select GPIO 38)
+- No boot-time initialization to prevent display conflicts
+- First access to storage page triggers SD card initialization
+
 ### Major Features
 
 **CW Academy Training Mode** - 4-track, 16-session curriculum with progressive character introduction
@@ -142,6 +174,7 @@ For WiFi state machine details, see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.m
 **CW Memories** - Store and manage up to 10 reusable morse code message presets
 **Morse Decoder** - Real-time adaptive decoding of paddle input with WPM tracking
 **QSO Logger** - Device and web-based contact logging with ADIF/CSV export
+**Storage Management** - Web-based SD card file management with upload/download capabilities
 **Web Interface** - Comprehensive browser-based control and QSO management
 **Vail Repeater** - Internet morse repeater via WebSocket connection
 
@@ -154,6 +187,7 @@ For detailed feature documentation, see **[docs/FEATURES.md](docs/FEATURES.md)**
 **Device Settings:** CW speed/tone, volume, callsign configuration
 **System Info:** Firmware version, memory stats, storage usage
 **Radio Control:** Remote morse code transmission via radio output
+**Storage Management:** SD card file browser, upload/download files, view storage stats
 
 **Access:** `http://vail-summit.local/` or device IP address
 
@@ -186,7 +220,7 @@ Always use these functions instead of direct I2S manipulation. They handle volum
 - Only redraw what changes (use return codes from input handlers)
 - Disable all display updates during audio-critical operations
 - Use `fillRect()` to clear regions before redrawing text
-- Cache text bounds with `getTextBounds()` for centering
+- Use `getTextBounds_compat()` template function for text measurement (LovyanGFX compatibility wrapper)
 
 ### Morse Code Generation
 
@@ -209,6 +243,10 @@ For more development patterns, see **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)*
 5. **Load Preferences at startup, save immediately on change** - don't batch writes
 6. **WebSocket handling must be non-blocking** - use state machine pattern in update loop
 7. **Always initialize QSO structs** - `memset(&qso, 0, sizeof(QSO))` before populating to prevent garbage data
+8. **LovyanGFX API compatibility** - Use `getTextBounds_compat()` instead of `getTextBounds()`, use `nullptr` for default fonts
+9. **Display color order** - ST7796S requires BGR mode (`cfg.rgb_order = false`) for correct colors
+10. **SD card initialization** - Must be done AFTER display init (or on-demand) to avoid SPI bus conflicts
+11. **SD card format** - Must use FAT32 (exFAT not supported by Arduino SD library)
 
 For troubleshooting common issues, see **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#troubleshooting)**.
 
@@ -393,6 +431,10 @@ vail-summit/
 - `vail_repeater.h` - WebSocket client for vailmorse.com morse repeater
 - `ntp_time.h` - NTP time synchronization
 - `pota_api.h` - Parks On The Air API integration
+
+### Storage (`src/storage/`)
+
+- `sd_card.h` - SD card initialization and file management functions
 
 ### Include Path Conventions
 

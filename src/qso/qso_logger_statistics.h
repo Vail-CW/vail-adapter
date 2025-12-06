@@ -5,7 +5,6 @@
 #define QSO_LOGGER_STATISTICS_H
 
 #include <Arduino.h>
-#include <Adafruit_ST7789.h>
 #include "../core/config.h"
 #include "qso_logger.h"  // Same folder
 #include "qso_logger_storage.h"  // Same folder
@@ -108,7 +107,7 @@ void calculateStatistics() {
   int dateCountsSize = 0;
 
   // Open logs directory
-  File root = FileSystem.open("/logs");
+  File root = SD.open("/logs");
   if (!root || !root.isDirectory()) {
     Serial.println("Failed to open /logs directory");
     return;
@@ -130,7 +129,7 @@ void calculateStatistics() {
         Serial.print("Processing: ");
         Serial.println(filename);
 
-        File logFile = FileSystem.open(file.path(), "r");
+        File logFile = SD.open(file.path(), "r");
         if (logFile) {
           String content = logFile.readString();
           logFile.close();
@@ -235,7 +234,7 @@ void calculateStatistics() {
 // Statistics UI
 // ============================================
 
-void drawStatisticsUI(Adafruit_ST7789& tft) {
+void drawStatisticsUI(LGFX& tft) {
   tft.fillScreen(COLOR_BACKGROUND);
 
   // Header
@@ -381,10 +380,10 @@ void drawStatisticsUI(Adafruit_ST7789& tft) {
     tft.print(": ");
     tft.print(stats.modeStats[i].count);
 
-    // Draw bar graph
-    int barWidth = (stats.modeStats[i].count * 50) / stats.totalQSOs;
+    // Draw bar graph (scaled for 480px width)
+    int barWidth = (stats.modeStats[i].count * 75) / stats.totalQSOs;  // Increased max width
     if (barWidth < 2 && stats.modeStats[i].count > 0) barWidth = 2;
-    tft.fillRect(240, y + 1, barWidth, 6, ST77XX_GREEN);
+    tft.fillRect(360, y + 1, barWidth, 6, ST77XX_GREEN);  // X position scaled 1.5×
 
     y += 10;
   }
@@ -401,7 +400,7 @@ void drawStatisticsUI(Adafruit_ST7789& tft) {
 // Input Handler
 // ============================================
 
-int handleStatisticsInput(char key, Adafruit_ST7789& tft) {
+int handleStatisticsInput(char key, LGFX& tft) {
   if (key == 0x1B) { // ESC
     return -1; // Exit to menu
   }
@@ -413,7 +412,7 @@ int handleStatisticsInput(char key, Adafruit_ST7789& tft) {
 // Initialization
 // ============================================
 
-void startStatistics(Adafruit_ST7789& tft) {
+void startStatistics(LGFX& tft) {
   Serial.println("Starting Statistics mode");
 
   // Calculate statistics from saved logs

@@ -62,9 +62,9 @@ int radioDitDuration = 0;
 Preferences radioPrefs;
 
 // Forward declarations
-void startRadioOutput(Adafruit_ST7789 &display);
-void drawRadioOutputUI(Adafruit_ST7789 &display);
-int handleRadioOutputInput(char key, Adafruit_ST7789 &display);
+void startRadioOutput(LGFX &display);
+void drawRadioOutputUI(LGFX &display);
+int handleRadioOutputInput(char key, LGFX &display);
 void updateRadioOutput();
 void saveRadioSettings();
 void loadRadioSettings();
@@ -94,7 +94,7 @@ void saveRadioSettings() {
 }
 
 // Start radio output mode
-void startRadioOutput(Adafruit_ST7789 &display) {
+void startRadioOutput(LGFX &display) {
   radioOutputActive = true;
   radioSettingSelection = 0;
   radioKeyerActive = false;
@@ -118,7 +118,7 @@ void startRadioOutput(Adafruit_ST7789 &display) {
 }
 
 // Draw radio output UI
-void drawRadioOutputUI(Adafruit_ST7789 &display) {
+void drawRadioOutputUI(LGFX &display) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -204,14 +204,14 @@ void drawRadioOutputUI(Adafruit_ST7789 &display) {
   String helpText = "\x18\x19 Select  \x1B\x1A Adjust  M Memories  ESC Back";
   int16_t x1, y1;
   uint16_t w, h;
-  display.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, helpText.c_str(), 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, SCREEN_HEIGHT - 12);
   display.print(helpText);
 }
 
 // Draw memory selector overlay
-void drawMemorySelector(Adafruit_ST7789 &display) {
+void drawMemorySelector(LGFX &display) {
   // Semi-transparent overlay effect (just draw over existing content)
   display.fillRoundRect(30, 50, SCREEN_WIDTH - 60, 160, 12, 0x0841);  // Very dark blue
   display.drawRoundRect(30, 50, SCREEN_WIDTH - 60, 160, 12, 0x34BF);  // Light blue outline
@@ -222,7 +222,7 @@ void drawMemorySelector(Adafruit_ST7789 &display) {
   int16_t x1, y1;
   uint16_t w, h;
   String title = "CW MEMORIES";
-  display.getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, title.c_str(), 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, 65);
   display.print(title);
@@ -272,14 +272,14 @@ void drawMemorySelector(Adafruit_ST7789 &display) {
   display.setTextSize(1);
   display.setTextColor(COLOR_WARNING);
   String helpText = "\x18\x19 Select  ENTER Send  ESC Cancel";
-  display.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, helpText.c_str(), 0, 0, &x1, &y1, &w, &h);
   centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, 195);
   display.print(helpText);
 }
 
 // Handle radio output input
-int handleRadioOutputInput(char key, Adafruit_ST7789 &display) {
+int handleRadioOutputInput(char key, LGFX &display) {
   // Handle memory selector if active
   if (memorySelectorActive) {
     if (key == KEY_UP) {

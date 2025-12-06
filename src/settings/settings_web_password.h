@@ -28,15 +28,15 @@ String webPassword = "";
 bool webAuthEnabled = false;
 
 // Forward declarations
-void startWebPasswordSettings(Adafruit_ST7789 &display);
-void drawWebPasswordUI(Adafruit_ST7789 &display);
-int handleWebPasswordInput(char key, Adafruit_ST7789 &display);
+void startWebPasswordSettings(LGFX &display);
+void drawWebPasswordUI(LGFX &display);
+int handleWebPasswordInput(char key, LGFX &display);
 void saveWebPassword(String password);
 bool loadWebPassword(String &password);
 void clearWebPassword();
 
 // Start web password settings mode
-void startWebPasswordSettings(Adafruit_ST7789 &display) {
+void startWebPasswordSettings(LGFX &display) {
   // Start with empty input (no need to show current password)
   webPasswordInput = "";
   passwordState = PASSWORD_STATE_NORMAL;
@@ -48,22 +48,22 @@ void startWebPasswordSettings(Adafruit_ST7789 &display) {
 }
 
 // Draw password input UI
-void drawWebPasswordUI(Adafruit_ST7789 &display) {
+void drawWebPasswordUI(LGFX &display) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   // Title
-  display.setFont(&FreeSansBold12pt7b);
+  display.setFont(nullptr);  // Use default font
   display.setTextColor(COLOR_TITLE);
   display.setTextSize(1);
 
   int16_t x1, y1;
   uint16_t w, h;
   String title = "Web Password";
-  display.getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, title.c_str(), 0, 0, &x1, &y1, &w, &h);
   display.setCursor((SCREEN_WIDTH - w) / 2, 65);
   display.print(title);
-  display.setFont(); // Reset font
+  display.setFont(nullptr); // Reset font
 
   // Current status
   display.setTextSize(1);
@@ -96,7 +96,7 @@ void drawWebPasswordUI(Adafruit_ST7789 &display) {
   display.drawRoundRect(boxX, boxY, boxW, boxH, 8, 0x34BF); // Light blue outline
 
   // Display password input as asterisks
-  display.setFont(&FreeSansBold12pt7b);
+  display.setFont(nullptr);  // Use default font
   display.setTextColor(ST77XX_WHITE);
   display.setTextSize(1);
 
@@ -105,7 +105,7 @@ void drawWebPasswordUI(Adafruit_ST7789 &display) {
     maskedPassword += "*";
   }
 
-  display.getTextBounds(maskedPassword.c_str(), 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, maskedPassword.c_str(), 0, 0, &x1, &y1, &w, &h);
   int textX = boxX + 15;
   int textY = boxY + (boxH / 2) + (h / 2) + 5;
   display.setCursor(textX, textY);
@@ -119,7 +119,7 @@ void drawWebPasswordUI(Adafruit_ST7789 &display) {
     }
   }
 
-  display.setFont(); // Reset font
+  display.setFont(nullptr); // Reset font
 
   // Username hint
   display.setTextSize(1);
@@ -184,7 +184,7 @@ void drawWebPasswordUI(Adafruit_ST7789 &display) {
 }
 
 // Handle web password input
-int handleWebPasswordInput(char key, Adafruit_ST7789 &display) {
+int handleWebPasswordInput(char key, LGFX &display) {
   // Handle confirmation state first
   if (passwordState == PASSWORD_STATE_CONFIRM_DISABLE) {
     if (key == KEY_ENTER || key == KEY_ENTER_ALT) {

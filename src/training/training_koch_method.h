@@ -14,7 +14,7 @@
 // Input Handling
 // ============================================
 
-int handleKochInput(char key, Adafruit_ST7789& tft) {
+int handleKochInput(char key, LGFX& tft) {
   // Handle character selection mode input (Practice mode only)
   if (kochInCharSelectMode) {
     if (key == KEY_ESC) {
@@ -260,7 +260,7 @@ int handleKochInput(char key, Adafruit_ST7789& tft) {
 // Mode Entry Point
 // ============================================
 
-void startKochMethod(Adafruit_ST7789& tft) {
+void startKochMethod(LGFX& tft) {
   Serial.println("=== Starting Koch Method Training ===");
 
   // Load progress

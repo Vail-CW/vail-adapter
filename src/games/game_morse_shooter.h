@@ -6,8 +6,6 @@
 #ifndef GAME_MORSE_SHOOTER_H
 #define GAME_MORSE_SHOOTER_H
 
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7789.h>
 #include "../core/config.h"
 #include "../core/morse_code.h"
 #include "../audio/i2s_audio.h"
@@ -20,7 +18,7 @@
 #define MAX_FALLING_LETTERS 5
 #define LETTER_FALL_SPEED 1      // Pixels per update (1 = slow and steady)
 #define LETTER_SPAWN_INTERVAL 3000  // ms between spawns
-#define GROUND_Y 225              // Y position of ground (very bottom of screen)
+// GROUND_Y now defined in config.h (scaled for 4" display)
 #define MAX_LIVES 5               // Lives (letters that can hit ground)
 #define GAME_UPDATE_INTERVAL 1000  // ms between game updates (1 second)
 
@@ -80,8 +78,8 @@ bool inShooterSettings = false;
 int shooterSettingsSelection = 0;  // 0=Speed, 1=Tone, 2=Key Type, 3=Save & Return
 
 // Forward declarations for settings
-void drawShooterSettings(Adafruit_ST7789& tft);
-int handleShooterSettingsInput(char key, Adafruit_ST7789& tft);
+void drawShooterSettings(LGFX& tft);
+int handleShooterSettingsInput(char key, LGFX& tft);
 
 /*
  * Initialize a falling letter (with collision avoidance)
@@ -159,7 +157,7 @@ void resetGame() {
 /*
  * Draw old-school ground scenery
  */
-void drawGroundScenery(Adafruit_ST7789& tft) {
+void drawGroundScenery(LGFX& tft) {
   // Ground line
   tft.drawFastHLine(0, GROUND_Y, SCREEN_WIDTH, ST77XX_GREEN);
   tft.drawFastHLine(0, GROUND_Y + 1, SCREEN_WIDTH, 0x05E0);
@@ -215,7 +213,7 @@ void drawGroundScenery(Adafruit_ST7789& tft) {
 /*
  * Draw falling letters (with background clearing for current position)
  */
-void drawFallingLetters(Adafruit_ST7789& tft, bool clearOld = false) {
+void drawFallingLetters(LGFX& tft, bool clearOld = false) {
   static int lastY[MAX_FALLING_LETTERS] = {0};
 
   tft.setTextSize(3);
@@ -244,7 +242,7 @@ void drawFallingLetters(Adafruit_ST7789& tft, bool clearOld = false) {
 /*
  * Draw turret laser when shooting
  */
-void drawLaserShot(Adafruit_ST7789& tft, int targetX, int targetY) {
+void drawLaserShot(LGFX& tft, int targetX, int targetY) {
   // Draw laser from turret to target
   tft.drawLine(160, GROUND_Y - 26, targetX + 10, targetY + 10, ST77XX_CYAN);
   tft.drawLine(159, GROUND_Y - 26, targetX + 10, targetY + 10, ST77XX_WHITE);
@@ -254,7 +252,7 @@ void drawLaserShot(Adafruit_ST7789& tft, int targetX, int targetY) {
 /*
  * Draw explosion effect
  */
-void drawExplosion(Adafruit_ST7789& tft, int x, int y) {
+void drawExplosion(LGFX& tft, int x, int y) {
   // Simple star burst explosion
   tft.drawCircle(x + 10, y + 10, 8, ST77XX_YELLOW);
   tft.drawCircle(x + 10, y + 10, 6, ST77XX_RED);
@@ -271,7 +269,7 @@ void drawExplosion(Adafruit_ST7789& tft, int x, int y) {
 /*
  * Draw HUD (score, lives, morse input)
  */
-void drawHUD(Adafruit_ST7789& tft) {
+void drawHUD(LGFX& tft) {
   // Score (top left corner)
   tft.setTextSize(1);
   tft.setTextColor(ST77XX_WHITE, COLOR_BACKGROUND);
@@ -343,7 +341,7 @@ void spawnFallingLetter() {
 /*
  * Check decoded text and try to shoot matching letter
  */
-bool checkMorseShoot(Adafruit_ST7789& tft) {
+bool checkMorseShoot(LGFX& tft) {
   if (shooterDecodedText.length() == 0) {
     return false;
   }
@@ -405,7 +403,7 @@ bool checkMorseShoot(Adafruit_ST7789& tft) {
  * Read paddle input and decode morse using adaptive decoder
  * Supports both straight key and iambic keying
  */
-void updateMorseInputFast(Adafruit_ST7789& tft) {
+void updateMorseInputFast(LGFX& tft) {
   morseInput.ditPressed = (digitalRead(DIT_PIN) == LOW) || (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
   morseInput.dahPressed = (digitalRead(DAH_PIN) == LOW) || (touchRead(TOUCH_DAH_PIN) > TOUCH_THRESHOLD);
 
@@ -588,7 +586,7 @@ void updateMorseInputFast(Adafruit_ST7789& tft) {
 /*
  * Draw shooter settings screen
  */
-void drawShooterSettings(Adafruit_ST7789& tft) {
+void drawShooterSettings(LGFX& tft) {
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   // Title
@@ -662,7 +660,7 @@ void drawShooterSettings(Adafruit_ST7789& tft) {
 /*
  * Handle shooter settings input
  */
-int handleShooterSettingsInput(char key, Adafruit_ST7789& tft) {
+int handleShooterSettingsInput(char key, LGFX& tft) {
   if (key == KEY_UP) {
     shooterSettingsSelection--;
     if (shooterSettingsSelection < 0) shooterSettingsSelection = 3;
@@ -767,7 +765,7 @@ int handleShooterSettingsInput(char key, Adafruit_ST7789& tft) {
 /*
  * Draw game over screen
  */
-void drawGameOver(Adafruit_ST7789& tft) {
+void drawGameOver(LGFX& tft) {
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   // Game Over text
@@ -801,7 +799,7 @@ void drawGameOver(Adafruit_ST7789& tft) {
 /*
  * Initialize game (called when entering from Games menu)
  */
-void startMorseShooter(Adafruit_ST7789& tft) {
+void startMorseShooter(LGFX& tft) {
   resetGame();
 
   // Setup decoder callback to capture decoded text
@@ -824,7 +822,7 @@ void startMorseShooter(Adafruit_ST7789& tft) {
 /*
  * Draw main game UI
  */
-void drawMorseShooterUI(Adafruit_ST7789& tft) {
+void drawMorseShooterUI(LGFX& tft) {
   // Clear screen
   tft.fillScreen(COLOR_BACKGROUND);
 
@@ -852,7 +850,7 @@ void drawMorseShooterUI(Adafruit_ST7789& tft) {
  * Update morse input (called every loop for responsive keying)
  * This is separate from visual updates
  */
-void updateMorseShooterInput(Adafruit_ST7789& tft) {
+void updateMorseShooterInput(LGFX& tft) {
   if (gameOver || gamePaused) {
     return;
   }
@@ -864,7 +862,7 @@ void updateMorseShooterInput(Adafruit_ST7789& tft) {
  * This is separate from input polling
  * Screen is FROZEN while any paddle is held or pattern is being entered
  */
-void updateMorseShooterVisuals(Adafruit_ST7789& tft) {
+void updateMorseShooterVisuals(LGFX& tft) {
   if (gameOver || gamePaused) {
     return;
   }
@@ -898,7 +896,7 @@ void updateMorseShooterVisuals(Adafruit_ST7789& tft) {
  * Handle keyboard input for game
  * Returns: -1 to exit game, 0 for normal input, 2 for full redraw
  */
-int handleMorseShooterInput(char key, Adafruit_ST7789& tft) {
+int handleMorseShooterInput(char key, LGFX& tft) {
   // If in settings mode, route to settings handler
   if (inShooterSettings) {
     return handleShooterSettingsInput(key, tft);

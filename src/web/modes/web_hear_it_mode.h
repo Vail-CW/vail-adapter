@@ -7,7 +7,6 @@
 #ifndef WEB_HEAR_IT_MODE_H
 #define WEB_HEAR_IT_MODE_H
 
-#include <Adafruit_ST7789.h>
 #include "../../core/morse_code.h"
 #include "../../core/config.h"
 
@@ -30,7 +29,7 @@ extern void sendHearItReadyForInput();
 extern String generateCallsign();
 
 // Forward declarations (defined later in this file)
-void drawWebHearItUI(Adafruit_ST7789& tft);
+void drawWebHearItUI(LGFX& tft);
 void webPlayCurrentCallsign();
 void webGenerateNewCallsign();
 
@@ -83,7 +82,7 @@ void webPlayCurrentCallsign() {
 /*
  * Initialize web hear it mode
  */
-void startWebHearItMode(Adafruit_ST7789& tft) {
+void startWebHearItMode(LGFX& tft) {
   Serial.println("Starting web Hear It Type It mode");
 
   // Reset state
@@ -110,7 +109,7 @@ void startWebHearItMode(Adafruit_ST7789& tft) {
 /*
  * Draw web hear it mode UI (static display)
  */
-void drawWebHearItUI(Adafruit_ST7789& tft) {
+void drawWebHearItUI(LGFX& tft) {
   tft.fillScreen(COLOR_BACKGROUND);
 
   // Header
@@ -145,7 +144,7 @@ void drawWebHearItUI(Adafruit_ST7789& tft) {
  * Handle web hear it mode input
  * Returns: -1 to exit mode, 0 otherwise
  */
-int handleWebHearItInput(char key, Adafruit_ST7789& tft) {
+int handleWebHearItInput(char key, LGFX& tft) {
   if (key == 0x1B) {  // ESC key
     Serial.println("Exiting web Hear It Type It mode");
     webHearItModeActive = false;

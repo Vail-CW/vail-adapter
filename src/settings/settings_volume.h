@@ -6,8 +6,6 @@
 #ifndef SETTINGS_VOLUME_H
 #define SETTINGS_VOLUME_H
 
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7789.h>
 #include "../core/config.h"
 
 // Volume settings state
@@ -16,12 +14,12 @@ int volumeValue = DEFAULT_VOLUME;
 bool volumeChanged = false;
 
 // Forward declaration
-void drawVolumeDisplay(Adafruit_ST7789 &display);
+void drawVolumeDisplay(LGFX &display);
 
 /*
  * Initialize volume settings screen
  */
-void initVolumeSettings(Adafruit_ST7789 &display) {
+void initVolumeSettings(LGFX &display) {
   volumeSettingsActive = true;
   volumeValue = getVolume();  // Get current volume from i2s_audio.h
   volumeChanged = false;
@@ -36,7 +34,7 @@ void initVolumeSettings(Adafruit_ST7789 &display) {
 
   int16_t x1, y1;
   uint16_t w, h;
-  display.getTextBounds("VOLUME", 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, "VOLUME", 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, 30);
   display.print("VOLUME");
@@ -48,7 +46,7 @@ void initVolumeSettings(Adafruit_ST7789 &display) {
 /*
  * Draw volume level display
  */
-void drawVolumeDisplay(Adafruit_ST7789 &display) {
+void drawVolumeDisplay(LGFX &display) {
   // Clear display area
   display.fillRect(0, 50, SCREEN_WIDTH, 140, COLOR_BACKGROUND);
 
@@ -73,7 +71,7 @@ void drawVolumeDisplay(Adafruit_ST7789 &display) {
 
   int16_t x1, y1;
   uint16_t w, h;
-  display.getTextBounds(volumeText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, volumeText, 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, cardY + 60);
   display.print(volumeText);
@@ -98,14 +96,14 @@ void drawVolumeDisplay(Adafruit_ST7789 &display) {
   }
 
   // Draw footer help text
-  display.setFont();
+  display.setFont(nullptr);
   display.setTextSize(1);
   display.setTextColor(ST77XX_WHITE);
 
   String helpText = "UP/DN Adjust  ENTER Save  ESC Cancel";
   int16_t x1_help, y1_help;
   uint16_t w_help, h_help;
-  display.getTextBounds(helpText, 0, 0, &x1_help, &y1_help, &w_help, &h_help);
+  getTextBounds_compat(display, helpText.c_str(), 0, 0, &x1_help, &y1_help, &w_help, &h_help);
   int helpX = (SCREEN_WIDTH - w_help) / 2;
   display.setCursor(helpX, SCREEN_HEIGHT - 10);
   display.print(helpText);
@@ -115,7 +113,7 @@ void drawVolumeDisplay(Adafruit_ST7789 &display) {
  * Handle volume settings input
  * Returns: -1 to exit, 0 to continue
  */
-int handleVolumeInput(char key, Adafruit_ST7789 &display) {
+int handleVolumeInput(char key, LGFX &display) {
   if (key == KEY_UP) {
     // Increase volume
     volumeValue = constrain(volumeValue + 5, VOLUME_MIN, VOLUME_MAX);
@@ -152,7 +150,7 @@ int handleVolumeInput(char key, Adafruit_ST7789 &display) {
 /*
  * Update volume settings (called in main loop)
  */
-void updateVolumeSettings(Adafruit_ST7789 &display) {
+void updateVolumeSettings(LGFX &display) {
   // Nothing to update in loop for now
   // Future: Could add visual feedback like pulsing animation
 }

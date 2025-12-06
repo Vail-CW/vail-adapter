@@ -16,14 +16,20 @@
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include <Preferences.h>
+#include <SD.h>
 #include "../../qso/qso_logger.h"
+#include "../../storage/sd_card.h"
 
 // External declarations for functions from other modules
 extern bool saveQSO(const QSO& qso);                    // From qso_logger_storage.h
+extern bool isQSOStorageReady();                        // From qso_logger_storage.h
+extern void regenerateADIFFiles(const char* date);      // From qso_logger_storage.h
 extern String frequencyToBand(float freq);              // From qso_logger_validation.h
 extern String formatCurrentDateTime();                  // From qso_logger_validation.h
 extern bool checkWebAuth(AsyncWebServerRequest *request); // From web_server.h
-// Note: FileSystem is defined as a macro in qso_logger_storage.h
+
+// QSO directory on SD card
+#define QSO_DIR "/qso"
 
 /*
  * Setup all QSO-related API endpoints
@@ -119,6 +125,12 @@ void setupQSOAPI(AsyncWebServer &webServer) {
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
       if (!checkWebAuth(request)) return;
 
+      // Check SD card availability
+      if (!sdCardAvailable) {
+        request->send(503, "application/json", "{\"success\":false,\"error\":\"SD card required for QSO logging\"}");
+        return;
+      }
+
       // Parse JSON body
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data, len);
@@ -158,7 +170,7 @@ void setupQSOAPI(AsyncWebServer &webServer) {
         strlcpy(newQSO.time_on, dateTime.substring(9, 13).c_str(), sizeof(newQSO.time_on));
       }
 
-      // Save QSO using existing function
+      // Save QSO using existing function (handles ADIF regeneration)
       if (saveQSO(newQSO)) {
         Serial.println("QSO created via web interface");
         request->send(200, "application/json", "{\"success\":true}");
@@ -178,6 +190,12 @@ void setupQSOAPI(AsyncWebServer &webServer) {
     [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
       if (!checkWebAuth(request)) return;
 
+      // Check SD card availability
+      if (!sdCardAvailable) {
+        request->send(503, "application/json", "{\"success\":false,\"error\":\"SD card required for QSO logging\"}");
+        return;
+      }
+
       // Parse JSON body
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, data, len);
@@ -196,9 +214,9 @@ void setupQSOAPI(AsyncWebServer &webServer) {
         return;
       }
 
-      // Load the day's log file
-      String filename = "/logs/qso_" + String(date) + ".json";
-      File file = FileSystem.open(filename, "r");
+      // Load the day's log file from SD card
+      String filename = String(QSO_DIR) + "/qso_" + String(date) + ".json";
+      File file = SD.open(filename, "r");
       if (!file) {
         request->send(404, "application/json", "{\"success\":false,\"error\":\"Log file not found\"}");
         return;
@@ -247,8 +265,8 @@ void setupQSOAPI(AsyncWebServer &webServer) {
         return;
       }
 
-      // Save updated log file
-      file = FileSystem.open(filename, "w");
+      // Save updated log file to SD card
+      file = SD.open(filename, FILE_WRITE);
       if (!file) {
         request->send(500, "application/json", "{\"success\":false,\"error\":\"Failed to open file for writing\"}");
         return;
@@ -256,6 +274,9 @@ void setupQSOAPI(AsyncWebServer &webServer) {
 
       serializeJson(logDoc, file);
       file.close();
+
+      // Regenerate ADIF files
+      regenerateADIFFiles(date);
 
       Serial.println("QSO updated via web interface");
       request->send(200, "application/json", "{\"success\":true}");
@@ -265,6 +286,12 @@ void setupQSOAPI(AsyncWebServer &webServer) {
   webServer.on("/api/qsos/delete", HTTP_DELETE, [](AsyncWebServerRequest *request) {
     if (!checkWebAuth(request)) return;
 
+    // Check SD card availability
+    if (!sdCardAvailable) {
+      request->send(503, "application/json", "{\"success\":false,\"error\":\"SD card required for QSO logging\"}");
+      return;
+    }
+
     if (!request->hasParam("date") || !request->hasParam("id")) {
       request->send(400, "application/json", "{\"success\":false,\"error\":\"Missing date or id\"}");
       return;
@@ -273,9 +300,9 @@ void setupQSOAPI(AsyncWebServer &webServer) {
     String date = request->getParam("date")->value();
     unsigned long id = request->getParam("id")->value().toInt();
 
-    // Load the day's log file
-    String filename = "/logs/qso_" + date + ".json";
-    File file = FileSystem.open(filename, "r");
+    // Load the day's log file from SD card
+    String filename = String(QSO_DIR) + "/qso_" + date + ".json";
+    File file = SD.open(filename, "r");
     if (!file) {
       request->send(404, "application/json", "{\"success\":false,\"error\":\"Log file not found\"}");
       return;
@@ -312,13 +339,15 @@ void setupQSOAPI(AsyncWebServer &webServer) {
     int newCount = logs.size();
     logDoc["count"] = newCount;
 
-    // If no QSOs left, delete the file
+    // If no QSOs left, delete the JSON file and its ADIF counterpart
     if (newCount == 0) {
-      FileSystem.remove(filename);
-      Serial.println("Log file deleted (no QSOs remaining)");
+      SD.remove(filename);
+      String adifFile = String(QSO_DIR) + "/qso_" + date + ".adi";
+      SD.remove(adifFile);
+      Serial.println("Log files deleted (no QSOs remaining)");
     } else {
-      // Save updated log file
-      file = FileSystem.open(filename, "w");
+      // Save updated log file to SD card
+      file = SD.open(filename, FILE_WRITE);
       if (!file) {
         request->send(500, "application/json", "{\"success\":false,\"error\":\"Failed to open file for writing\"}");
         return;
@@ -328,8 +357,8 @@ void setupQSOAPI(AsyncWebServer &webServer) {
       file.close();
     }
 
-    // Note: Metadata will be refreshed when QSO logger loads on device
-    // or when the page reloads (it counts logs dynamically in getQSOLogsJSON)
+    // Regenerate ADIF files
+    regenerateADIFFiles(date.c_str());
 
     Serial.println("QSO deleted via web interface");
     request->send(200, "application/json", "{\"success\":true}");

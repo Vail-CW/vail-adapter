@@ -51,17 +51,17 @@ bool lastToneState = false;
 unsigned long lastElementTime = 0;  // Track last element for timeout flush
 
 // Forward declarations
-void startPracticeMode(Adafruit_ST7789 &display);
-void drawPracticeUI(Adafruit_ST7789 &display);
-void drawDecodedTextOnly(Adafruit_ST7789 &display);
-int handlePracticeInput(char key, Adafruit_ST7789 &display);
+void startPracticeMode(LGFX &display);
+void drawPracticeUI(LGFX &display);
+void drawDecodedTextOnly(LGFX &display);
+int handlePracticeInput(char key, LGFX &display);
 void updatePracticeOscillator();
-void drawPracticeStats(Adafruit_ST7789 &display);
+void drawPracticeStats(LGFX &display);
 void straightKeyHandler();
 void iambicKeyerHandler();
 
 // Start practice mode
-void startPracticeMode(Adafruit_ST7789 &display) {
+void startPracticeMode(LGFX &display) {
   practiceActive = true;
   ditPressed = false;
   dahPressed = false;
@@ -75,14 +75,6 @@ void startPracticeMode(Adafruit_ST7789 &display) {
   touchRead(TOUCH_DIT_PIN);
   touchRead(TOUCH_DAH_PIN);
   delay(50);
-
-  // Disable WiFi to prevent audio interference
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("Disabling WiFi for clean audio in practice mode");
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    delay(100);
-  }
 
   // Reinitialize I2S to ensure clean state
   Serial.println("Reinitializing I2S for practice mode...");
@@ -168,12 +160,12 @@ void startPracticeMode(Adafruit_ST7789 &display) {
 }
 
 // Draw practice UI
-void drawPracticeUI(Adafruit_ST7789 &display) {
-  // Clear screen but preserve top bar (0-40)
-  display.fillRect(0, 40, SCREEN_WIDTH, SCREEN_HEIGHT - 40, COLOR_BACKGROUND);
+void drawPracticeUI(LGFX &display) {
+  // Clear screen but preserve header bar (0-HEADER_HEIGHT)
+  display.fillRect(0, HEADER_HEIGHT + 2, SCREEN_WIDTH, SCREEN_HEIGHT - HEADER_HEIGHT - 2, COLOR_BACKGROUND);
 
   // Modern card-style info display (3 equal cards)
-  const int CARD_Y = 55;  // Increased to add more space below header
+  const int CARD_Y = 75;  // Positioned below 60px header
   const int CARD_HEIGHT = 50;
   const int CARD_SPACING = 4;
   const int CARD_WIDTH = (SCREEN_WIDTH - (4 * CARD_SPACING)) / 3;
@@ -194,18 +186,22 @@ void drawPracticeUI(Adafruit_ST7789 &display) {
 
   // Title badge for Card 1 (draw on top to hover over card)
   display.fillRoundRect(card1X + 5, CARD_Y - 7, 60, 14, 4, ST77XX_CYAN);
+  display.setFont(&FreeSansBold9pt7b);
   display.setTextSize(1);
   display.setTextColor(ST77XX_BLACK);
-  display.setCursor(card1X + 10, CARD_Y - 5);
+  display.setCursor(card1X + 8, CARD_Y - 7);
   display.print("SET WPM");
+  display.setFont(nullptr);
 
-  // Speed value (centered)
-  display.setTextSize(2);
+  // Speed value (centered) - use smooth font
+  display.setFont(&FreeSansBold18pt7b);
+  display.setTextSize(1);
   display.setTextColor(ST77XX_CYAN);
   String speedStr = String(cwSpeed);
-  display.getTextBounds(speedStr, 0, 0, &x1, &y1, &w, &h);
-  display.setCursor(card1X + (CARD_WIDTH - w) / 2, CARD_Y + 20);
+  getTextBounds_compat(display, speedStr.c_str(), 0, 0, &x1, &y1, &w, &h);
+  display.setCursor(card1X + (CARD_WIDTH - w) / 2, CARD_Y + 15);
   display.print(speedStr);
+  display.setFont(nullptr);
 
   // Card 2: Detected Speed
   int card2X = card1X + CARD_WIDTH + CARD_SPACING;
@@ -218,14 +214,17 @@ void drawPracticeUI(Adafruit_ST7789 &display) {
   display.drawRoundRect(card2X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 6, 0x4A49);
 
   // Title badge for Card 2 (draw on top to hover over card)
-  display.fillRoundRect(card2X + 5, CARD_Y - 7, 50, 14, 4, ST77XX_GREEN);
+  display.fillRoundRect(card2X + 5, CARD_Y - 7, 55, 14, 4, ST77XX_GREEN);
+  display.setFont(&FreeSansBold9pt7b);
   display.setTextSize(1);
   display.setTextColor(ST77XX_BLACK);
-  display.setCursor(card2X + 10, CARD_Y - 5);
+  display.setCursor(card2X + 8, CARD_Y - 7);
   display.print("ACTUAL");
+  display.setFont(nullptr);
 
-  // WPM value (centered, color-coded)
-  display.setTextSize(2);
+  // WPM value (centered, color-coded) - use smooth font
+  display.setFont(&FreeSansBold18pt7b);
+  display.setTextSize(1);
   if (detectedWPM > 0) {
     if (abs(detectedWPM - cwSpeed) > 2) {
       display.setTextColor(ST77XX_YELLOW);  // Yellow if different
@@ -233,14 +232,15 @@ void drawPracticeUI(Adafruit_ST7789 &display) {
       display.setTextColor(ST77XX_GREEN);  // Green if same
     }
     String detStr = String(detectedWPM, 1);
-    display.getTextBounds(detStr, 0, 0, &x1, &y1, &w, &h);
-    display.setCursor(card2X + (CARD_WIDTH - w) / 2, CARD_Y + 20);
+    getTextBounds_compat(display, detStr.c_str(), 0, 0, &x1, &y1, &w, &h);
+    display.setCursor(card2X + (CARD_WIDTH - w) / 2, CARD_Y + 15);
     display.print(detStr);
   } else {
     display.setTextColor(0x7BEF);
-    display.setCursor(card2X + (CARD_WIDTH - 12) / 2, CARD_Y + 20);
+    display.setCursor(card2X + (CARD_WIDTH - 24) / 2, CARD_Y + 15);
     display.print("--");
   }
+  display.setFont(nullptr);
 
   // Card 3: Key Type
   int card3X = card2X + CARD_WIDTH + CARD_SPACING;
@@ -250,13 +250,16 @@ void drawPracticeUI(Adafruit_ST7789 &display) {
   display.drawRoundRect(card3X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 6, 0x4A49);
 
   // Title badge for Card 3 (draw on top to hover over card)
-  display.fillRoundRect(card3X + 5, CARD_Y - 7, 62, 14, 4, ST77XX_YELLOW);
+  display.fillRoundRect(card3X + 5, CARD_Y - 7, 65, 14, 4, ST77XX_YELLOW);
+  display.setFont(&FreeSansBold9pt7b);
   display.setTextSize(1);
   display.setTextColor(ST77XX_BLACK);
-  display.setCursor(card3X + 10, CARD_Y - 5);
+  display.setCursor(card3X + 8, CARD_Y - 7);
   display.print("KEY TYPE");
+  display.setFont(nullptr);
 
-  // Key type value (centered)
+  // Key type value (centered) - use smooth font
+  display.setFont(&FreeSansBold12pt7b);
   display.setTextSize(1);
   display.setTextColor(ST77XX_YELLOW);
   String keyStr;
@@ -267,14 +270,15 @@ void drawPracticeUI(Adafruit_ST7789 &display) {
   } else {
     keyStr = "Iambic B";
   }
-  display.getTextBounds(keyStr, 0, 0, &x1, &y1, &w, &h);
-  display.setCursor(card3X + (CARD_WIDTH - w) / 2, CARD_Y + 22);
+  getTextBounds_compat(display, keyStr.c_str(), 0, 0, &x1, &y1, &w, &h);
+  display.setCursor(card3X + (CARD_WIDTH - w) / 2, CARD_Y + 12);
   display.print(keyStr);
+  display.setFont(nullptr);
 
   // Decoded text area (if enabled) - modernized 2-line display
   if (showDecoding) {
     // Add space between cards and decoder box
-    const int DECODER_Y = 115;  // Increased to add more spacing between cards and decoder
+    const int DECODER_Y = 135;  // Positioned below cards (CARD_Y=75 + CARD_HEIGHT=50 + spacing)
     const int DECODER_HEIGHT = 70;
 
     // Clear any potential stray characters from previous renders first
@@ -286,10 +290,12 @@ void drawPracticeUI(Adafruit_ST7789 &display) {
 
     // Title badge
     display.fillRoundRect(15, DECODER_Y - 7, 80, 14, 4, ST77XX_CYAN);
+    display.setFont(&FreeSansBold9pt7b);
     display.setTextSize(1);
     display.setTextColor(ST77XX_BLACK);
-    display.setCursor(20, DECODER_Y - 5);
+    display.setCursor(18, DECODER_Y - 7);
     display.print("DECODER");
+    display.setFont(nullptr);
 
     // Show decoded text (2 lines, size 3 for modern look)
     display.setTextSize(3);
@@ -360,51 +366,59 @@ void drawPracticeUI(Adafruit_ST7789 &display) {
     }
   } else {
     // Decoding disabled message
-    const int DECODER_Y = 115;
+    const int DECODER_Y = 135;
+    display.setFont(&FreeSansBold12pt7b);
     display.setTextSize(1);
     display.setTextColor(0x7BEF);  // Gray
-    display.setCursor(70, DECODER_Y + 30);  // Centered vertically in decoder area
-    display.print("Press D to enable decoding");
+    const char* disabledMsg = "Press D to enable decoding";
+    int16_t dx1, dy1;
+    uint16_t dw, dh;
+    getTextBounds_compat(display, disabledMsg, 0, 0, &dx1, &dy1, &dw, &dh);
+    display.setCursor((SCREEN_WIDTH - dw) / 2, DECODER_Y + 30);
+    display.print(disabledMsg);
+    display.setFont(nullptr);
   }
 
-  // Draw footer instructions (updated with arrow key hints)
-  display.setTextSize(2);  // Increased from 1 to 2
+  // Draw footer instructions (updated with arrow key hints) - use smooth font
+  display.setFont(&FreeSansBold9pt7b);
+  display.setTextSize(1);
   display.setTextColor(COLOR_WARNING);
 
   // Split into two lines for better readability
   if (showDecoding) {
-    String line1 = "\x18\x19:Speed \x1B\x1A:Key";
-    String line2 = "C:Clear D:Hide ESC";
+    String line1 = "UP/DN:Speed  L/R:Key";
+    String line2 = "C:Clear  D:Hide  ESC:Exit";
 
     int16_t fx1, fy1;
     uint16_t fw, fh;
-    display.getTextBounds(line1, 0, 0, &fx1, &fy1, &fw, &fh);
+    getTextBounds_compat(display, line1.c_str(), 0, 0, &fx1, &fy1, &fw, &fh);
     int fcenterX = (SCREEN_WIDTH - fw) / 2;
-    display.setCursor(fcenterX, SCREEN_HEIGHT - 32);  // Moved up from -28
+    display.setCursor(fcenterX, SCREEN_HEIGHT - 32);
     display.print(line1);
 
-    display.getTextBounds(line2, 0, 0, &fx1, &fy1, &fw, &fh);
+    getTextBounds_compat(display, line2.c_str(), 0, 0, &fx1, &fy1, &fw, &fh);
     fcenterX = (SCREEN_WIDTH - fw) / 2;
-    display.setCursor(fcenterX, SCREEN_HEIGHT - 16);  // Moved up from -12
+    display.setCursor(fcenterX, SCREEN_HEIGHT - 16);
     display.print(line2);
   } else {
     // When decoder is hidden, show single line
     String footerText = "D:Show  ESC:Exit";
     int16_t fx1, fy1;
     uint16_t fw, fh;
-    display.getTextBounds(footerText, 0, 0, &fx1, &fy1, &fw, &fh);
+    getTextBounds_compat(display, footerText.c_str(), 0, 0, &fx1, &fy1, &fw, &fh);
     int fcenterX = (SCREEN_WIDTH - fw) / 2;
-    display.setCursor(fcenterX, SCREEN_HEIGHT - 24);  // Moved up from -20
+    display.setCursor(fcenterX, SCREEN_HEIGHT - 22);
     display.print(footerText);
   }
+  display.setFont(nullptr);
 }
 
 // Draw only the decoded text area (for real-time updates without full redraw)
-void drawDecodedTextOnly(Adafruit_ST7789 &display) {
+void drawDecodedTextOnly(LGFX &display) {
   if (!showDecoding) return;
 
   // Update the ACTUAL WPM card (Card 2)
-  const int CARD_Y = 55;  // Match updated position
+  const int CARD_Y = 75;  // Match updated position
   const int CARD_HEIGHT = 50;
   const int CARD_SPACING = 4;
   const int CARD_WIDTH = (SCREEN_WIDTH - (4 * CARD_SPACING)) / 3;
@@ -415,7 +429,9 @@ void drawDecodedTextOnly(Adafruit_ST7789 &display) {
   // Clear just the number area of card 2
   display.fillRect(card2X + 5, CARD_Y + 10, CARD_WIDTH - 10, 35, 0x2104);
 
-  display.setTextSize(2);
+  // Use smooth font for WPM display
+  display.setFont(&FreeSansBold18pt7b);
+  display.setTextSize(1);
   if (detectedWPM > 0) {
     if (abs(detectedWPM - cwSpeed) > 2) {
       display.setTextColor(ST77XX_YELLOW);  // Yellow if different
@@ -425,17 +441,18 @@ void drawDecodedTextOnly(Adafruit_ST7789 &display) {
     String detStr = String(detectedWPM, 1);
     int16_t x1, y1;
     uint16_t w, h;
-    display.getTextBounds(detStr, 0, 0, &x1, &y1, &w, &h);
-    display.setCursor(card2X + (CARD_WIDTH - w) / 2, CARD_Y + 20);
+    getTextBounds_compat(display, detStr.c_str(), 0, 0, &x1, &y1, &w, &h);
+    display.setCursor(card2X + (CARD_WIDTH - w) / 2, CARD_Y + 15);
     display.print(detStr);
   } else {
     display.setTextColor(0x7BEF);
-    display.setCursor(card2X + (CARD_WIDTH - 12) / 2, CARD_Y + 20);
+    display.setCursor(card2X + (CARD_WIDTH - 24) / 2, CARD_Y + 15);
     display.print("--");
   }
+  display.setFont(nullptr);
 
   // Decoder box positioning (matches drawPracticeUI)
-  const int DECODER_Y = 115;  // Match updated position
+  const int DECODER_Y = 135;  // Match updated position
   const int DECODER_HEIGHT = 70;
 
   // Clear the entire content area inside the decoder box
@@ -499,7 +516,7 @@ void drawDecodedTextOnly(Adafruit_ST7789 &display) {
 }
 
 // Draw practice statistics and visual feedback
-void drawPracticeStats(Adafruit_ST7789 &display) {
+void drawPracticeStats(LGFX &display) {
   // Clear indicator area
   display.fillRect(0, 155, SCREEN_WIDTH, 35, COLOR_BACKGROUND);
 
@@ -530,7 +547,7 @@ void drawPracticeStats(Adafruit_ST7789 &display) {
 }
 
 // Handle practice mode input (keyboard)
-int handlePracticeInput(char key, Adafruit_ST7789 &display) {
+int handlePracticeInput(char key, LGFX &display) {
   if (key == KEY_ESC) {
     practiceActive = false;
     stopTone();

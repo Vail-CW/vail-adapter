@@ -9,7 +9,13 @@
 
 #include <ArduinoJson.h>
 #include <FS.h>
+#include <SD.h>
 #include "../../core/config.h"
+#include "../../storage/sd_card.h"
+
+// QSO directory on SD card
+#define QSO_DIR "/qso"
+#define MASTER_ADIF_FILE "/qso/vail-summit.adi"
 
 /*
  * Get device status as JSON
@@ -47,11 +53,13 @@ String getDeviceStatusJSON() {
     doc["ip"] = WiFi.softAPIP().toString();
     doc["rssi"] = 0;  // Not applicable in AP mode
     doc["wifiMode"] = "AP";
+    doc["wifiConnected"] = true;  // AP mode is always "connected"
   } else {
     doc["wifi"] = WiFi.isConnected() ? "Connected" : "Disconnected";
     doc["ip"] = WiFi.isConnected() ? WiFi.localIP().toString() : "N/A";
     doc["rssi"] = WiFi.isConnected() ? WiFi.RSSI() : 0;
     doc["wifiMode"] = "STA";
+    doc["wifiConnected"] = WiFi.isConnected();
   }
 
   // QSO count
@@ -82,7 +90,7 @@ String getDeviceStatusJSON() {
     case MODE_MORSE_SHOOTER: modeStr = "Morse Shooter"; break;
     case MODE_MORSE_MEMORY: modeStr = "Memory Chain"; break;
     case MODE_GAMES_MENU: modeStr = "Games Menu"; break;
-    case MODE_RADIO_MENU: modeStr = "Radio Menu"; break;
+    case MODE_RADIO_MENU: modeStr = "Radio Menu"; break;  // Legacy - now in CW Menu
     case MODE_RADIO_OUTPUT: modeStr = "Radio Output"; break;
     case MODE_CW_MEMORIES: modeStr = "CW Memories"; break;
     case MODE_SETTINGS_MENU: modeStr = "Settings Menu"; break;
@@ -91,8 +99,17 @@ String getDeviceStatusJSON() {
     case MODE_VOLUME_SETTINGS: modeStr = "Volume Settings"; break;
     case MODE_CALLSIGN_SETTINGS: modeStr = "Callsign Settings"; break;
     case MODE_VAIL_REPEATER: modeStr = "Vail Repeater"; break;
-    case MODE_BLUETOOTH: modeStr = "Bluetooth"; break;
-    case MODE_TOOLS_MENU: modeStr = "Tools Menu"; break;
+    case MODE_BLUETOOTH_MENU: modeStr = "Bluetooth Menu"; break;
+    case MODE_BT_HID: modeStr = "BT HID"; break;
+    case MODE_BT_MIDI: modeStr = "BT MIDI"; break;
+    case MODE_TOOLS_MENU: modeStr = "Tools Menu"; break;  // Legacy - now HAM_TOOLS_MENU
+    case MODE_CW_MENU: modeStr = "CW Menu"; break;
+    case MODE_HAM_TOOLS_MENU: modeStr = "Ham Tools Menu"; break;
+    case MODE_BAND_PLANS: modeStr = "Band Plans"; break;
+    case MODE_PROPAGATION: modeStr = "Propagation"; break;
+    case MODE_ANTENNAS: modeStr = "Antennas"; break;
+    case MODE_LICENSE_STUDY: modeStr = "License Study"; break;
+    case MODE_SUMMIT_CHAT: modeStr = "Summit Chat"; break;
     case MODE_QSO_LOGGER_MENU: modeStr = "QSO Logger Menu"; break;
     case MODE_QSO_LOG_ENTRY: modeStr = "QSO Logger"; break;
     case MODE_QSO_VIEW_LOGS: modeStr = "View Logs"; break;
@@ -109,49 +126,46 @@ String getDeviceStatusJSON() {
 
 /*
  * Get all QSO logs as JSON
+ * Reads from SD card /qso/ directory
  */
 String getQSOLogsJSON() {
-  extern fs::SPIFFSFS FileSystem;
-
   JsonDocument doc;
   JsonArray logsArray = doc["logs"].to<JsonArray>();
 
   int totalCount = 0;
 
-  // Iterate through all log files
-  File root = FileSystem.open("/logs");
+  // Check if SD card is available
+  if (!sdCardAvailable) {
+    doc["count"] = 0;
+    doc["error"] = "SD card not available";
+    String output;
+    serializeJson(doc, output);
+    return output;
+  }
+
+  // Iterate through all log files on SD card
+  File root = SD.open(QSO_DIR);
   if (root && root.isDirectory()) {
     File file = root.openNextFile();
     while (file) {
       if (!file.isDirectory()) {
         String filename = String(file.name());
 
-        // Extract basename
-        int lastSlash = filename.lastIndexOf('/');
-        if (lastSlash >= 0) {
-          filename = filename.substring(lastSlash + 1);
-        }
+        // Process QSO log files (JSON only, not ADIF)
+        if (filename.endsWith(".json")) {
+          JsonDocument logDoc;
+          DeserializationError error = deserializeJson(logDoc, file);
 
-        // Process QSO log files
-        if (filename.startsWith("qso_") && filename.endsWith(".json")) {
-          File logFile = FileSystem.open(file.path(), "r");
-          if (logFile) {
-            String content = logFile.readString();
-            logFile.close();
-
-            JsonDocument logDoc;
-            DeserializationError error = deserializeJson(logDoc, content);
-
-            if (!error && logDoc.containsKey("logs")) {
-              JsonArray logs = logDoc["logs"];
-              for (JsonVariant v : logs) {
-                logsArray.add(v);
-                totalCount++;
-              }
+          if (!error && logDoc.containsKey("logs")) {
+            JsonArray logs = logDoc["logs"];
+            for (JsonVariant v : logs) {
+              logsArray.add(v);
+              totalCount++;
             }
           }
         }
       }
+      file.close();
       file = root.openNextFile();
     }
     root.close();
@@ -166,112 +180,125 @@ String getQSOLogsJSON() {
 
 /*
  * Generate ADIF export
+ * First tries to serve pre-generated master ADIF from SD card
+ * Falls back to generating from JSON files if master doesn't exist
  */
 String generateADIF() {
-  extern fs::SPIFFSFS FileSystem;
+  // Check if SD card is available
+  if (!sdCardAvailable) {
+    return "ADIF Export from VAIL SUMMIT\nError: SD card not available\n<EOH>\n";
+  }
 
+  // Try to read pre-generated master ADIF file (faster)
+  if (SD.exists(MASTER_ADIF_FILE)) {
+    File adifFile = SD.open(MASTER_ADIF_FILE, "r");
+    if (adifFile) {
+      String content = adifFile.readString();
+      adifFile.close();
+      return content;
+    }
+  }
+
+  // Fall back to generating from JSON files
   String adif = "ADIF Export from VAIL SUMMIT\n";
   adif += "<PROGRAMID:11>VAIL SUMMIT\n";
   adif += "<PROGRAMVERSION:" + String(strlen(FIRMWARE_VERSION)) + ">" + String(FIRMWARE_VERSION) + "\n";
   adif += "<ADIF_VER:5>3.1.4\n";
   adif += "<EOH>\n\n";
 
-  // Iterate through all log files
-  File root = FileSystem.open("/logs");
+  // Iterate through all log files on SD card
+  File root = SD.open(QSO_DIR);
   if (root && root.isDirectory()) {
     File file = root.openNextFile();
     while (file) {
       if (!file.isDirectory()) {
         String filename = String(file.name());
-        int lastSlash = filename.lastIndexOf('/');
-        if (lastSlash >= 0) {
-          filename = filename.substring(lastSlash + 1);
-        }
 
-        if (filename.startsWith("qso_") && filename.endsWith(".json")) {
-          File logFile = FileSystem.open(file.path(), "r");
-          if (logFile) {
-            String content = logFile.readString();
-            logFile.close();
+        // Only process JSON files
+        if (filename.endsWith(".json")) {
+          JsonDocument logDoc;
+          DeserializationError error = deserializeJson(logDoc, file);
 
-            JsonDocument logDoc;
-            DeserializationError error = deserializeJson(logDoc, content);
+          if (!error && logDoc.containsKey("logs")) {
+            JsonArray logs = logDoc["logs"];
+            for (JsonVariant v : logs) {
+              JsonObject qso = v.as<JsonObject>();
 
-            if (!error && logDoc.containsKey("logs")) {
-              JsonArray logs = logDoc["logs"];
-              for (JsonVariant v : logs) {
-                JsonObject qso = v.as<JsonObject>();
-
-                // Required fields
-                if (qso.containsKey("callsign") && qso["callsign"].as<String>().length() > 0) {
-                  String call = qso["callsign"].as<String>();
-                  adif += "<CALL:" + String(call.length()) + ">" + call + " ";
-                }
-
-                if (qso.containsKey("frequency")) {
-                  String freq = String(qso["frequency"].as<float>(), 3);
-                  adif += "<FREQ:" + String(freq.length()) + ">" + freq + " ";
-                }
-
-                if (qso.containsKey("mode") && qso["mode"].as<String>().length() > 0) {
-                  String mode = qso["mode"].as<String>();
-                  adif += "<MODE:" + String(mode.length()) + ">" + mode + " ";
-                }
-
-                if (qso.containsKey("date") && qso["date"].as<String>().length() > 0) {
-                  String date = qso["date"].as<String>();
-                  adif += "<QSO_DATE:" + String(date.length()) + ">" + date + " ";
-                }
-
-                if (qso.containsKey("time_on") && qso["time_on"].as<String>().length() > 0) {
-                  String time = qso["time_on"].as<String>();
-                  // Convert HHMM to HHMMSS
-                  if (time.length() == 4) {
-                    time += "00";
-                  }
-                  adif += "<TIME_ON:" + String(time.length()) + ">" + time + " ";
-                }
-
-                // Optional fields
-                if (qso.containsKey("rst_sent") && qso["rst_sent"].as<String>().length() > 0) {
-                  String rst = qso["rst_sent"].as<String>();
-                  adif += "<RST_SENT:" + String(rst.length()) + ">" + rst + " ";
-                }
-
-                if (qso.containsKey("rst_rcvd") && qso["rst_rcvd"].as<String>().length() > 0) {
-                  String rst = qso["rst_rcvd"].as<String>();
-                  adif += "<RST_RCVD:" + String(rst.length()) + ">" + rst + " ";
-                }
-
-                if (qso.containsKey("gridsquare") && qso["gridsquare"].as<String>().length() > 0) {
-                  String grid = qso["gridsquare"].as<String>();
-                  adif += "<GRIDSQUARE:" + String(grid.length()) + ">" + grid + " ";
-                }
-
-                if (qso.containsKey("my_gridsquare") && qso["my_gridsquare"].as<String>().length() > 0) {
-                  String grid = qso["my_gridsquare"].as<String>();
-                  adif += "<MY_GRIDSQUARE:" + String(grid.length()) + ">" + grid + " ";
-                }
-
-                // POTA support
-                if (qso.containsKey("my_pota_ref") && qso["my_pota_ref"].as<String>().length() > 0) {
-                  String pota = qso["my_pota_ref"].as<String>();
-                  adif += "<MY_SIG:4>POTA ";
-                  adif += "<MY_SIG_INFO:" + String(pota.length()) + ">" + pota + " ";
-                }
-
-                if (qso.containsKey("their_pota_ref") && qso["their_pota_ref"].as<String>().length() > 0) {
-                  String pota = qso["their_pota_ref"].as<String>();
-                  adif += "<SIG:4>POTA ";
-                  adif += "<SIG_INFO:" + String(pota.length()) + ">" + pota + " ";
-                }
-
-                adif += "<EOR>\n";
+              // Required fields
+              if (qso.containsKey("callsign") && qso["callsign"].as<String>().length() > 0) {
+                String call = qso["callsign"].as<String>();
+                adif += "<CALL:" + String(call.length()) + ">" + call + " ";
               }
+
+              if (qso.containsKey("frequency")) {
+                String freq = String(qso["frequency"].as<float>(), 3);
+                adif += "<FREQ:" + String(freq.length()) + ">" + freq + " ";
+              }
+
+              if (qso.containsKey("mode") && qso["mode"].as<String>().length() > 0) {
+                String mode = qso["mode"].as<String>();
+                adif += "<MODE:" + String(mode.length()) + ">" + mode + " ";
+              }
+
+              if (qso.containsKey("band") && qso["band"].as<String>().length() > 0) {
+                String band = qso["band"].as<String>();
+                adif += "<BAND:" + String(band.length()) + ">" + band + " ";
+              }
+
+              if (qso.containsKey("date") && qso["date"].as<String>().length() > 0) {
+                String date = qso["date"].as<String>();
+                adif += "<QSO_DATE:" + String(date.length()) + ">" + date + " ";
+              }
+
+              if (qso.containsKey("time_on") && qso["time_on"].as<String>().length() > 0) {
+                String time = qso["time_on"].as<String>();
+                // Convert HHMM to HHMMSS
+                if (time.length() == 4) {
+                  time += "00";
+                }
+                adif += "<TIME_ON:" + String(time.length()) + ">" + time + " ";
+              }
+
+              // Optional fields
+              if (qso.containsKey("rst_sent") && qso["rst_sent"].as<String>().length() > 0) {
+                String rst = qso["rst_sent"].as<String>();
+                adif += "<RST_SENT:" + String(rst.length()) + ">" + rst + " ";
+              }
+
+              if (qso.containsKey("rst_rcvd") && qso["rst_rcvd"].as<String>().length() > 0) {
+                String rst = qso["rst_rcvd"].as<String>();
+                adif += "<RST_RCVD:" + String(rst.length()) + ">" + rst + " ";
+              }
+
+              if (qso.containsKey("gridsquare") && qso["gridsquare"].as<String>().length() > 0) {
+                String grid = qso["gridsquare"].as<String>();
+                adif += "<GRIDSQUARE:" + String(grid.length()) + ">" + grid + " ";
+              }
+
+              if (qso.containsKey("my_gridsquare") && qso["my_gridsquare"].as<String>().length() > 0) {
+                String grid = qso["my_gridsquare"].as<String>();
+                adif += "<MY_GRIDSQUARE:" + String(grid.length()) + ">" + grid + " ";
+              }
+
+              // POTA support
+              if (qso.containsKey("my_pota_ref") && qso["my_pota_ref"].as<String>().length() > 0) {
+                String pota = qso["my_pota_ref"].as<String>();
+                adif += "<MY_SIG:4>POTA ";
+                adif += "<MY_SIG_INFO:" + String(pota.length()) + ">" + pota + " ";
+              }
+
+              if (qso.containsKey("their_pota_ref") && qso["their_pota_ref"].as<String>().length() > 0) {
+                String pota = qso["their_pota_ref"].as<String>();
+                adif += "<SIG:4>POTA ";
+                adif += "<SIG_INFO:" + String(pota.length()) + ">" + pota + " ";
+              }
+
+              adif += "<EOR>\n";
             }
           }
         }
       }
+      file.close();
       file = root.openNextFile();
     }
     root.close();
@@ -282,62 +309,58 @@ String generateADIF() {
 
 /*
  * Generate CSV export
+ * Reads from SD card /qso/ directory
  */
 String generateCSV() {
-  extern fs::SPIFFSFS FileSystem;
+  // Check if SD card is available
+  if (!sdCardAvailable) {
+    return "Error: SD card not available\n";
+  }
 
   String csv = "Callsign,Frequency,Mode,Band,Date,Time,RST Sent,RST Rcvd,Grid,My Grid,My POTA,Their POTA,Notes\n";
 
-  // Iterate through all log files
-  File root = FileSystem.open("/logs");
+  // Iterate through all log files on SD card
+  File root = SD.open(QSO_DIR);
   if (root && root.isDirectory()) {
     File file = root.openNextFile();
     while (file) {
       if (!file.isDirectory()) {
         String filename = String(file.name());
-        int lastSlash = filename.lastIndexOf('/');
-        if (lastSlash >= 0) {
-          filename = filename.substring(lastSlash + 1);
-        }
 
-        if (filename.startsWith("qso_") && filename.endsWith(".json")) {
-          File logFile = FileSystem.open(file.path(), "r");
-          if (logFile) {
-            String content = logFile.readString();
-            logFile.close();
+        // Only process JSON files
+        if (filename.endsWith(".json")) {
+          JsonDocument logDoc;
+          DeserializationError error = deserializeJson(logDoc, file);
 
-            JsonDocument logDoc;
-            DeserializationError error = deserializeJson(logDoc, content);
+          if (!error && logDoc.containsKey("logs")) {
+            JsonArray logs = logDoc["logs"];
+            for (JsonVariant v : logs) {
+              JsonObject qso = v.as<JsonObject>();
 
-            if (!error && logDoc.containsKey("logs")) {
-              JsonArray logs = logDoc["logs"];
-              for (JsonVariant v : logs) {
-                JsonObject qso = v.as<JsonObject>();
+              csv += qso["callsign"].as<String>() + ",";
+              csv += String(qso["frequency"].as<float>(), 3) + ",";
+              csv += qso["mode"].as<String>() + ",";
+              csv += qso["band"].as<String>() + ",";
+              csv += qso["date"].as<String>() + ",";
+              csv += qso["time_on"].as<String>() + ",";
+              csv += qso["rst_sent"].as<String>() + ",";
+              csv += qso["rst_rcvd"].as<String>() + ",";
+              csv += qso["gridsquare"].as<String>() + ",";
+              csv += qso["my_gridsquare"].as<String>() + ",";
+              csv += qso["my_pota_ref"].as<String>() + ",";
+              csv += qso["their_pota_ref"].as<String>() + ",";
 
-                csv += qso["callsign"].as<String>() + ",";
-                csv += String(qso["frequency"].as<float>(), 3) + ",";
-                csv += qso["mode"].as<String>() + ",";
-                csv += qso["band"].as<String>() + ",";
-                csv += qso["date"].as<String>() + ",";
-                csv += qso["time_on"].as<String>() + ",";
-                csv += qso["rst_sent"].as<String>() + ",";
-                csv += qso["rst_rcvd"].as<String>() + ",";
-                csv += qso["gridsquare"].as<String>() + ",";
-                csv += qso["my_gridsquare"].as<String>() + ",";
-                csv += qso["my_pota_ref"].as<String>() + ",";
-                csv += qso["their_pota_ref"].as<String>() + ",";
+              // Escape quotes in notes
+              String notes = qso["notes"].as<String>();
+              notes.replace("\"", "\"\"");
+              csv += "\"" + notes + "\"";
 
-                // Escape quotes in notes
-                String notes = qso["notes"].as<String>();
-                notes.replace("\"", "\"\"");
-                csv += "\"" + notes + "\"";
-
-                csv += "\n";
-              }
+              csv += "\n";
             }
           }
         }
       }
+      file.close();
       file = root.openNextFile();
     }
     root.close();

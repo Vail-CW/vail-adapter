@@ -7,8 +7,6 @@
 #define TRAINING_HEAR_IT_TYPE_IT_H
 
 #include "../core/morse_code.h"
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7789.h>
 #include <Preferences.h>
 
 // Training mode types
@@ -179,7 +177,7 @@ bool checkAnswer() {
 void drawHeader();
 
 // Draw just the input box (for fast updates while typing)
-void drawInputBox(Adafruit_ST7789& tft) {
+void drawInputBox(LGFX& tft) {
   int boxX = 30;
   int boxY = 125;
   int boxW = SCREEN_WIDTH - 60;
@@ -190,14 +188,14 @@ void drawInputBox(Adafruit_ST7789& tft) {
   tft.drawRoundRect(boxX, boxY, boxW, boxH, 8, 0x34BF); // Light blue outline
 
   // Show user input with modern font
-  tft.setFont(&FreeSansBold12pt7b);
+  tft.setFont(nullptr);  // Use default font
   tft.setTextColor(ST77XX_WHITE);
   tft.setTextSize(1);
 
   int16_t x1, y1;
   uint16_t w, h;
   // Center the text vertically in the box
-  tft.getTextBounds(userInput.c_str(), 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, userInput.c_str(), 0, 0, &x1, &y1, &w, &h);
   int textX = boxX + 15;
   int textY = boxY + (boxH / 2) + (h / 2) + 5;
   tft.setCursor(textX, textY);
@@ -208,11 +206,11 @@ void drawInputBox(Adafruit_ST7789& tft) {
     int cursorX = textX + w + 5;
     tft.fillRect(cursorX, textY - h, 3, h + 5, COLOR_WARNING);
   }
-  tft.setFont(); // Reset font
+  tft.setFont(nullptr); // Reset font
 }
 
 // Draw the Hear It Type It UI
-void drawHearItTypeItUI(Adafruit_ST7789& tft) {
+void drawHearItTypeItUI(LGFX& tft) {
   // Draw header to ensure it's properly sized
   drawHeader();
 
@@ -220,25 +218,25 @@ void drawHearItTypeItUI(Adafruit_ST7789& tft) {
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   // Title area with modern font
-  tft.setFont(&FreeSansBold12pt7b);
+  tft.setFont(nullptr);  // Use default font
   tft.setTextColor(COLOR_TITLE);
   tft.setTextSize(1);
 
   int16_t x1, y1;
   uint16_t w, h;
-  tft.getTextBounds("HEAR IT TYPE IT", 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, "HEAR IT TYPE IT", 0, 0, &x1, &y1, &w, &h);
   tft.setCursor((SCREEN_WIDTH - w) / 2, 75);
   tft.print("HEAR IT TYPE IT");
-  tft.setFont(); // Reset font
+  tft.setFont(nullptr); // Reset font
 
   // Speed indicator with modern styling
   tft.setFont(&FreeSans9pt7b);
   tft.setTextColor(COLOR_WARNING);
   String speedText = String(currentWPM) + " WPM";
-  tft.getTextBounds(speedText.c_str(), 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, speedText.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor((SCREEN_WIDTH - w) / 2, 100);
   tft.print(speedText);
-  tft.setFont(); // Reset font
+  tft.setFont(nullptr); // Reset font
 
   // Main content area
   if (waitingForInput) {
@@ -257,10 +255,10 @@ void drawHearItTypeItUI(Adafruit_ST7789& tft) {
     tft.setFont(&FreeSans9pt7b);
     tft.setTextColor(0x7BEF);
     String playMsg = "Playing callsign...";
-    tft.getTextBounds(playMsg.c_str(), 0, 0, &x1, &y1, &w, &h);
+    getTextBounds_compat(tft, playMsg.c_str(), 0, 0, &x1, &y1, &w, &h);
     tft.setCursor((SCREEN_WIDTH - w) / 2, 145);
     tft.print(playMsg);
-    tft.setFont(); // Reset font
+    tft.setFont(nullptr); // Reset font
   }
 
   // Attempt counter if multiple attempts
@@ -281,7 +279,7 @@ void drawHearItTypeItUI(Adafruit_ST7789& tft) {
 }
 
 // Draw settings overlay
-void drawSettingsOverlay(Adafruit_ST7789& tft) {
+void drawSettingsOverlay(LGFX& tft) {
   // Semi-transparent overlay effect (draw dark rectangle)
   tft.fillRect(20, 60, SCREEN_WIDTH - 40, 140, 0x18C3);
   tft.drawRect(20, 60, SCREEN_WIDTH - 40, 140, COLOR_WARNING);
@@ -290,10 +288,11 @@ void drawSettingsOverlay(Adafruit_ST7789& tft) {
   tft.setTextColor(ST77XX_WHITE);
 
   // Title
-  tft.setFont(&FreeSansBold12pt7b);
-  tft.setCursor(70, 85);
+  tft.setFont(nullptr);  // Use default font
+  tft.setTextSize(2);  // Larger size for better readability
+  tft.setCursor(180, 85);  // Centered for 480px width (was 70 for 320px)
   tft.print("SETTINGS");
-  tft.setFont();
+  tft.setFont(nullptr);
 
   // Current mode
   const char* modeNames[] = {"Callsigns", "Letters", "Numbers", "Let+Num", "Custom"};
@@ -331,7 +330,7 @@ void drawSettingsOverlay(Adafruit_ST7789& tft) {
 }
 
 // Handle settings mode input
-int handleSettingsInput(char key, Adafruit_ST7789& tft) {
+int handleSettingsInput(char key, LGFX& tft) {
   if (key == KEY_ESC) {
     // Cancel - restore original settings
     inSettingsMode = false;
@@ -375,7 +374,7 @@ int handleSettingsInput(char key, Adafruit_ST7789& tft) {
 
 // Handle keyboard input for this mode
 // Returns: 0 = continue, -1 = exit mode, 2 = full redraw needed, 3 = input box redraw only
-int handleHearItTypeItInput(char key, Adafruit_ST7789& tft) {
+int handleHearItTypeItInput(char key, LGFX& tft) {
   // Handle settings mode
   if (inSettingsMode) {
     return handleSettingsInput(key, tft);
@@ -430,17 +429,17 @@ int handleHearItTypeItInput(char key, Adafruit_ST7789& tft) {
       beep(TONE_SELECT, BEEP_LONG);
 
       tft.fillRect(0, 140, SCREEN_WIDTH, 60, COLOR_BACKGROUND);
-      tft.setFont(&FreeSansBold12pt7b);
+      tft.setFont(nullptr);  // Use default font
       tft.setTextColor(COLOR_SUCCESS);
       tft.setTextSize(1);
 
       int16_t x1, y1;
       uint16_t w, h;
-      tft.getTextBounds("CORRECT!", 0, 0, &x1, &y1, &w, &h);
+      getTextBounds_compat(tft, "CORRECT!", 0, 0, &x1, &y1, &w, &h);
       tft.setCursor((SCREEN_WIDTH - w) / 2, 175);
       tft.print("CORRECT!");
 
-      tft.setFont();
+      tft.setFont(nullptr);
       tft.setTextSize(1);
       tft.setTextColor(COLOR_TEXT);
       String msg = "The answer was: " + currentCallsign;
@@ -462,17 +461,17 @@ int handleHearItTypeItInput(char key, Adafruit_ST7789& tft) {
       beep(TONE_ERROR, BEEP_LONG);
 
       tft.fillRect(0, 140, SCREEN_WIDTH, 60, COLOR_BACKGROUND);
-      tft.setFont(&FreeSansBold12pt7b);
+      tft.setFont(nullptr);  // Use default font
       tft.setTextColor(COLOR_ERROR);
       tft.setTextSize(1);
 
       int16_t x1, y1;
       uint16_t w, h;
-      tft.getTextBounds("INCORRECT", 0, 0, &x1, &y1, &w, &h);
+      getTextBounds_compat(tft, "INCORRECT", 0, 0, &x1, &y1, &w, &h);
       tft.setCursor((SCREEN_WIDTH - w) / 2, 175);
       tft.print("INCORRECT");
 
-      tft.setFont();
+      tft.setFont(nullptr);
       tft.setTextSize(1);
       tft.setTextColor(COLOR_TEXT);
       tft.setCursor(75, 190);

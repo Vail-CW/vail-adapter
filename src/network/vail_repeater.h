@@ -128,17 +128,17 @@ struct UserInfo {
 std::vector<UserInfo> connectedUsers;
 
 // Forward declarations
-void startVailRepeater(Adafruit_ST7789 &display);
-void drawVailUI(Adafruit_ST7789 &display);
-void drawChatUI(Adafruit_ST7789 &display);
-void drawRoomSelectionUI(Adafruit_ST7789 &display);
-void drawRoomInputUI(Adafruit_ST7789 &display);
-void drawUserListUI(Adafruit_ST7789 &display);
-int handleVailInput(char key, Adafruit_ST7789 &display);
-int handleChatInput(char key, Adafruit_ST7789 &display);
-int handleRoomSelectionInput(char key, Adafruit_ST7789 &display);
-int handleRoomInputInput(char key, Adafruit_ST7789 &display);
-int handleUserListInput(char key, Adafruit_ST7789 &display);
+void startVailRepeater(LGFX &display);
+void drawVailUI(LGFX &display);
+void drawChatUI(LGFX &display);
+void drawRoomSelectionUI(LGFX &display);
+void drawRoomInputUI(LGFX &display);
+void drawUserListUI(LGFX &display);
+int handleVailInput(char key, LGFX &display);
+int handleChatInput(char key, LGFX &display);
+int handleRoomSelectionInput(char key, LGFX &display);
+int handleRoomInputInput(char key, LGFX &display);
+int handleUserListInput(char key, LGFX &display);
 void updateVailRepeater();
 void connectToVail(String channel);
 void disconnectFromVail();
@@ -181,7 +181,7 @@ int64_t getCurrentTimestamp() {
 void drawHeader();
 
 // Start Vail repeater mode
-void startVailRepeater(Adafruit_ST7789 &display) {
+void startVailRepeater(LGFX &display) {
   vailState = VAIL_DISCONNECTED;
   statusText = "Enter channel name";
   vailIsTransmitting = false;
@@ -508,7 +508,7 @@ void sendVailMessage(std::vector<uint16_t> durations, int64_t timestamp) {
 }
 
 // Update Vail repeater (call in main loop)
-void updateVailRepeater(Adafruit_ST7789 &display) {
+void updateVailRepeater(LGFX &display) {
   webSocket.loop();
 
   // Send keepalive every 15 seconds (aggressive keepalive prevents Cloud Run and load balancer timeouts)
@@ -824,7 +824,7 @@ void playbackMessages() {
 }
 
 // Draw Vail UI
-void drawVailUI(Adafruit_ST7789 &display) {
+void drawVailUI(LGFX &display) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -931,22 +931,22 @@ void drawVailUI(Adafruit_ST7789 &display) {
 }
 
 // Draw Chat UI
-void drawChatUI(Adafruit_ST7789 &display) {
+void drawChatUI(LGFX &display) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   // Title
-  display.setFont(&FreeSansBold12pt7b);
+  display.setFont(nullptr);  // Use default font
   display.setTextColor(COLOR_TITLE);
   display.setTextSize(1);
 
   int16_t x1, y1;
   uint16_t w, h;
   String title = "TEXT CHAT";
-  display.getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, title.c_str(), 0, 0, &x1, &y1, &w, &h);
   display.setCursor((SCREEN_WIDTH - w) / 2, 70);
   display.print(title);
-  display.setFont(); // Reset font
+  display.setFont(nullptr); // Reset font
 
   // Channel indicator
   display.setTextSize(1);
@@ -1024,7 +1024,7 @@ void drawChatUI(Adafruit_ST7789 &display) {
 }
 
 // Handle chat input
-int handleChatInput(char key, Adafruit_ST7789 &display) {
+int handleChatInput(char key, LGFX &display) {
   // Update cursor blink
   if (millis() - chatLastBlink > 500) {
     chatCursorVisible = !chatCursorVisible;
@@ -1068,7 +1068,7 @@ int handleChatInput(char key, Adafruit_ST7789 &display) {
 }
 
 // Handle Vail input
-int handleVailInput(char key, Adafruit_ST7789 &display) {
+int handleVailInput(char key, LGFX &display) {
   if (key == KEY_ESC) {
     // If in user list, go back to vail info
     if (vailUserListMode) {
@@ -1249,22 +1249,22 @@ void sendChatMessage(String message) {
 }
 
 // Draw Room Selection UI
-void drawRoomSelectionUI(Adafruit_ST7789 &display) {
+void drawRoomSelectionUI(LGFX &display) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   // Title
-  display.setFont(&FreeSansBold12pt7b);
+  display.setFont(nullptr);  // Use default font
   display.setTextColor(COLOR_TITLE);
   display.setTextSize(1);
 
   int16_t x1, y1;
   uint16_t w, h;
   String title = "SELECT ROOM";
-  display.getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, title.c_str(), 0, 0, &x1, &y1, &w, &h);
   display.setCursor((SCREEN_WIDTH - w) / 2, 70);
   display.print(title);
-  display.setFont(); // Reset font
+  display.setFont(nullptr); // Reset font
 
   // Build menu items
   std::vector<String> menuItems;
@@ -1322,7 +1322,7 @@ void drawRoomSelectionUI(Adafruit_ST7789 &display) {
 }
 
 // Handle Room Selection Input
-int handleRoomSelectionInput(char key, Adafruit_ST7789 &display) {
+int handleRoomSelectionInput(char key, LGFX &display) {
   // Calculate total menu items
   int totalItems = activeRooms.size() + 1;  // Active rooms + "Custom room..."
   bool hasGeneral = false;
@@ -1388,22 +1388,22 @@ int handleRoomSelectionInput(char key, Adafruit_ST7789 &display) {
 }
 
 // Draw Room Input UI
-void drawRoomInputUI(Adafruit_ST7789 &display) {
+void drawRoomInputUI(LGFX &display) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   // Title
-  display.setFont(&FreeSansBold12pt7b);
+  display.setFont(nullptr);  // Use default font
   display.setTextColor(COLOR_TITLE);
   display.setTextSize(1);
 
   int16_t x1, y1;
   uint16_t w, h;
   String title = "CUSTOM ROOM";
-  display.getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, title.c_str(), 0, 0, &x1, &y1, &w, &h);
   display.setCursor((SCREEN_WIDTH - w) / 2, 70);
   display.print(title);
-  display.setFont(); // Reset font
+  display.setFont(nullptr); // Reset font
 
   // Instructions
   display.setTextSize(1);
@@ -1450,7 +1450,7 @@ void drawRoomInputUI(Adafruit_ST7789 &display) {
 }
 
 // Handle Room Input Input
-int handleRoomInputInput(char key, Adafruit_ST7789 &display) {
+int handleRoomInputInput(char key, LGFX &display) {
   // Update cursor blink
   if (millis() - roomLastBlink > 500) {
     roomCursorVisible = !roomCursorVisible;
@@ -1499,22 +1499,22 @@ int handleRoomInputInput(char key, Adafruit_ST7789 &display) {
 }
 
 // Draw User List UI
-void drawUserListUI(Adafruit_ST7789 &display) {
+void drawUserListUI(LGFX &display) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   // Title
-  display.setFont(&FreeSansBold12pt7b);
+  display.setFont(nullptr);  // Use default font
   display.setTextColor(COLOR_TITLE);
   display.setTextSize(1);
 
   int16_t x1, y1;
   uint16_t w, h;
   String title = "USERS IN ROOM";
-  display.getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, title.c_str(), 0, 0, &x1, &y1, &w, &h);
   display.setCursor((SCREEN_WIDTH - w) / 2, 70);
   display.print(title);
-  display.setFont(); // Reset font
+  display.setFont(nullptr); // Reset font
 
   // Room name subtitle
   display.setTextSize(1);
@@ -1570,7 +1570,7 @@ void drawUserListUI(Adafruit_ST7789 &display) {
 }
 
 // Handle User List Input
-int handleUserListInput(char key, Adafruit_ST7789 &display) {
+int handleUserListInput(char key, LGFX &display) {
   // ESC handled in main handleVailInput
   // Just return 0 for any other keys
   return 0;
@@ -1579,7 +1579,7 @@ int handleUserListInput(char key, Adafruit_ST7789 &display) {
 #else  // VAIL_ENABLED == 0
 
 // Stub functions when libraries are not installed
-void startVailRepeater(Adafruit_ST7789 &display) {
+void startVailRepeater(LGFX &display) {
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
   display.setTextSize(1);
   display.setTextColor(ST77XX_RED);
@@ -1597,16 +1597,16 @@ void startVailRepeater(Adafruit_ST7789 &display) {
   display.print("   by Benoit Blanchon");
 }
 
-void drawVailUI(Adafruit_ST7789 &display) {
+void drawVailUI(LGFX &display) {
   startVailRepeater(display);
 }
 
-int handleVailInput(char key, Adafruit_ST7789 &display) {
+int handleVailInput(char key, LGFX &display) {
   if (key == KEY_ESC) return -1;
   return 0;
 }
 
-void updateVailRepeater(Adafruit_ST7789 &display) {
+void updateVailRepeater(LGFX &display) {
   // Nothing to do
 }
 

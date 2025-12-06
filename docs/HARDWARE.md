@@ -2,20 +2,48 @@
 
 This document covers all hardware interfaces, pin assignments, and peripheral configurations for the VAIL SUMMIT device.
 
-## Display (ST7789V via SPI)
+## Display (ST7796S 4.0" via SPI)
 
-- **Resolution:** 240×320 pixels rotated to 320×240 landscape (`SCREEN_ROTATION = 1`)
+- **Model:** 4.0" TFT ST7796S LCD
+- **Resolution:** 480×320 pixels (landscape orientation, `SCREEN_ROTATION = 1`)
+- **Library:** LovyanGFX (replaces Adafruit_ST7789)
 - **Chip Select:** GPIO 10 (`TFT_CS`)
-- **Data/Command:** GPIO 12 (`TFT_DC`)
 - **Reset:** GPIO 11 (`TFT_RST`)
+- **Data/Command:** GPIO 12 (`TFT_DC`)
 - **MOSI:** GPIO 35 (Hardware SPI)
 - **SCK:** GPIO 36 (Hardware SPI)
+- **MISO:** GPIO 37 (Hardware SPI - required for ST7796S)
 - **Backlight:** Hardwired to 3.3V (always on)
 
 **Configuration:**
 - Hardware SPI used for maximum performance
 - Display updates disabled during audio-critical operations (practice, games, radio)
 - Partial screen updates used where possible to minimize glitches
+
+## SD Card (via SPI - shares bus with display)
+
+- **Chip Select:** GPIO 38 (`SD_CS`)
+- **MOSI:** GPIO 35 (Shared with display - Hardware SPI)
+- **SCK:** GPIO 36 (Shared with display - Hardware SPI)
+- **MISO:** GPIO 37 (Shared with display - Hardware SPI)
+
+**Configuration:**
+- SD card shares the same SPI bus as the display
+- Separate chip select pins allow independent device control (Display: GPIO 10, SD: GPIO 38)
+- Only one device can be active at a time (controlled by CS pin)
+- SD card slot is integrated on the back of the ST7796S display board
+- Requires separate wiring of all 4 SD card pins to ESP32-S3 Feather
+
+**Library Support:**
+- Standard Arduino SD library (FAT32 file system)
+- SPI bus must be properly shared between display and SD card operations
+- SD card initialized on-demand (first access to storage page) to avoid boot-time SPI conflicts
+
+**Card Requirements:**
+- Format: FAT32 (required)
+- Recommended size: 4-32 GB SDHC
+- Speed class: Class 10 or higher recommended
+- Cards larger than 32 GB must be reformatted from exFAT to FAT32
 
 ## Keyboard (CardKB via I2C)
 
@@ -190,6 +218,13 @@ Two battery monitor chips supported (I2C auto-detection on startup):
 **Current usage:** I2S LRC clock signal
 **Reason:** Any `analogRead(A3)` call breaks audio
 
+### GPIO 38 (SD Card CS)
+
+**Current usage:** SD card chip select
+**Notes:** One of the few remaining free GPIO pins on the ESP32-S3 Feather
+**Functionality:** Web-based file management (upload, download, delete), data logging support
+**Initialization:** On-demand (lazy init when storage management page is accessed)
+
 ## I2C Devices
 
 **I2C Bus:**
@@ -224,8 +259,10 @@ Two battery monitor chips supported (I2C auto-detection on startup):
 | 16 | I2S DIN | Output | Audio data |
 | 17 | Radio DAH | Output | Radio keying (A1) |
 | 18 | Radio DIT | Output | Radio keying (A0) |
-| 35 | SPI MOSI | Output | Display data (hardware SPI) |
-| 36 | SPI SCK | Output | Display clock (hardware SPI) |
+| 35 | SPI MOSI | Output | Display/SD card data (hardware SPI) |
+| 36 | SPI SCK | Output | Display/SD card clock (hardware SPI) |
+| 37 | SPI MISO | Input | Display/SD card data in (hardware SPI) |
+| 38 | SD CS | Output | SD card chip select |
 
 ## Power Considerations
 

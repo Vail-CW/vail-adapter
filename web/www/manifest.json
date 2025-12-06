@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "description": "VAIL SUMMIT Web Interface Files",
+  "files": [
+    { "name": "index.html", "description": "Dashboard" },
+    { "name": "logger.html", "description": "QSO Logger" },
+    { "name": "wifi.html", "description": "WiFi Setup" },
+    { "name": "practice.html", "description": "Practice Mode" },
+    { "name": "hear-it.html", "description": "Hear It Type It" },
+    { "name": "memory-chain.html", "description": "Memory Chain Game" },
+    { "name": "radio.html", "description": "Radio Control" },
+    { "name": "settings.html", "description": "Device Settings" },
+    { "name": "system.html", "description": "System Info" },
+    { "name": "storage.html", "description": "Storage Management" }
+  ]
+}

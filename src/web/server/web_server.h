@@ -18,7 +18,8 @@
 #include "../../settings/settings_web_password.h"
 
 // Include modular web components
-#include "../pages/web_pages_dashboard.h"
+#include "../pages/web_pages_setup.h"      // Setup splash page (always in flash)
+#include "../pages/web_pages_dashboard.h"  // Fallback dashboard (in flash for now)
 #include "../pages/web_pages_wifi.h"
 #include "../pages/web_pages_practice.h"
 #include "../pages/web_pages_memory_chain.h"
@@ -26,15 +27,19 @@
 #include "../pages/web_pages_radio.h"
 #include "../pages/web_pages_settings.h"
 #include "../pages/web_pages_system.h"
+#include "../pages/web_pages_storage.h"
 #include "../api/web_api_wifi.h"
 #include "../api/web_api_qso.h"
 #include "../api/web_api_settings.h"
 #include "../api/web_api_memories.h"
+#include "../api/web_api_storage.h"
 #include "web_server_api.h"  // Same folder
+#include "web_file_downloader.h"  // GitHub download functions
 #include "../pages/web_logger_enhanced.h"
 #include "../modes/web_practice_socket.h"
 #include "../modes/web_memory_chain_socket.h"
 #include "../modes/web_hear_it_socket.h"
+#include "../../storage/sd_card.h"
 
 // Global web server instance
 AsyncWebServer webServer(80);
@@ -51,17 +56,21 @@ String mdnsHostname = "vail-summit";
 // Server state
 bool webServerRunning = false;
 bool webPracticeModeActive = false;
+bool webFilesOnSD = false;  // True if web files exist on SD card
+bool webServerRestartPending = false;  // Flag to restart server (checked in main loop)
 
 // Forward declarations
 void setupWebServer();
 void stopWebServer();
+void restartWebServer();
+void requestWebServerRestart();
 bool checkWebAuth(AsyncWebServerRequest *request);
 void onPracticeWebSocketEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len);
 void sendPracticeDecoded(String morse, String text);
 void sendPracticeWPM(float wpm);
-void startWebPracticeMode(Adafruit_ST7789& tft);
-void startWebMemoryChainMode(Adafruit_ST7789& tft, int difficulty, int mode, int wpm, bool sound, bool hints);
-void startWebHearItMode(Adafruit_ST7789& tft);
+void startWebPracticeMode(LGFX& tft);
+void startWebMemoryChainMode(LGFX& tft, int difficulty, int mode, int wpm, bool sound, bool hints);
+void startWebHearItMode(LGFX& tft);
 
 /*
  * Check web authentication
@@ -128,79 +137,185 @@ void setupWebServer() {
   }
 
   // ============================================
-  // Main Dashboard Page
+  // Check if web files exist on SD card
   // ============================================
-  webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+  webFilesOnSD = webFilesExist();
+  Serial.printf("Web files on SD card: %s\n", webFilesOnSD ? "YES" : "NO");
+
+  // ============================================
+  // Web Files Download/Upload API (always available)
+  // ============================================
+  webServer.on("/api/webfiles/download", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
+
+    // Start download in background (non-blocking would require task, for now synchronous)
+    // Note: This blocks the request but provides progress via polling
+    bool success = downloadWebFilesFromGitHub();
+
+    JsonDocument doc;
+    doc["success"] = success;
+    if (!success) {
+      doc["error"] = webDownloadProgress.errorMessage;
+    }
+
+    String output;
+    serializeJson(doc, output);
+    request->send(200, "application/json", output);
+
+    // If successful, update flag (will take effect on next request)
+    if (success) {
+      webFilesOnSD = true;
+    }
+  });
+
+  webServer.on("/api/webfiles/progress", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "application/json", getWebDownloadProgressJson());
+  });
+
+  webServer.on("/api/webfiles/cancel", HTTP_POST, [](AsyncWebServerRequest *request) {
+    cancelWebFileDownload();
+    request->send(200, "application/json", "{\"cancelled\":true}");
+  });
+
+  webServer.on("/api/webfiles/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    JsonDocument doc;
+    doc["installed"] = webFilesOnSD;
+    doc["version"] = getWebFilesVersion();
+
+    String output;
+    serializeJson(doc, output);
+    request->send(200, "application/json", output);
+  });
+
+  // Web file upload endpoint (for manual installation)
+  webServer.on("/api/webfiles/upload", HTTP_POST,
+    [](AsyncWebServerRequest *request) {
+      request->send(200, "application/json", "{\"status\":\"complete\"}");
+    },
+    [](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
+      if (!checkWebAuth(request)) return;
+
+      // Get target path from form data or use filename
+      String path = "/www/" + filename;
+      if (request->hasParam("path", true)) {
+        path = request->getParam("path", true)->value();
+      }
+
+      // Create /www directory if needed
+      if (index == 0) {
+        if (!sdCardAvailable) {
+          initSDCard();
+        }
+        if (!SD.exists("/www")) {
+          SD.mkdir("/www");
+        }
+        createDirectoriesForPath(path.c_str());
+        Serial.printf("Uploading web file: %s\n", path.c_str());
+      }
+
+      // Open file in write mode at start, append mode for subsequent chunks
+      File file;
+      if (index == 0) {
+        file = SD.open(path.c_str(), FILE_WRITE);
+      } else {
+        file = SD.open(path.c_str(), FILE_APPEND);
+      }
+
+      if (file) {
+        file.write(data, len);
+        file.close();
+      }
+
+      if (final) {
+        Serial.printf("Upload complete: %s (%u bytes)\n", path.c_str(), index + len);
+        webFilesOnSD = webFilesExist();  // Re-check
+      }
+    }
+  );
+
+  // Web server restart endpoint (called after file upload to switch from setup to normal mode)
+  webServer.on("/api/webfiles/restart", HTTP_POST, [](AsyncWebServerRequest *request) {
+    if (!checkWebAuth(request)) return;
+
+    // Check if web files now exist
+    webFilesOnSD = webFilesExist();
+
+    if (webFilesOnSD) {
+      request->send(200, "application/json", "{\"success\":true,\"message\":\"Server will restart\"}");
+      // Request restart - will be handled in main loop
+      requestWebServerRestart();
+    } else {
+      request->send(200, "application/json", "{\"success\":false,\"message\":\"No web files found\"}");
+    }
+  });
+
+  // ============================================
+  // Setup Mode vs Normal Mode Routing
+  // ============================================
+  if (!webFilesOnSD) {
+    // SETUP MODE: Serve setup splash page for all HTML routes
+    Serial.println("Web server running in SETUP MODE (no web files on SD)");
+
+    webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+      if (!checkWebAuth(request)) return;
+      request->send_P(200, "text/html", SETUP_HTML);
+    });
+
+    // All other page routes redirect to setup
+    webServer.on("/logger", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->redirect("/");
+    });
+    webServer.on("/wifi", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->redirect("/");
+    });
+    webServer.on("/radio", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->redirect("/");
+    });
+    webServer.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->redirect("/");
+    });
+    webServer.on("/system", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->redirect("/");
+    });
+    webServer.on("/storage", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->redirect("/");
+    });
+    webServer.on("/practice", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->redirect("/");
+    });
+    webServer.on("/memory-chain", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->redirect("/");
+    });
+    webServer.on("/hear-it", HTTP_GET, [](AsyncWebServerRequest *request) {
+      request->redirect("/");
+    });
+
+  } else {
+    // NORMAL MODE: Serve pages from SD card
+    Serial.println("Web server running in NORMAL MODE (serving from SD card)");
+
+    // Serve static files from SD card /www/ directory
+    webServer.serveStatic("/", SD, "/www/").setDefaultFile("index.html");
+  }
+
+  // ============================================
+  // API Endpoints (always available regardless of mode)
+  // ============================================
+
+  // Main Dashboard Page (fallback if SD serving fails)
+  // Note: In normal mode, serveStatic handles "/" but we keep this as fallback
+  if (webFilesOnSD) {
+    // Dashboard is served from SD, but keep API working
+  }
+
+  // Legacy dashboard endpoint for backward compatibility
+  webServer.on("/dashboard-legacy", HTTP_GET, [](AsyncWebServerRequest *request) {
     if (!checkWebAuth(request)) return;
     serveDashboard(request, FIRMWARE_VERSION, FIRMWARE_DATE, mdnsHostname);
   });
 
   // ============================================
-  // QSO Logger Page (Enhanced)
-  // ============================================
-  webServer.on("/logger", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!checkWebAuth(request)) return;
-    request->send_P(200, "text/html", LOGGER_HTML);
-  });
-
-  // ============================================
-  // WiFi Setup Page
-  // ============================================
-  webServer.on("/wifi", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!checkWebAuth(request)) return;
-    serveWiFiSetup(request);
-  });
-
-  // ============================================
-  // Radio Control Page
-  // ============================================
-  webServer.on("/radio", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!checkWebAuth(request)) return;
-    serveRadioPage(request);
-  });
-
-  // ============================================
-  // Device Settings Page
-  // ============================================
-  webServer.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!checkWebAuth(request)) return;
-    serveSettingsPage(request);
-  });
-
-  // ============================================
-  // System Info Page
-  // ============================================
-  webServer.on("/system", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!checkWebAuth(request)) return;
-    serveSystemPage(request);
-  });
-
-  // ============================================
-  // Practice Mode Page
-  // ============================================
-  webServer.on("/practice", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!checkWebAuth(request)) return;
-    request->send_P(200, "text/html", PRACTICE_PAGE_HTML);
-  });
-
-  // ============================================
-  // Memory Chain Game Page
-  // ============================================
-  webServer.on("/memory-chain", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!checkWebAuth(request)) return;
-    request->send_P(200, "text/html", MEMORY_CHAIN_HTML);
-  });
-
-  // ============================================
-  // Hear It Type It Training Page
-  // ============================================
-  webServer.on("/hear-it", HTTP_GET, [](AsyncWebServerRequest *request) {
-    if (!checkWebAuth(request)) return;
-    request->send_P(200, "text/html", HEAR_IT_TYPE_IT_HTML);
-  });
-
-  // ============================================
-  // API Endpoints
+  // API Endpoints (always available)
   // ============================================
 
   // Device status endpoint
@@ -237,7 +352,7 @@ void setupWebServer() {
   webServer.on("/api/practice/start", HTTP_POST, [](AsyncWebServerRequest *request) {
     if (!checkWebAuth(request)) return;
     extern MenuMode currentMode;
-    extern Adafruit_ST7789 tft;
+    extern LGFX tft;
 
     // Switch device to web practice mode
     currentMode = MODE_WEB_PRACTICE;
@@ -269,7 +384,7 @@ void setupWebServer() {
       deserializeJson(doc, data, len);
 
       extern MenuMode currentMode;
-      extern Adafruit_ST7789 tft;
+      extern LGFX tft;
 
       int difficulty = doc["difficulty"].as<int>();
       int mode = doc["mode"].as<int>();
@@ -304,7 +419,7 @@ void setupWebServer() {
       deserializeJson(doc, data, len);
 
       extern MenuMode currentMode;
-      extern Adafruit_ST7789 tft;
+      extern LGFX tft;
 
       // Get settings from request
       int mode = doc["mode"].as<int>();
@@ -339,6 +454,7 @@ void setupWebServer() {
   setupWiFiAPI(webServer);
   setupSettingsAPI(webServer);
   setupMemoriesAPI(webServer);
+  registerStorageAPI(&webServer);
 
   // Setup WebSocket for practice mode
   practiceWebSocket.onEvent(onPracticeWebSocketEvent);
@@ -386,6 +502,33 @@ void stopWebServer() {
   MDNS.end();
   webServerRunning = false;
   Serial.println("Web server stopped");
+}
+
+/*
+ * Restart the web server (to pick up new routes after file upload)
+ * This should be called from the main loop when webServerRestartPending is true
+ */
+void restartWebServer() {
+  Serial.println("Restarting web server...");
+  stopWebServer();
+  delay(100);  // Brief delay to ensure clean shutdown
+  setupWebServer();
+  webServerRestartPending = false;
+}
+
+/*
+ * Check if web server restart is pending (call from main loop)
+ */
+bool isWebServerRestartPending() {
+  return webServerRestartPending;
+}
+
+/*
+ * Request web server restart (safe to call from request handlers)
+ */
+void requestWebServerRestart() {
+  webServerRestartPending = true;
+  Serial.println("Web server restart requested");
 }
 
 #endif // WEB_SERVER_H

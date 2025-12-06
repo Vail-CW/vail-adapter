@@ -7,8 +7,6 @@
 #ifndef GAME_MORSE_MEMORY_H
 #define GAME_MORSE_MEMORY_H
 
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7789.h>
 #include <Preferences.h>
 #include "../core/config.h"
 #include "../core/morse_code.h"
@@ -349,11 +347,11 @@ void startNextRound() {
 /*
  * Draw the game header
  */
-void drawMemoryHeader(Adafruit_ST7789& tft) {
+void drawMemoryHeader(LGFX& tft) {
   tft.fillRect(0, 0, SCREEN_WIDTH, 40, COLOR_TITLE);
-  tft.setFont(&FreeSansBold12pt7b);
+  tft.setFont(nullptr);  // Use default font
   tft.setTextColor(COLOR_BACKGROUND);
-  tft.setTextSize(1);
+  tft.setTextSize(2);  // Larger size for better readability
 
   tft.setCursor(10, 28);
   tft.print("MEMORY CHAIN");
@@ -362,7 +360,7 @@ void drawMemoryHeader(Adafruit_ST7789& tft) {
   String chainStr = "Chain: " + String(memoryGame.sequenceLength);
   int16_t x1, y1;
   uint16_t w, h;
-  tft.getTextBounds(chainStr, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, chainStr.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(SCREEN_WIDTH - w - 10, 28);
   tft.print(chainStr);
 }
@@ -370,10 +368,10 @@ void drawMemoryHeader(Adafruit_ST7789& tft) {
 /*
  * Draw lives indicator (practice mode)
  */
-void drawMemoryLives(Adafruit_ST7789& tft, int y) {
+void drawMemoryLives(LGFX& tft, int y) {
   if (memorySettings.mode != MEMORY_MODE_PRACTICE) return;
 
-  tft.setFont();
+  tft.setFont(nullptr);
   tft.setTextSize(2);
   tft.setTextColor(COLOR_TEXT);
 
@@ -384,7 +382,7 @@ void drawMemoryLives(Adafruit_ST7789& tft, int y) {
 
   int16_t x1, y1;
   uint16_t w, h;
-  tft.getTextBounds(livesStr, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, livesStr.c_str(), 0, 0, &x1, &y1, &w, &h);
   int x = (SCREEN_WIDTH - w) / 2;
 
   tft.setCursor(x, y);
@@ -394,11 +392,11 @@ void drawMemoryLives(Adafruit_ST7789& tft, int y) {
 /*
  * Draw the main game UI
  */
-void drawMemoryGameUI(Adafruit_ST7789& tft) {
+void drawMemoryGameUI(LGFX& tft) {
   tft.fillScreen(COLOR_BACKGROUND);
   drawMemoryHeader(tft);
 
-  tft.setFont();
+  tft.setFont(nullptr);
   tft.setTextSize(2);
 
   // State indicator
@@ -437,7 +435,7 @@ void drawMemoryGameUI(Adafruit_ST7789& tft) {
   // Center the state text
   int16_t x1, y1;
   uint16_t w, h;
-  tft.getTextBounds(stateText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, stateText.c_str(), 0, 0, &x1, &y1, &w, &h);
   int x = (SCREEN_WIDTH - w) / 2;
 
   tft.fillRect(0, centerY - 5, SCREEN_WIDTH, h + 10, stateColor);
@@ -454,7 +452,7 @@ void drawMemoryGameUI(Adafruit_ST7789& tft) {
       seqStr += memoryGame.sequence[i];
       seqStr += " ";
     }
-    tft.getTextBounds(seqStr, 0, 0, &x1, &y1, &w, &h);
+    getTextBounds_compat(tft, seqStr.c_str(), 0, 0, &x1, &y1, &w, &h);
     x = (SCREEN_WIDTH - w) / 2;
     tft.setCursor(x, centerY + 40);
     tft.print(seqStr);
@@ -463,7 +461,7 @@ void drawMemoryGameUI(Adafruit_ST7789& tft) {
     if (memoryGame.state == MEMORY_STATE_LISTENING && memoryGame.playerPosition > 0) {
       tft.setTextColor(COLOR_SUCCESS);
       String progressStr = "Sent: " + String(memoryGame.playerPosition) + "/" + String(memoryGame.sequenceLength);
-      tft.getTextBounds(progressStr, 0, 0, &x1, &y1, &w, &h);
+      getTextBounds_compat(tft, progressStr.c_str(), 0, 0, &x1, &y1, &w, &h);
       x = (SCREEN_WIDTH - w) / 2;
       tft.setCursor(x, centerY + 60);
       tft.print(progressStr);
@@ -484,14 +482,14 @@ void drawMemoryGameUI(Adafruit_ST7789& tft) {
   tft.print(scoreStr);
 
   String highStr = "Best: " + String(memoryGame.allTimeBest);
-  tft.getTextBounds(highStr, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, highStr.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(SCREEN_WIDTH - w - 10, 180);
   tft.print(highStr);
 
   // Instructions
   tft.setTextColor(ST77XX_CYAN);
   String instrStr = "ESC=Menu  S=Settings";
-  tft.getTextBounds(instrStr, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, instrStr.c_str(), 0, 0, &x1, &y1, &w, &h);
   x = (SCREEN_WIDTH - w) / 2;
   tft.setCursor(x, 210);
   tft.print(instrStr);
@@ -500,18 +498,18 @@ void drawMemoryGameUI(Adafruit_ST7789& tft) {
 /*
  * Draw game over screen
  */
-void drawMemoryGameOver(Adafruit_ST7789& tft) {
+void drawMemoryGameOver(LGFX& tft) {
   tft.fillScreen(COLOR_BACKGROUND);
   drawMemoryHeader(tft);
 
-  tft.setFont();
+  tft.setFont(nullptr);
   tft.setTextSize(3);
   tft.setTextColor(COLOR_ERROR);
 
   String gameOverStr = "GAME OVER";
   int16_t x1, y1;
   uint16_t w, h;
-  tft.getTextBounds(gameOverStr, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, gameOverStr.c_str(), 0, 0, &x1, &y1, &w, &h);
   int x = (SCREEN_WIDTH - w) / 2;
   tft.setCursor(x, 70);
   tft.print(gameOverStr);
@@ -521,7 +519,7 @@ void drawMemoryGameOver(Adafruit_ST7789& tft) {
   tft.setTextColor(COLOR_TEXT);
 
   String finalStr = "Final Chain: " + String(memoryGame.score);
-  tft.getTextBounds(finalStr, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, finalStr.c_str(), 0, 0, &x1, &y1, &w, &h);
   x = (SCREEN_WIDTH - w) / 2;
   tft.setCursor(x, 110);
   tft.print(finalStr);
@@ -530,13 +528,13 @@ void drawMemoryGameOver(Adafruit_ST7789& tft) {
   tft.setTextSize(1);
 
   String sessionStr = "Session Best: " + String(memoryGame.highScore);
-  tft.getTextBounds(sessionStr, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, sessionStr.c_str(), 0, 0, &x1, &y1, &w, &h);
   x = (SCREEN_WIDTH - w) / 2;
   tft.setCursor(x, 140);
   tft.print(sessionStr);
 
   String allTimeStr = "All-Time Best: " + String(memoryGame.allTimeBest);
-  tft.getTextBounds(allTimeStr, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, allTimeStr.c_str(), 0, 0, &x1, &y1, &w, &h);
   x = (SCREEN_WIDTH - w) / 2;
   tft.setCursor(x, 160);
   tft.print(allTimeStr);
@@ -546,13 +544,13 @@ void drawMemoryGameOver(Adafruit_ST7789& tft) {
   tft.setTextSize(1);
 
   String playAgainStr = "ENTER = Play Again";
-  tft.getTextBounds(playAgainStr, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, playAgainStr.c_str(), 0, 0, &x1, &y1, &w, &h);
   x = (SCREEN_WIDTH - w) / 2;
   tft.setCursor(x, 190);
   tft.print(playAgainStr);
 
   String menuStr = "ESC = Main Menu";
-  tft.getTextBounds(menuStr, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, menuStr.c_str(), 0, 0, &x1, &y1, &w, &h);
   x = (SCREEN_WIDTH - w) / 2;
   tft.setCursor(x, 210);
   tft.print(menuStr);
@@ -561,17 +559,18 @@ void drawMemoryGameOver(Adafruit_ST7789& tft) {
 /*
  * Draw settings menu
  */
-void drawMemorySettings(Adafruit_ST7789& tft) {
+void drawMemorySettings(LGFX& tft) {
   tft.fillScreen(COLOR_BACKGROUND);
 
   // Header
   tft.fillRect(0, 0, SCREEN_WIDTH, 40, COLOR_TITLE);
-  tft.setFont(&FreeSansBold12pt7b);
+  tft.setFont(nullptr);  // Use default font
   tft.setTextColor(COLOR_BACKGROUND);
+  tft.setTextSize(2);  // Larger size for better readability
   tft.setCursor(10, 28);
   tft.print("GAME SETTINGS");
 
-  tft.setFont();
+  tft.setFont(nullptr);
   tft.setTextSize(1);
 
   int y = 60;
@@ -639,7 +638,7 @@ void drawMemorySettings(Adafruit_ST7789& tft) {
   int16_t x1, y1;
   uint16_t w, h;
   String saveStr = "< Save & Return >";
-  tft.getTextBounds(saveStr, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, saveStr.c_str(), 0, 0, &x1, &y1, &w, &h);
   int x = (SCREEN_WIDTH - w) / 2;
   tft.setCursor(x, y);
   tft.print(saveStr);
@@ -657,7 +656,7 @@ void drawMemorySettings(Adafruit_ST7789& tft) {
 // Settings Input Handler
 // ============================================
 
-int handleMemorySettingsInput(char key, Adafruit_ST7789& tft) {
+int handleMemorySettingsInput(char key, LGFX& tft) {
   if (key == 0x1B) {  // ESC - save and exit
     saveMemorySettings();
     inMemorySettings = false;
@@ -768,7 +767,7 @@ void resetMemoryKeyerState() {
 /*
  * Start the Memory game
  */
-void startMemoryGame(Adafruit_ST7789& tft) {
+void startMemoryGame(LGFX& tft) {
   loadMemorySettings();
   resetMemoryGame();
   resetMemoryKeyerState();
@@ -908,7 +907,7 @@ void updateMemoryGame() {
 /*
  * Handle keyboard input during game
  */
-int handleMemoryGameInput(char key, Adafruit_ST7789& tft) {
+int handleMemoryGameInput(char key, LGFX& tft) {
   // Settings menu
   if (inMemorySettings) {
     return handleMemorySettingsInput(key, tft);
@@ -1176,7 +1175,7 @@ void handleMemoryPaddleInput(bool ditPressed, bool dahPressed) {
 /*
  * Draw the game UI (called from main loop)
  */
-void drawMemoryUI(Adafruit_ST7789& tft) {
+void drawMemoryUI(LGFX& tft) {
   if (inMemorySettings) {
     drawMemorySettings(tft);
   } else if (memoryGame.state == MEMORY_STATE_GAME_OVER) {

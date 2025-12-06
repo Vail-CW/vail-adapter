@@ -12,17 +12,31 @@ This document covers build setup, compilation, upload, and firmware updates for 
 - **PSRAM:** OPI PSRAM
 - **Upload Speed:** 921600
 
+### ESP32 Core Version
+
+**IMPORTANT:** This project requires **Arduino ESP32 core version 2.0.14** for display compatibility (especially for 4" ST7796S displays).
+
+**To install/verify in Arduino IDE:**
+1. Go to Tools → Board → Boards Manager
+2. Search for "esp32"
+3. Find "esp32 by Espressif Systems"
+4. Select version **2.0.14** from dropdown
+5. Click "Install" or verify current version
+
+**Note:** Newer core versions (2.0.15+, 3.0.x) have compatibility issues with the ST7796S display driver that cause boot loops. Always use 2.0.14 for this project.
+
 ### Required Libraries
 
 Install via Arduino Library Manager:
 
-1. **Adafruit GFX Library** - Display graphics primitives
-2. **Adafruit ST7735 and ST7789 Library** - ST7789V LCD driver
-3. **Adafruit MAX1704X** - Battery monitoring for MAX17048
-4. **Adafruit LC709203F** - Backup battery monitor support
-5. **WebSockets by Markus Sattler** - WebSocket client for Vail repeater
-6. **ArduinoJson by Benoit Blanchon** - JSON parsing/serialization
-7. **ESPAsyncWebServer** - Async web server (install from GitHub)
+1. **LovyanGFX by lovyan03** - Advanced display graphics library for ST7796S 4.0" display
+2. **Adafruit MAX1704X** - Battery monitoring for MAX17048
+3. **Adafruit LC709203F** - Backup battery monitor support
+4. **WebSockets by Markus Sattler** - WebSocket client for Vail repeater
+5. **ArduinoJson by Benoit Blanchon** - JSON parsing/serialization
+6. **ESPAsyncWebServer** - Async web server (install from GitHub)
+
+**Note:** This project uses a 4.0" ST7796S display (480×320) with LovyanGFX library instead of the older Adafruit ST7789 library.
 
 ### Compilation and Upload
 

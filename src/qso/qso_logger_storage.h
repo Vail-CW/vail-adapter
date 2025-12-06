@@ -1,6 +1,7 @@
 /*
  * QSO Logger Storage Module
- * LittleFS-based storage for contact logs with JSON serialization
+ * SD card-based storage for contact logs with JSON working format
+ * and auto-generated ADIF backups
  */
 
 #ifndef QSO_LOGGER_STORAGE_H
@@ -8,20 +9,22 @@
 
 #include <Arduino.h>
 #include <FS.h>
+#include <SD.h>
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
 #include "qso_logger.h"  // Same folder
-
-// Use SPIFFS instead of LittleFS for better compatibility
-#define FileSystem SPIFFS
+#include "../storage/sd_card.h"
+#include "../core/config.h"
 
 // ============================================
 // Storage Configuration
 // ============================================
 
-#define MAX_LOGS 500                    // Maximum logs before circular buffer deletion
-#define LOGS_DIR "/logs"                // Log files directory
-#define METADATA_FILE "/logs/metadata.json"  // Statistics cache
+#define MAX_LOGS 500                    // Maximum logs before warning
+#define QSO_DIR "/qso"                  // QSO files directory on SD card
+#define METADATA_DIR "/logs"            // Metadata directory on SPIFFS
+#define METADATA_FILE "/logs/metadata.json"  // Statistics cache on SPIFFS
+#define MASTER_ADIF_FILE "/qso/vail-summit.adi"  // Master ADIF file
 
 // ============================================
 // Storage Statistics
@@ -37,57 +40,106 @@ struct StorageStats {
 
 StorageStats storageStats = {0};
 
+// QSO storage ready flag
+bool qsoStorageReady = false;
+
 // ============================================
 // Forward Declarations
 // ============================================
 
 void loadMetadata();
 void saveMetadata();
+void regenerateADIFFiles(const char* date);
+void generateMasterADIF();
+void generateDailyADIF(const char* date);
+String qsoToADIFRecord(const QSO& qso);
 
 // ============================================
 // Helper Functions
 // ============================================
 
 /*
- * Initialize LittleFS filesystem
+ * Initialize metadata storage on SPIFFS (for fast stats access)
  */
-bool initStorage() {
-  Serial.println("Initializing SPIFFS...");
+bool initMetadataStorage() {
+  Serial.println("Initializing SPIFFS for metadata...");
 
   // Try to mount first
-  if (!FileSystem.begin(false)) {
+  if (!SPIFFS.begin(false)) {
     Serial.println("SPIFFS mount failed, trying to format...");
 
     // Format and try again
-    if (!FileSystem.begin(true)) {
+    if (!SPIFFS.begin(true)) {
       Serial.println("ERROR: SPIFFS format and mount failed!");
-      Serial.println("This may be a partition table issue.");
-      Serial.println("Logger will run without storage.");
       return false;
     }
   }
 
   Serial.println("SPIFFS mounted successfully");
 
-  // Create logs directory if it doesn't exist
-  if (!FileSystem.exists(LOGS_DIR)) {
-    Serial.println("Creating /logs directory...");
-    FileSystem.mkdir(LOGS_DIR);
+  // Create metadata directory if it doesn't exist
+  if (!SPIFFS.exists(METADATA_DIR)) {
+    Serial.println("Creating /logs directory on SPIFFS...");
+    SPIFFS.mkdir(METADATA_DIR);
   }
 
   // Load metadata
   loadMetadata();
 
+  return true;
+}
+
+/*
+ * Initialize QSO storage on SD card
+ * Returns true if SD card is available and ready
+ */
+bool initQSOStorage() {
+  Serial.println("Initializing QSO storage...");
+
+  // First ensure metadata storage is ready
+  if (!initMetadataStorage()) {
+    Serial.println("WARNING: Metadata storage unavailable");
+  }
+
+  // Check if SD card is already initialized
+  if (!sdCardAvailable) {
+    Serial.println("SD card not initialized, attempting init...");
+    if (!initSDCard()) {
+      Serial.println("ERROR: SD card required for QSO logging");
+      qsoStorageReady = false;
+      return false;
+    }
+  }
+
+  // Create QSO directory if it doesn't exist
+  if (!createSDDirectory(QSO_DIR)) {
+    Serial.println("ERROR: Failed to create /qso directory on SD card");
+    qsoStorageReady = false;
+    return false;
+  }
+
+  Serial.println("QSO storage initialized successfully on SD card");
+  qsoStorageReady = true;
+
   // Print storage info
   Serial.print("Total logs: ");
   Serial.println(storageStats.totalLogs);
-  Serial.print("Used: ");
-  Serial.print(FileSystem.usedBytes());
-  Serial.print(" / ");
-  Serial.print(FileSystem.totalBytes());
-  Serial.println(" bytes");
 
   return true;
+}
+
+/*
+ * Check if QSO storage is ready for use
+ */
+bool isQSOStorageReady() {
+  return qsoStorageReady && sdCardAvailable;
+}
+
+/*
+ * Legacy init function - now initializes both SPIFFS and SD card
+ */
+bool initStorage() {
+  return initQSOStorage();
 }
 
 /*
@@ -120,21 +172,21 @@ int getModeIndex(const char* mode) {
 }
 
 // ============================================
-// Metadata Management
+// Metadata Management (SPIFFS)
 // ============================================
 
 /*
- * Load metadata from file
+ * Load metadata from SPIFFS
  */
 void loadMetadata() {
   memset(&storageStats, 0, sizeof(StorageStats));
 
-  if (!FileSystem.exists(METADATA_FILE)) {
+  if (!SPIFFS.exists(METADATA_FILE)) {
     Serial.println("No metadata file found, starting fresh");
     return;
   }
 
-  File file = FileSystem.open(METADATA_FILE, "r");
+  File file = SPIFFS.open(METADATA_FILE, "r");
   if (!file) {
     Serial.println("Failed to open metadata file");
     return;
@@ -170,7 +222,7 @@ void loadMetadata() {
 }
 
 /*
- * Save metadata to file
+ * Save metadata to SPIFFS
  */
 void saveMetadata() {
   // Create JSON document
@@ -191,7 +243,7 @@ void saveMetadata() {
   }
 
   // Write to file
-  File file = FileSystem.open(METADATA_FILE, "w");
+  File file = SPIFFS.open(METADATA_FILE, "w");
   if (!file) {
     Serial.println("Failed to open metadata file for writing");
     return;
@@ -237,34 +289,9 @@ void qsoToJson(const QSO& qso, JsonObject& obj) {
   if (strlen(qso.station_call) > 0) obj["station_call"] = qso.station_call;
 
   // Location fields
-  Serial.println("=== qsoToJson Location Fields ===");
-  Serial.print("my_gridsquare: [");
-  Serial.print(qso.my_gridsquare);
-  Serial.print("] len=");
-  Serial.println(strlen(qso.my_gridsquare));
-
-  Serial.print("my_pota_ref: [");
-  Serial.print(qso.my_pota_ref);
-  Serial.print("] len=");
-  Serial.println(strlen(qso.my_pota_ref));
-
-  Serial.print("their_pota_ref: [");
-  Serial.print(qso.their_pota_ref);
-  Serial.print("] len=");
-  Serial.println(strlen(qso.their_pota_ref));
-
-  if (strlen(qso.my_gridsquare) > 0) {
-    Serial.println("Adding my_gridsquare to JSON");
-    obj["my_gridsquare"] = qso.my_gridsquare;
-  }
-  if (strlen(qso.my_pota_ref) > 0) {
-    Serial.println("Adding my_pota_ref to JSON");
-    obj["my_pota_ref"] = qso.my_pota_ref;
-  }
-  if (strlen(qso.their_pota_ref) > 0) {
-    Serial.println("Adding their_pota_ref to JSON");
-    obj["their_pota_ref"] = qso.their_pota_ref;
-  }
+  if (strlen(qso.my_gridsquare) > 0) obj["my_gridsquare"] = qso.my_gridsquare;
+  if (strlen(qso.my_pota_ref) > 0) obj["my_pota_ref"] = qso.my_pota_ref;
+  if (strlen(qso.their_pota_ref) > 0) obj["their_pota_ref"] = qso.their_pota_ref;
 }
 
 /*
@@ -297,77 +324,281 @@ void jsonToQso(JsonObject& obj, QSO& qso) {
   strlcpy(qso.operator_call, obj["operator_call"] | "", sizeof(qso.operator_call));
   strlcpy(qso.station_call, obj["station_call"] | "", sizeof(qso.station_call));
 
-  // Location fields (ensure null termination even if not present in JSON)
-  // Use memset to completely zero out the arrays
-  memset(qso.my_gridsquare, 0, sizeof(qso.my_gridsquare));
-  memset(qso.my_pota_ref, 0, sizeof(qso.my_pota_ref));
-  memset(qso.their_pota_ref, 0, sizeof(qso.their_pota_ref));
-
-  Serial.println("=== jsonToQso Loading Location Fields ===");
-  Serial.print("JSON has my_gridsquare key: ");
-  Serial.println(obj.containsKey("my_gridsquare") ? "YES" : "NO");
+  // Location fields
   if (obj.containsKey("my_gridsquare")) {
     const char* val = obj["my_gridsquare"];
-    Serial.print("  Value from JSON: [");
-    Serial.print(val ? val : "NULL");
-    Serial.println("]");
     if (val != nullptr && strlen(val) > 0) {
       strlcpy(qso.my_gridsquare, val, sizeof(qso.my_gridsquare));
-      Serial.print("  Copied to struct: [");
-      Serial.print(qso.my_gridsquare);
-      Serial.println("]");
     }
   }
-
-  Serial.print("JSON has my_pota_ref key: ");
-  Serial.println(obj.containsKey("my_pota_ref") ? "YES" : "NO");
   if (obj.containsKey("my_pota_ref")) {
     const char* val = obj["my_pota_ref"];
-    Serial.print("  Value from JSON: [");
-    Serial.print(val ? val : "NULL");
-    Serial.println("]");
     if (val != nullptr && strlen(val) > 0) {
       strlcpy(qso.my_pota_ref, val, sizeof(qso.my_pota_ref));
-      Serial.print("  Copied to struct: [");
-      Serial.print(qso.my_pota_ref);
-      Serial.println("]");
     }
   }
-
-  Serial.print("JSON has their_pota_ref key: ");
-  Serial.println(obj.containsKey("their_pota_ref") ? "YES" : "NO");
   if (obj.containsKey("their_pota_ref")) {
     const char* val = obj["their_pota_ref"];
-    Serial.print("  Value from JSON: [");
-    Serial.print(val ? val : "NULL");
-    Serial.println("]");
     if (val != nullptr && strlen(val) > 0) {
       strlcpy(qso.their_pota_ref, val, sizeof(qso.their_pota_ref));
-      Serial.print("  Copied to struct: [");
-      Serial.print(qso.their_pota_ref);
-      Serial.println("]");
     }
   }
 }
 
 // ============================================
-// QSO Storage Operations
+// ADIF Generation
+// ============================================
+
+/*
+ * Convert a single QSO to ADIF record format
+ */
+String qsoToADIFRecord(const QSO& qso) {
+  String record = "";
+
+  // Required fields
+  record += "<CALL:" + String(strlen(qso.callsign)) + ">" + qso.callsign + " ";
+
+  char freqStr[16];
+  snprintf(freqStr, sizeof(freqStr), "%.3f", qso.frequency);
+  record += "<FREQ:" + String(strlen(freqStr)) + ">" + freqStr + " ";
+
+  record += "<MODE:" + String(strlen(qso.mode)) + ">" + qso.mode + " ";
+  record += "<BAND:" + String(strlen(qso.band)) + ">" + qso.band + " ";
+  record += "<QSO_DATE:" + String(strlen(qso.date)) + ">" + qso.date + " ";
+
+  // Convert time from HHMM to HHMMSS
+  char timeStr[8];
+  snprintf(timeStr, sizeof(timeStr), "%s00", qso.time_on);
+  record += "<TIME_ON:" + String(strlen(timeStr)) + ">" + timeStr + " ";
+
+  // RST
+  if (strlen(qso.rst_sent) > 0) {
+    record += "<RST_SENT:" + String(strlen(qso.rst_sent)) + ">" + qso.rst_sent + " ";
+  }
+  if (strlen(qso.rst_rcvd) > 0) {
+    record += "<RST_RCVD:" + String(strlen(qso.rst_rcvd)) + ">" + qso.rst_rcvd + " ";
+  }
+
+  // Optional fields
+  if (strlen(qso.name) > 0) {
+    record += "<NAME:" + String(strlen(qso.name)) + ">" + qso.name + " ";
+  }
+  if (strlen(qso.qth) > 0) {
+    record += "<QTH:" + String(strlen(qso.qth)) + ">" + qso.qth + " ";
+  }
+  if (strlen(qso.gridsquare) > 0) {
+    record += "<GRIDSQUARE:" + String(strlen(qso.gridsquare)) + ">" + qso.gridsquare + " ";
+  }
+  if (strlen(qso.country) > 0) {
+    record += "<COUNTRY:" + String(strlen(qso.country)) + ">" + qso.country + " ";
+  }
+  if (strlen(qso.state) > 0) {
+    record += "<STATE:" + String(strlen(qso.state)) + ">" + qso.state + " ";
+  }
+  if (qso.power > 0) {
+    char powerStr[8];
+    snprintf(powerStr, sizeof(powerStr), "%d", qso.power);
+    record += "<TX_PWR:" + String(strlen(powerStr)) + ">" + powerStr + " ";
+  }
+  if (strlen(qso.notes) > 0) {
+    record += "<COMMENT:" + String(strlen(qso.notes)) + ">" + qso.notes + " ";
+  }
+
+  // My location fields
+  if (strlen(qso.my_gridsquare) > 0) {
+    record += "<MY_GRIDSQUARE:" + String(strlen(qso.my_gridsquare)) + ">" + qso.my_gridsquare + " ";
+  }
+
+  // POTA fields
+  if (strlen(qso.my_pota_ref) > 0) {
+    record += "<MY_SIG:4>POTA ";
+    record += "<MY_SIG_INFO:" + String(strlen(qso.my_pota_ref)) + ">" + qso.my_pota_ref + " ";
+  }
+  if (strlen(qso.their_pota_ref) > 0) {
+    record += "<SIG:4>POTA ";
+    record += "<SIG_INFO:" + String(strlen(qso.their_pota_ref)) + ">" + qso.their_pota_ref + " ";
+  }
+
+  // Operator/station
+  if (strlen(qso.operator_call) > 0) {
+    record += "<OPERATOR:" + String(strlen(qso.operator_call)) + ">" + qso.operator_call + " ";
+  }
+  if (strlen(qso.station_call) > 0) {
+    record += "<STATION_CALLSIGN:" + String(strlen(qso.station_call)) + ">" + qso.station_call + " ";
+  }
+
+  record += "<EOR>\n";
+  return record;
+}
+
+/*
+ * Generate ADIF header
+ */
+String generateADIFHeader() {
+  String header = "ADIF Export from VAIL SUMMIT\n";
+  header += "Generated by " + String(FIRMWARE_NAME) + " v" + String(FIRMWARE_VERSION) + "\n\n";
+  header += "<PROGRAMID:11>VAIL SUMMIT\n";
+  header += "<PROGRAMVERSION:" + String(strlen(FIRMWARE_VERSION)) + ">" + FIRMWARE_VERSION + "\n";
+  header += "<ADIF_VER:5>3.1.4\n";
+  header += "<EOH>\n\n";
+  return header;
+}
+
+/*
+ * Generate daily ADIF file for a specific date
+ */
+void generateDailyADIF(const char* date) {
+  if (!sdCardAvailable) return;
+
+  // Build filenames
+  char jsonPath[40];
+  char adifPath[40];
+  snprintf(jsonPath, sizeof(jsonPath), "%s/qso_%s.json", QSO_DIR, date);
+  snprintf(adifPath, sizeof(adifPath), "%s/qso_%s.adi", QSO_DIR, date);
+
+  Serial.print("Generating daily ADIF: ");
+  Serial.println(adifPath);
+
+  // Check if JSON file exists
+  if (!SD.exists(jsonPath)) {
+    Serial.println("No JSON file for this date");
+    return;
+  }
+
+  // Read JSON file
+  File jsonFile = SD.open(jsonPath, "r");
+  if (!jsonFile) {
+    Serial.println("Failed to open JSON file");
+    return;
+  }
+
+  JsonDocument doc;
+  DeserializationError error = deserializeJson(doc, jsonFile);
+  jsonFile.close();
+
+  if (error) {
+    Serial.print("Failed to parse JSON: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  // Generate ADIF content
+  String adifContent = generateADIFHeader();
+
+  JsonArray logs = doc["logs"];
+  for (JsonObject logObj : logs) {
+    QSO qso;
+    jsonToQso(logObj, qso);
+    adifContent += qsoToADIFRecord(qso);
+  }
+
+  // Write ADIF file
+  File adifFile = SD.open(adifPath, FILE_WRITE);
+  if (!adifFile) {
+    Serial.println("Failed to create ADIF file");
+    return;
+  }
+
+  adifFile.print(adifContent);
+  adifFile.close();
+
+  Serial.print("Daily ADIF generated: ");
+  Serial.print(logs.size());
+  Serial.println(" QSOs");
+}
+
+/*
+ * Generate master ADIF file containing all QSOs
+ */
+void generateMasterADIF() {
+  if (!sdCardAvailable) return;
+
+  Serial.println("Generating master ADIF file...");
+
+  // Start with header
+  String adifContent = generateADIFHeader();
+
+  // Iterate all JSON files in QSO directory
+  File root = SD.open(QSO_DIR);
+  if (!root || !root.isDirectory()) {
+    Serial.println("Failed to open QSO directory");
+    return;
+  }
+
+  int totalQSOs = 0;
+  File file = root.openNextFile();
+  while (file) {
+    String filename = file.name();
+
+    // Only process JSON files
+    if (filename.endsWith(".json")) {
+      Serial.print("Processing: ");
+      Serial.println(filename);
+
+      JsonDocument doc;
+      DeserializationError error = deserializeJson(doc, file);
+
+      if (!error) {
+        JsonArray logs = doc["logs"];
+        for (JsonObject logObj : logs) {
+          QSO qso;
+          jsonToQso(logObj, qso);
+          adifContent += qsoToADIFRecord(qso);
+          totalQSOs++;
+        }
+      }
+    }
+
+    file.close();
+    file = root.openNextFile();
+  }
+  root.close();
+
+  // Write master ADIF file
+  File adifFile = SD.open(MASTER_ADIF_FILE, FILE_WRITE);
+  if (!adifFile) {
+    Serial.println("Failed to create master ADIF file");
+    return;
+  }
+
+  adifFile.print(adifContent);
+  adifFile.close();
+
+  Serial.print("Master ADIF generated: ");
+  Serial.print(totalQSOs);
+  Serial.println(" QSOs");
+}
+
+/*
+ * Regenerate ADIF files after any QSO change
+ */
+void regenerateADIFFiles(const char* date) {
+  generateDailyADIF(date);
+  generateMasterADIF();
+}
+
+// ============================================
+// QSO Storage Operations (SD Card)
 // ============================================
 
 /*
  * Get filename for a QSO log (based on date)
  */
 String getLogFilename(const char* date) {
-  // Format: /logs/qso_YYYYMMDD.json
-  char filename[30];
-  snprintf(filename, sizeof(filename), "%s/qso_%s.json", LOGS_DIR, date);
+  char filename[40];
+  snprintf(filename, sizeof(filename), "%s/qso_%s.json", QSO_DIR, date);
   return String(filename);
 }
 
 /*
- * Save a QSO to storage
+ * Save a QSO to SD card storage
  */
 bool saveQSO(const QSO& qso) {
+  if (!isQSOStorageReady()) {
+    Serial.println("ERROR: QSO storage not ready (SD card required)");
+    return false;
+  }
+
   Serial.print("Saving QSO: ");
   Serial.println(qso.callsign);
 
@@ -375,15 +606,13 @@ bool saveQSO(const QSO& qso) {
   String filename = getLogFilename(qso.date);
   Serial.print("Filename: ");
   Serial.println(filename);
-  Serial.print("Date string: ");
-  Serial.println(qso.date);
 
   // Load existing logs for this day (if any)
   JsonDocument doc;
   JsonArray logs;
 
-  if (FileSystem.exists(filename)) {
-    File file = FileSystem.open(filename, "r");
+  if (SD.exists(filename)) {
+    File file = SD.open(filename, "r");
     if (file) {
       DeserializationError error = deserializeJson(doc, file);
       file.close();
@@ -402,48 +631,18 @@ bool saveQSO(const QSO& qso) {
   JsonObject newLog = logs.add<JsonObject>();
   qsoToJson(qso, newLog);
 
-  // Ensure logs directory exists
-  if (!FileSystem.exists(LOGS_DIR)) {
-    Serial.println("Creating /logs directory...");
-    if (!FileSystem.mkdir(LOGS_DIR)) {
-      Serial.println("Failed to create /logs directory");
-      return false;
-    }
-  }
-
   // Write back to file
-  Serial.print("Opening file for writing: ");
-  Serial.println(filename);
-  File file = FileSystem.open(filename, "w");
+  File file = SD.open(filename, FILE_WRITE);
   if (!file) {
     Serial.println("Failed to open log file for writing");
-    Serial.print("LittleFS total: ");
-    Serial.println(FileSystem.totalBytes());
-    Serial.print("LittleFS used: ");
-    Serial.println(FileSystem.usedBytes());
     return false;
   }
-
-  // Debug: Check JSON size and content before writing
-  size_t jsonSize = measureJson(doc);
-  Serial.print("JSON size to write: ");
-  Serial.print(jsonSize);
-  Serial.println(" bytes");
-
-  // Print JSON to serial for inspection
-  Serial.println("JSON content:");
-  serializeJson(doc, Serial);
-  Serial.println();
 
   size_t bytesWritten = serializeJson(doc, file);
   file.close();
 
-  Serial.print("Bytes actually written: ");
+  Serial.print("Bytes written: ");
   Serial.println(bytesWritten);
-
-  if (bytesWritten < jsonSize) {
-    Serial.println("WARNING: Not all JSON was written to file!");
-  }
 
   // Update metadata
   storageStats.totalLogs++;
@@ -468,28 +667,35 @@ bool saveQSO(const QSO& qso) {
 
   saveMetadata();
 
+  // Regenerate ADIF files
+  regenerateADIFFiles(qso.date);
+
   Serial.println("QSO saved successfully");
 
-  // Check circular buffer limit
+  // Check log limit
   if (storageStats.totalLogs > MAX_LOGS) {
-    Serial.println("WARNING: Max logs exceeded, circular buffer not yet implemented");
-    // TODO: Implement oldest log deletion in future milestone
+    Serial.println("WARNING: Max logs exceeded");
   }
 
   return true;
 }
 
 /*
- * Load all QSOs from storage (for viewing/exporting)
+ * Load all QSOs from SD card storage (for viewing/exporting)
  * Returns number of logs loaded
  */
 int loadAllQSOs(QSO* qsos, int maxCount) {
-  Serial.println("Loading all QSOs...");
+  if (!isQSOStorageReady()) {
+    Serial.println("ERROR: QSO storage not ready");
+    return 0;
+  }
+
+  Serial.println("Loading all QSOs from SD card...");
 
   int count = 0;
-  File root = FileSystem.open(LOGS_DIR);
+  File root = SD.open(QSO_DIR);
   if (!root || !root.isDirectory()) {
-    Serial.println("Failed to open logs directory");
+    Serial.println("Failed to open QSO directory");
     return 0;
   }
 
@@ -498,7 +704,7 @@ int loadAllQSOs(QSO* qsos, int maxCount) {
     String filename = file.name();
 
     // Only process QSO log files (qso_YYYYMMDD.json)
-    if (filename.startsWith("qso_") && filename.endsWith(".json")) {
+    if (filename.endsWith(".json")) {
       Serial.print("Reading: ");
       Serial.println(filename);
 
@@ -539,21 +745,28 @@ int loadAllQSOs(QSO* qsos, int maxCount) {
  * Delete a QSO by ID
  */
 bool deleteQSO(unsigned long id) {
+  if (!isQSOStorageReady()) {
+    Serial.println("ERROR: QSO storage not ready");
+    return false;
+  }
+
   Serial.print("Deleting QSO ID: ");
   Serial.println(id);
 
   // Search through all log files
-  File root = FileSystem.open(LOGS_DIR);
+  File root = SD.open(QSO_DIR);
   if (!root || !root.isDirectory()) {
     return false;
   }
 
   bool found = false;
+  String deletedDate = "";
   File file = root.openNextFile();
+
   while (file && !found) {
     String filename = file.name();
 
-    if (filename.startsWith("qso_") && filename.endsWith(".json")) {
+    if (filename.endsWith(".json")) {
       // Load file
       JsonDocument doc;
       DeserializationError error = deserializeJson(doc, file);
@@ -565,13 +778,19 @@ bool deleteQSO(unsigned long id) {
         // Find and remove the QSO
         for (size_t i = 0; i < logs.size(); i++) {
           if (logs[i]["id"] == id) {
-            // Found it! Remove from array
+            // Extract date for ADIF regeneration
+            const char* date = logs[i]["date"];
+            if (date) {
+              deletedDate = String(date);
+            }
+
+            // Remove from array
             logs.remove(i);
             found = true;
 
             // Write back to file
-            String fullPath = String(LOGS_DIR) + "/" + filename;
-            File outFile = FileSystem.open(fullPath, "w");
+            String fullPath = String(QSO_DIR) + "/" + filename;
+            File outFile = SD.open(fullPath, FILE_WRITE);
             if (outFile) {
               serializeJson(doc, outFile);
               outFile.close();
@@ -580,7 +799,13 @@ bool deleteQSO(unsigned long id) {
               storageStats.totalLogs--;
               saveMetadata();
 
+              // Regenerate ADIF files
+              if (deletedDate.length() > 0) {
+                regenerateADIFFiles(deletedDate.c_str());
+              }
+
               Serial.println("QSO deleted successfully");
+              root.close();
               return true;
             }
             break;
@@ -604,6 +829,81 @@ bool deleteQSO(unsigned long id) {
 }
 
 /*
+ * Update an existing QSO
+ */
+bool updateQSO(const QSO& qso) {
+  if (!isQSOStorageReady()) {
+    Serial.println("ERROR: QSO storage not ready");
+    return false;
+  }
+
+  Serial.print("Updating QSO ID: ");
+  Serial.println(qso.id);
+
+  // Search through all log files
+  File root = SD.open(QSO_DIR);
+  if (!root || !root.isDirectory()) {
+    return false;
+  }
+
+  bool found = false;
+  File file = root.openNextFile();
+
+  while (file && !found) {
+    String filename = file.name();
+
+    if (filename.endsWith(".json")) {
+      // Load file
+      JsonDocument doc;
+      DeserializationError error = deserializeJson(doc, file);
+      file.close();
+
+      if (!error) {
+        JsonArray logs = doc["logs"];
+
+        // Find and update the QSO
+        for (size_t i = 0; i < logs.size(); i++) {
+          if (logs[i]["id"] == qso.id) {
+            // Update the entry
+            JsonObject logObj = logs[i];
+            qsoToJson(qso, logObj);
+            found = true;
+
+            // Write back to file
+            String fullPath = String(QSO_DIR) + "/" + filename;
+            File outFile = SD.open(fullPath, FILE_WRITE);
+            if (outFile) {
+              serializeJson(doc, outFile);
+              outFile.close();
+
+              // Regenerate ADIF files
+              regenerateADIFFiles(qso.date);
+
+              Serial.println("QSO updated successfully");
+              root.close();
+              return true;
+            }
+            break;
+          }
+        }
+      }
+    } else {
+      file.close();
+    }
+
+    file = root.openNextFile();
+  }
+
+  root.close();
+
+  if (!found) {
+    Serial.println("QSO not found for update");
+  }
+
+  return found;
+}
+
+/*
  * Get total number of logs
  */
 int getTotalLogs() {
@@ -611,52 +911,67 @@ int getTotalLogs() {
 }
 
 /*
- * Test function: Save a dummy QSO
+ * Recalculate metadata by scanning all QSO files
+ * Useful if metadata gets out of sync
  */
-void testSaveDummyQSO() {
-  Serial.println("\n=== Testing QSO Storage ===");
+void recalculateMetadata() {
+  if (!isQSOStorageReady()) return;
 
-  QSO testQSO;
-  memset(&testQSO, 0, sizeof(QSO));
+  Serial.println("Recalculating metadata from SD card...");
 
-  testQSO.id = millis();
-  strcpy(testQSO.callsign, "W1AW");
-  testQSO.frequency = 14.025;
-  strcpy(testQSO.mode, "CW");
-  strcpy(testQSO.band, "20m");
-  strcpy(testQSO.rst_sent, "599");
-  strcpy(testQSO.rst_rcvd, "599");
-  strcpy(testQSO.date, "20250428");
-  strcpy(testQSO.time_on, "1430");
-  strcpy(testQSO.name, "Hiram");
-  strcpy(testQSO.qth, "Newington, CT");
-  testQSO.power = 100;
-  strcpy(testQSO.gridsquare, "FN31pr");
-  strcpy(testQSO.notes, "Nice fist!");
-  strcpy(testQSO.operator_call, operatorCallsign);
-  strcpy(testQSO.station_call, operatorCallsign);
+  memset(&storageStats, 0, sizeof(StorageStats));
 
-  if (saveQSO(testQSO)) {
-    Serial.println("✓ Dummy QSO saved");
-
-    // Test loading
-    QSO loaded[10];
-    int count = loadAllQSOs(loaded, 10);
-
-    if (count > 0) {
-      Serial.println("✓ QSO loaded");
-      Serial.print("  Callsign: ");
-      Serial.println(loaded[0].callsign);
-      Serial.print("  Frequency: ");
-      Serial.println(loaded[0].frequency);
-      Serial.print("  Mode: ");
-      Serial.println(loaded[0].mode);
-    }
-  } else {
-    Serial.println("✗ Failed to save dummy QSO");
+  File root = SD.open(QSO_DIR);
+  if (!root || !root.isDirectory()) {
+    return;
   }
 
-  Serial.println("=== Test Complete ===\n");
+  File file = root.openNextFile();
+  while (file) {
+    String filename = file.name();
+
+    if (filename.endsWith(".json")) {
+      JsonDocument doc;
+      DeserializationError error = deserializeJson(doc, file);
+
+      if (!error) {
+        JsonArray logs = doc["logs"];
+        for (JsonObject logObj : logs) {
+          storageStats.totalLogs++;
+
+          unsigned long id = logObj["id"] | 0;
+          if (storageStats.oldestLogId == 0 || id < storageStats.oldestLogId) {
+            storageStats.oldestLogId = id;
+          }
+          if (id > storageStats.newestLogId) {
+            storageStats.newestLogId = id;
+          }
+
+          const char* band = logObj["band"] | "";
+          int bandIdx = getBandIndex(band);
+          if (bandIdx >= 0) {
+            storageStats.logsByBand[bandIdx]++;
+          }
+
+          const char* mode = logObj["mode"] | "";
+          int modeIdx = getModeIndex(mode);
+          if (modeIdx >= 0) {
+            storageStats.logsByMode[modeIdx]++;
+          }
+        }
+      }
+    }
+
+    file.close();
+    file = root.openNextFile();
+  }
+
+  root.close();
+  saveMetadata();
+
+  Serial.print("Recalculated: ");
+  Serial.print(storageStats.totalLogs);
+  Serial.println(" total QSOs");
 }
 
 #endif // QSO_LOGGER_STORAGE_H

@@ -48,15 +48,15 @@ unsigned long connectionSuccessTime = 0;  // Time when connection succeeded
 String failedSSID = "";  // Track SSID that failed to connect (for password retry)
 
 // Forward declarations
-void startWiFiSettings(Adafruit_ST7789 &display);
-void drawWiFiUI(Adafruit_ST7789 &display);
-int handleWiFiInput(char key, Adafruit_ST7789 &display);
+void startWiFiSettings(LGFX &display);
+void drawWiFiUI(LGFX &display);
+int handleWiFiInput(char key, LGFX &display);
 void scanNetworks();
-void drawCurrentConnection(Adafruit_ST7789 &display);
-void drawNetworkList(Adafruit_ST7789 &display);
-void drawPasswordInput(Adafruit_ST7789 &display);
-void drawResetConfirmation(Adafruit_ST7789 &display);
-void drawAPModeScreen(Adafruit_ST7789 &display);
+void drawCurrentConnection(LGFX &display);
+void drawNetworkList(LGFX &display);
+void drawPasswordInput(LGFX &display);
+void drawResetConfirmation(LGFX &display);
+void drawAPModeScreen(LGFX &display);
 void connectToWiFi(String ssid, String password);
 void saveWiFiCredentials(String ssid, String password);
 int loadAllWiFiCredentials(String ssids[3], String passwords[3]);
@@ -67,7 +67,7 @@ void startAPMode();
 void stopAPMode();
 
 // Start WiFi settings mode
-void startWiFiSettings(Adafruit_ST7789 &display) {
+void startWiFiSettings(LGFX &display) {
   selectedNetwork = 0;
   passwordInput = "";
 
@@ -139,13 +139,13 @@ void scanNetworks() {
 }
 
 // Draw current connection status
-void drawCurrentConnection(Adafruit_ST7789 &display) {
+void drawCurrentConnection(LGFX &display) {
   display.setTextSize(2);
   display.setTextColor(ST77XX_GREEN);
 
   int16_t x1, y1;
   uint16_t w, h;
-  display.getTextBounds("WiFi Connected", 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, "WiFi Connected", 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, 60);
   display.print("WiFi Connected");
@@ -164,8 +164,8 @@ void drawCurrentConnection(Adafruit_ST7789 &display) {
   display.setTextColor(ST77XX_CYAN);
   display.setCursor(20, 115);
   String ssid = WiFi.SSID();
-  if (ssid.length() > 18) {
-    ssid = ssid.substring(0, 15) + "...";
+  if (ssid.length() > 28) {  // Increased for 480px width (was 18 for 320px)
+    ssid = ssid.substring(0, 25) + "...";
   }
   display.print(ssid);
 
@@ -206,7 +206,7 @@ void drawCurrentConnection(Adafruit_ST7789 &display) {
 }
 
 // Draw WiFi UI based on current state
-void drawWiFiUI(Adafruit_ST7789 &display) {
+void drawWiFiUI(LGFX &display) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -289,14 +289,14 @@ void drawWiFiUI(Adafruit_ST7789 &display) {
 
   int16_t x1, y1;
   uint16_t w, h;
-  display.getTextBounds(footerText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, footerText.c_str(), 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, SCREEN_HEIGHT - 12);
   display.print(footerText);
 }
 
 // Draw network list
-void drawNetworkList(Adafruit_ST7789 &display) {
+void drawNetworkList(LGFX &display) {
   // Clear the network list area (preserve header and footer)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 60, COLOR_BACKGROUND);
 
@@ -396,13 +396,13 @@ void drawNetworkList(Adafruit_ST7789 &display) {
 }
 
 // Draw reset confirmation screen
-void drawResetConfirmation(Adafruit_ST7789 &display) {
+void drawResetConfirmation(LGFX &display) {
   display.setTextSize(2);
   display.setTextColor(ST77XX_RED);
 
   int16_t x1, y1;
   uint16_t w, h;
-  display.getTextBounds("Reset WiFi?", 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, "Reset WiFi?", 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, 70);
   display.print("Reset WiFi?");
@@ -424,13 +424,13 @@ void drawResetConfirmation(Adafruit_ST7789 &display) {
 }
 
 // Draw AP mode screen
-void drawAPModeScreen(Adafruit_ST7789 &display) {
+void drawAPModeScreen(LGFX &display) {
   display.setTextSize(2);
   display.setTextColor(ST77XX_GREEN);
 
   int16_t x1, y1;
   uint16_t w, h;
-  display.getTextBounds("AP Mode Active", 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, "AP Mode Active", 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, 60);
   display.print("AP Mode Active");
@@ -468,7 +468,7 @@ void drawAPModeScreen(Adafruit_ST7789 &display) {
 }
 
 // Draw password input screen
-void drawPasswordInput(Adafruit_ST7789 &display) {
+void drawPasswordInput(LGFX &display) {
   display.setTextSize(1);
   display.setTextColor(ST77XX_CYAN);
   display.setCursor(10, 55);
@@ -526,7 +526,7 @@ void drawPasswordInput(Adafruit_ST7789 &display) {
 }
 
 // Handle WiFi settings input
-int handleWiFiInput(char key, Adafruit_ST7789 &display) {
+int handleWiFiInput(char key, LGFX &display) {
   // Update cursor blink
   if (wifiState == WIFI_STATE_PASSWORD_INPUT && millis() - lastBlink > 500) {
     cursorVisible = !cursorVisible;

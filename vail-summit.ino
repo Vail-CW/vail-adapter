@@ -3,18 +3,25 @@
  * Main program file (refactored for modularity)
  */
 
-// Force PSRAM initialization (must be before other includes)
-#include "esp_psram.h"
-#include "esp_system.h"
+// Note: PSRAM is enabled via Arduino IDE board settings (PSRAM: "OPI PSRAM")
+// No explicit PSRAM initialization code needed for Arduino ESP32 core 2.0.14
 
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7789.h>
+// LovyanGFX for ST7796S 4.0" display (requires Arduino ESP32 core 2.0.14)
+#define LGFX_USE_V1
+#include <LovyanGFX.hpp>
+
+// Use LovyanGFX built-in fonts (in lgfx::v1::fonts namespace)
+// Available: FreeSansBold9pt7b, FreeSansBold12pt7b, FreeSansBold18pt7b, etc.
+using namespace lgfx::v1::fonts;
+
+// Standard libraries
 #include <SPI.h>
+#include <SD.h>
 #include <Wire.h>
 #include <WiFi.h>
+
+// Configuration and battery monitoring
 #include "src/core/config.h"
-#include <Fonts/FreeSansBold12pt7b.h>
-#include <Fonts/FreeSans9pt7b.h>
 #include <Adafruit_LC709203F.h>
 #include <Adafruit_MAX1704X.h>
 
@@ -24,6 +31,9 @@
 
 // Hardware initialization
 #include "src/core/hardware_init.h"
+
+// Boot splash screen
+#include "src/core/splash_screen.h"
 
 // Status bar
 #include "src/ui/status_bar.h"
@@ -45,6 +55,7 @@
 #include "src/settings/settings_wifi.h"
 #include "src/settings/settings_cw.h"
 #include "src/settings/settings_volume.h"
+#include "src/settings/settings_brightness.h"
 #include "src/settings/settings_general.h"
 #include "src/settings/settings_web_password.h"
 
@@ -81,6 +92,19 @@
 // Web Hear It Type It Mode
 #include "src/web/modes/web_hear_it_mode.h"
 
+// SD Card Storage
+#include "src/storage/sd_card.h"
+
+// Web First Boot (must come after sd_card.h)
+#include "src/web/server/web_first_boot.h"
+
+// Bluetooth modes
+#include "src/bluetooth/ble_hid.h"
+#include "src/bluetooth/ble_midi.h"
+
+// Bluetooth keyboard host (external keyboard input)
+#include "src/settings/settings_bt_keyboard.h"
+
 // Menu navigation (must come after all mode headers that define input handlers)
 #include "src/ui/menu_navigation.h"
 
@@ -95,8 +119,8 @@ bool hasLC709203 = false;
 bool hasMAX17048 = false;
 bool hasBatteryMonitor = false;
 
-// Create display object
-Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+// Create display object (LovyanGFX configured in hardware_init.h)
+LGFX tft;
 
 // ============================================
 // Menu System State
@@ -112,7 +136,7 @@ bool menuActive = true;
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
-  delay(3000); // Wait for serial monitor to connect
+  delay(500); // Brief wait for serial monitor (reduced from 3000ms for faster boot)
   Serial.println("\n\n=== VAIL SUMMIT STARTING ===");
   Serial.printf("Firmware: %s (Build: %s)\n", FIRMWARE_VERSION, FIRMWARE_DATE);
   Serial.println("Starting setup...");
@@ -130,15 +154,11 @@ void setup() {
   Serial.printf("psramFound(): %s\n", psramFound() ? "true" : "false");
   Serial.printf("ESP.getPsramSize(): %d bytes\n", ESP.getPsramSize());
 
-  // Manual PSRAM initialization (workaround for ESP32-S3 issue)
+  // PSRAM is auto-initialized when "OPI PSRAM" is selected in Arduino IDE
+  // Manual initialization (esp_psram_init) is not available in Arduino ESP32 core 2.0.14
   if (psramFound() && ESP.getPsramSize() == 0) {
-    Serial.println("\nPSRAM detected but not initialized. Attempting manual init...");
-    esp_err_t result = esp_psram_init();
-    if (result == ESP_OK) {
-      Serial.println("Manual PSRAM init: SUCCESS");
-    } else {
-      Serial.printf("Manual PSRAM init: FAILED (error code: %d)\n", result);
-    }
+    Serial.println("\nWARNING: PSRAM detected but reports 0 bytes size.");
+    Serial.println("This may indicate a board configuration issue.");
   }
 
   Serial.println("\nRechecking PSRAM (after manual init)...");
@@ -167,8 +187,14 @@ void setup() {
   }
   Serial.println("--- End PSRAM Diagnostic ---\n");
 
-  // Backlight is hardwired to 3.3V (no software control needed)
-  Serial.println("Backlight hardwired to 3.3V");
+  // Initialize backlight control with PWM (GPIO 39)
+  Serial.println("Initializing backlight PWM control on GPIO 39...");
+  setupBrightnessPWM();
+  loadBrightnessSettings();
+  applyBrightness(brightnessValue);
+  Serial.print("Backlight enabled at ");
+  Serial.print(brightnessValue);
+  Serial.println("% brightness");
 
   // Initialize I2C first (before display to avoid conflicts)
   Serial.println("Initializing I2C...");
@@ -183,11 +209,20 @@ void setup() {
   // Initialize LCD (after I2S to avoid DMA conflicts)
   initDisplay();
 
+  // Show boot splash screen immediately for visual feedback
+  drawBootSplashScreen(tft);
+
   // Initialize GPIO pins
   initPins();
+  updateSplashProgress(tft, 20);
+
+  // SD card initialization moved to on-demand (when storage page is accessed)
+  // This avoids SPI bus conflicts with display during boot
+  Serial.println("SD card will be initialized on first access");
 
   // Initialize battery monitoring (I2C chip)
   initBatteryMonitor();
+  updateSplashProgress(tft, 30);
 
   // Initialize WiFi and attempt auto-connect
   Serial.println("Initializing WiFi...");
@@ -197,14 +232,20 @@ void setup() {
     if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
       Serial.println("WiFi connected! Starting web server...");
       setupWebServer();
+      // Check if we should prompt for web files download
+      checkAndShowWebFilesPrompt();
     } else if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
       Serial.println("WiFi disconnected. Stopping web server...");
       stopWebServer();
     }
   });
 
+  // Enable auto-reconnect to saved networks
+  WiFi.setAutoReconnect(true);
+
   autoConnectWiFi();
   Serial.println("WiFi initialized");
+  updateSplashProgress(tft, 50);
   // NOTE: OTA server starts on-demand when entering firmware update menu
 
   // Load CW settings from preferences
@@ -226,6 +267,7 @@ void setup() {
   // Load saved web password
   Serial.println("Loading web password...");
   loadSavedWebPassword();
+  updateSplashProgress(tft, 65);
 
   // Load Koch Method progress
   Serial.println("Loading Koch Method progress...");
@@ -244,10 +286,16 @@ void setup() {
   // Load QSO Logger operator settings
   Serial.println("Loading QSO Logger settings...");
   loadOperatorSettings();
+  updateSplashProgress(tft, 85);
+
+  // Load BLE keyboard settings (for auto-reconnect on boot)
+  Serial.println("Loading BLE keyboard settings...");
+  loadBLEKeyboardSettings();
 
   // Initial status update
   Serial.println("Updating status...");
   updateStatus();
+  updateSplashProgress(tft, 100);
 
   // Draw initial menu
   Serial.println("Drawing menu...");
@@ -270,13 +318,39 @@ void setup() {
   // testSaveDummyQSO();
 }
 
+// Helper function to read keyboard (used by first-boot prompt)
+char readKeyboardNonBlocking() {
+  Wire.requestFrom(CARDKB_ADDR, 1);
+  if (Wire.available()) {
+    return Wire.read();
+  }
+  return 0;
+}
+
 // ============================================
 // Main Loop - Event Processing
 // ============================================
 
 void loop() {
 
-  // Update status periodically (NEVER during practice/games/radio mode to avoid audio interference)
+  // Check for pending web server restart (after file upload)
+  if (isWebServerRestartPending()) {
+    restartWebServer();
+  }
+
+  // Check for pending web files download prompt (only in main menu mode)
+  if (currentMode == MODE_MAIN_MENU && isWebFilesPromptPending()) {
+    clearWebFilesPromptPending();
+    if (handleFirstBootWebFilesPrompt(readKeyboardNonBlocking)) {
+      // Download completed or started, redraw menu
+      drawMenu();
+    } else {
+      // User declined, redraw menu
+      drawMenu();
+    }
+  }
+
+  // Update status periodically (NEVER during practice/games/radio/bt mode to avoid audio interference)
   static unsigned long lastStatusUpdate = 0;
   if (currentMode != MODE_PRACTICE &&
       currentMode != MODE_HEAR_IT_TYPE_IT &&
@@ -287,6 +361,8 @@ void loop() {
       currentMode != MODE_RADIO_OUTPUT &&
       currentMode != MODE_WEB_PRACTICE &&
       currentMode != MODE_WEB_MEMORY_CHAIN &&
+      currentMode != MODE_BT_HID &&
+      currentMode != MODE_BT_MIDI &&
       millis() - lastStatusUpdate > 5000) { // Update every 5 seconds
     updateStatus();
     // Redraw status icons with new data
@@ -371,20 +447,49 @@ void loop() {
     hearItWebSocket.cleanupClients();
   }
 
-  // Check for keyboard input (reduce I2C polling frequency during practice/game/radio modes)
+  // Update BT HID mode if active
+  if (currentMode == MODE_BT_HID) {
+    updateBTHID();
+  }
+
+  // Update BT MIDI mode if active
+  if (currentMode == MODE_BT_MIDI) {
+    updateBTMIDI();
+  }
+
+  // Update BLE Keyboard host (for auto-reconnect, etc.)
+  // Only update if not in existing BLE modes that might conflict
+  if (currentMode != MODE_BT_HID && currentMode != MODE_BT_MIDI) {
+    updateBLEKeyboardHost();
+  }
+
+  // Check for keyboard input (reduce I2C polling frequency during practice/game/radio/bt modes)
   static unsigned long lastKeyCheck = 0;
-  unsigned long keyCheckInterval = (currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_WEB_PRACTICE || currentMode == MODE_WEB_MEMORY_CHAIN || currentMode == MODE_WEB_HEAR_IT) ? 50 : 10; // Slower polling in practice/game/radio/web
+  unsigned long keyCheckInterval = (currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_WEB_PRACTICE || currentMode == MODE_WEB_MEMORY_CHAIN || currentMode == MODE_WEB_HEAR_IT || currentMode == MODE_BT_HID || currentMode == MODE_BT_MIDI) ? 50 : 10; // Slower polling in practice/game/radio/web/bt
 
   if (millis() - lastKeyCheck >= keyCheckInterval) {
-    Wire.requestFrom(CARDKB_ADDR, 1);
+    char key = 0;
 
-    if (Wire.available()) {
-      char key = Wire.read();
-
-      if (key != 0) {
-        handleKeyPress(key);
+    // First check BLE keyboard if connected (priority over CardKB)
+    // Only check if not in conflicting BLE modes
+    if (currentMode != MODE_BT_HID && currentMode != MODE_BT_MIDI) {
+      if (isBLEKeyboardConnected() && hasBLEKeyboardInput()) {
+        key = getBLEKeyboardKey();
       }
     }
+
+    // Fall back to CardKB if no BLE key
+    if (key == 0) {
+      Wire.requestFrom(CARDKB_ADDR, 1);
+      if (Wire.available()) {
+        key = Wire.read();
+      }
+    }
+
+    if (key != 0) {
+      handleKeyPress(key);
+    }
+
     lastKeyCheck = millis();
   }
 
@@ -393,6 +498,6 @@ void loop() {
     escPressCount = 0;
   }
 
-  // Minimal delay in practice, game, radio, web, and vail modes for better audio/graphics performance
-  delay((currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_WEB_PRACTICE || currentMode == MODE_VAIL_REPEATER) ? 1 : 10);
+  // Minimal delay in practice, game, radio, web, vail, and bluetooth modes for better audio/graphics performance
+  delay((currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_WEB_PRACTICE || currentMode == MODE_VAIL_REPEATER || currentMode == MODE_BT_HID || currentMode == MODE_BT_MIDI) ? 1 : 10);
 }

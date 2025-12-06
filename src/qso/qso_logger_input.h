@@ -6,7 +6,6 @@
 #ifndef QSO_LOGGER_INPUT_H
 #define QSO_LOGGER_INPUT_H
 
-#include <Adafruit_ST7789.h>
 #include "../core/config.h"
 #include "../audio/i2s_audio.h"
 #include "qso_logger.h"  // Same folder
@@ -17,7 +16,7 @@
  * Handle input for log entry form
  * Returns: -1 to exit, 0 for normal input, 2 for redraw
  */
-int handleQSOLogEntryInput(char key, Adafruit_ST7789& tft) {
+int handleQSOLogEntryInput(char key, LGFX& tft) {
   int currentField = logEntryState.currentField;
 
   // Debug output
@@ -392,7 +391,7 @@ int handleQSOLogEntryInput(char key, Adafruit_ST7789& tft) {
             beep(1000, 100); // Success beep
 
             // Show brief confirmation
-            tft.fillRect(10, 200, 300, 20, 0x0320); // Dark green bar
+            tft.fillRect(15, 200, 450, 20, 0x0320); // Dark green bar (scaled for 480px width)
             tft.setTextSize(1);
             tft.setTextColor(ST77XX_WHITE);
             tft.setCursor(15, 207);
@@ -410,7 +409,7 @@ int handleQSOLogEntryInput(char key, Adafruit_ST7789& tft) {
             Serial.println("POTA lookup failed");
 
             // Show brief error
-            tft.fillRect(10, 200, 300, 20, 0x2800); // Dark red bar
+            tft.fillRect(15, 200, 450, 20, 0x2800); // Dark red bar (scaled for 480px width)
             tft.setTextSize(1);
             tft.setTextColor(ST77XX_WHITE);
             tft.setCursor(15, 207);

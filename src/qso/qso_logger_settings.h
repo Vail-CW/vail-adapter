@@ -5,7 +5,6 @@
 #define QSO_LOGGER_SETTINGS_H
 
 #include <Arduino.h>
-#include <Adafruit_ST7789.h>
 #include <Preferences.h>
 #include "../core/config.h"
 #include "qso_logger.h"  // Same folder
@@ -113,7 +112,7 @@ void loadLoggerLocation() {
 // Logger Settings UI
 // ============================================
 
-void drawLoggerSettingsUI(Adafruit_ST7789& tft) {
+void drawLoggerSettingsUI(LGFX& tft) {
   tft.fillScreen(COLOR_BACKGROUND);
 
   // Header (drawn by menu system)
@@ -170,7 +169,7 @@ void drawLoggerSettingsUI(Adafruit_ST7789& tft) {
     if (loggerSettings.currentField == FIELD_LOCATION_INPUT && (millis() / 500) % 2 == 0) {
       int16_t x1, y1;
       uint16_t w, h;
-      tft.getTextBounds(loggerSettings.gridInput, 15, y + 20, &x1, &y1, &w, &h);
+      getTextBounds_compat(tft, loggerSettings.gridInput, 15, y + 20, &x1, &y1, &w, &h);
       tft.fillRect(15 + w, y + 20, 3, 16, COLOR_WARNING);
     }
   } else {
@@ -180,7 +179,7 @@ void drawLoggerSettingsUI(Adafruit_ST7789& tft) {
     if (loggerSettings.currentField == FIELD_LOCATION_INPUT && (millis() / 500) % 2 == 0) {
       int16_t x1, y1;
       uint16_t w, h;
-      tft.getTextBounds(loggerSettings.potaInput, 15, y + 20, &x1, &y1, &w, &h);
+      getTextBounds_compat(tft, loggerSettings.potaInput, 15, y + 20, &x1, &y1, &w, &h);
       tft.fillRect(15 + w, y + 20, 3, 16, COLOR_WARNING);
     }
   }
@@ -249,7 +248,7 @@ void drawLoggerSettingsUI(Adafruit_ST7789& tft) {
     if (loggerSettings.currentField == FIELD_QTH && (millis() / 500) % 2 == 0) {
       int16_t x1, y1;
       uint16_t w, h;
-      tft.getTextBounds(loggerSettings.qthInput, 15, y + 20, &x1, &y1, &w, &h);
+      getTextBounds_compat(tft, loggerSettings.qthInput, 15, y + 20, &x1, &y1, &w, &h);
       tft.fillRect(15 + w, y + 20, 3, 10, COLOR_WARNING);
     }
   }
@@ -277,7 +276,7 @@ void drawLoggerSettingsUI(Adafruit_ST7789& tft) {
 // Input Handler
 // ============================================
 
-int handleLoggerSettingsInput(char key, Adafruit_ST7789& tft) {
+int handleLoggerSettingsInput(char key, LGFX& tft) {
   Serial.print("Logger Settings key: 0x");
   Serial.println(key, HEX);
 
@@ -420,7 +419,7 @@ int handleLoggerSettingsInput(char key, Adafruit_ST7789& tft) {
 // Initialization
 // ============================================
 
-void startLoggerSettings(Adafruit_ST7789& tft) {
+void startLoggerSettings(LGFX& tft) {
   Serial.println("Starting Logger Settings mode");
 
   // Initialize state

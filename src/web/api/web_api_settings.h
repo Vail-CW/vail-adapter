@@ -14,7 +14,7 @@
 // External declarations for global variables
 extern MenuMode currentMode;
 extern bool radioOutputActive;
-extern Adafruit_ST7789 tft;
+extern LGFX tft;
 extern int cwSpeed;
 extern int cwTone;
 extern KeyType cwKeyType;
@@ -26,7 +26,7 @@ extern Adafruit_LC709203F lc;
 extern Adafruit_MAX17048 maxlipo;
 
 // External function declarations
-extern void startRadioOutput(Adafruit_ST7789 &tft);
+extern void startRadioOutput(LGFX &tft);
 extern bool queueRadioMessage(const char* message);
 extern void saveCWSettings();
 extern void setVolume(int volume);

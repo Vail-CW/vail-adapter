@@ -39,7 +39,7 @@ extern void drawHeader();
 /*
  * Draw track selection screen
  */
-void drawCWATrackSelectUI(Adafruit_ST7789& tft) {
+void drawCWATrackSelectUI(LGFX& tft) {
   // Clear screen (preserve header)
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -58,7 +58,7 @@ void drawCWATrackSelectUI(Adafruit_ST7789& tft) {
   int16_t x1, y1;
   uint16_t w, h;
   String indicator = "Track " + String(cwaSelectedTrack + 1) + " of " + String(CWA_TOTAL_TRACKS);
-  tft.getTextBounds(indicator, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, indicator.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(cardX + (cardW - w) / 2, cardY + 18);
   tft.print(indicator);
 
@@ -66,7 +66,7 @@ void drawCWATrackSelectUI(Adafruit_ST7789& tft) {
   tft.setTextSize(3);
   tft.setTextColor(ST77XX_WHITE);
   String trackText = String(cwaTrackNames[cwaSelectedTrack]);
-  tft.getTextBounds(trackText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, trackText.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(cardX + (cardW - w) / 2, cardY + 60);
   tft.print(trackText);
 
@@ -74,7 +74,7 @@ void drawCWATrackSelectUI(Adafruit_ST7789& tft) {
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_CYAN);
   String desc = String(cwaTrackDescriptions[cwaSelectedTrack]);
-  tft.getTextBounds(desc, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, desc.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(cardX + (cardW - w) / 2, cardY + 95);
   tft.print(desc);
 
@@ -82,7 +82,7 @@ void drawCWATrackSelectUI(Adafruit_ST7789& tft) {
   tft.setTextSize(1);
   tft.setTextColor(0x7BEF);
   String navHint = "16 Sessions";
-  tft.getTextBounds(navHint, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, navHint.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(cardX + (cardW - w) / 2, cardY + 125);
   tft.print(navHint);
 
@@ -109,7 +109,7 @@ void drawCWATrackSelectUI(Adafruit_ST7789& tft) {
   tft.setTextSize(1);
   tft.setTextColor(COLOR_WARNING);
   String helpText = "\x18\x19 Select  ENTER Continue  ESC Back";
-  tft.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, helpText.c_str(), 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   tft.setCursor(centerX, SCREEN_HEIGHT - 12);
   tft.print(helpText);
@@ -118,7 +118,7 @@ void drawCWATrackSelectUI(Adafruit_ST7789& tft) {
 /*
  * Handle input for CW Academy track selection
  */
-int handleCWATrackSelectInput(char key, Adafruit_ST7789& tft) {
+int handleCWATrackSelectInput(char key, LGFX& tft) {
   if (key == KEY_UP) {
     if (cwaSelectedTrack > TRACK_BEGINNER) {
       cwaSelectedTrack = (CWATrack)((int)cwaSelectedTrack - 1);
@@ -145,7 +145,7 @@ int handleCWATrackSelectInput(char key, Adafruit_ST7789& tft) {
 /*
  * Draw session selection screen
  */
-void drawCWASessionSelectUI(Adafruit_ST7789& tft) {
+void drawCWASessionSelectUI(LGFX& tft) {
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   int cardX = 20;
@@ -163,21 +163,21 @@ void drawCWASessionSelectUI(Adafruit_ST7789& tft) {
   int16_t x1, y1;
   uint16_t w, h;
   String trackLabel = String(cwaTrackNames[cwaSelectedTrack]) + " Track";
-  tft.getTextBounds(trackLabel, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, trackLabel.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(cardX + (cardW - w) / 2, cardY + 18);
   tft.print(trackLabel);
 
   tft.setTextSize(3);
   tft.setTextColor(ST77XX_WHITE);
   String sessionText = "Session " + String(cwaSelectedSession);
-  tft.getTextBounds(sessionText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, sessionText.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(cardX + (cardW - w) / 2, cardY + 60);
   tft.print(sessionText);
 
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_CYAN);
   String charInfo = String(session.charCount) + " characters";
-  tft.getTextBounds(charInfo, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, charInfo.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(cardX + (cardW - w) / 2, cardY + 90);
   tft.print(charInfo);
 
@@ -185,7 +185,7 @@ void drawCWASessionSelectUI(Adafruit_ST7789& tft) {
     tft.setTextSize(1);
     tft.setTextColor(ST77XX_WHITE);
     String newCharsText = "New: " + String(session.newChars);
-    tft.getTextBounds(newCharsText, 0, 0, &x1, &y1, &w, &h);
+    getTextBounds_compat(tft, newCharsText.c_str(), 0, 0, &x1, &y1, &w, &h);
     tft.setCursor(cardX + (cardW - w) / 2, cardY + 115);
     tft.print(newCharsText);
   }
@@ -193,7 +193,7 @@ void drawCWASessionSelectUI(Adafruit_ST7789& tft) {
   tft.setTextSize(1);
   tft.setTextColor(0x7BEF);
   String desc = session.description;
-  tft.getTextBounds(desc, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, desc.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(cardX + (cardW - w) / 2, cardY + 132);
   tft.print(desc);
 
@@ -208,7 +208,7 @@ void drawCWASessionSelectUI(Adafruit_ST7789& tft) {
   tft.setTextSize(1);
   tft.setTextColor(COLOR_WARNING);
   String helpText = "\x18\x19 Select  ENTER Continue  ESC Back";
-  tft.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, helpText.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor((SCREEN_WIDTH - w) / 2, SCREEN_HEIGHT - 12);
   tft.print(helpText);
 }
@@ -216,7 +216,7 @@ void drawCWASessionSelectUI(Adafruit_ST7789& tft) {
 /*
  * Handle input for CW Academy session selection
  */
-int handleCWASessionSelectInput(char key, Adafruit_ST7789& tft) {
+int handleCWASessionSelectInput(char key, LGFX& tft) {
   if (key == KEY_UP) {
     if (cwaSelectedSession > 1) {
       cwaSelectedSession--;
@@ -243,7 +243,7 @@ int handleCWASessionSelectInput(char key, Adafruit_ST7789& tft) {
 /*
  * Draw practice type selection screen
  */
-void drawCWAPracticeTypeSelectUI(Adafruit_ST7789& tft) {
+void drawCWAPracticeTypeSelectUI(LGFX& tft) {
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   bool advancedLocked = (cwaSelectedSession <= 10);
@@ -262,14 +262,14 @@ void drawCWAPracticeTypeSelectUI(Adafruit_ST7789& tft) {
   int16_t x1, y1;
   uint16_t w, h;
   String context = String(cwaTrackNames[cwaSelectedTrack]) + " - Session " + String(cwaSelectedSession);
-  tft.getTextBounds(context, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, context.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(cardX + (cardW - w) / 2, cardY + 18);
   tft.print(context);
 
   tft.setTextSize(2);
   tft.setTextColor(currentTypeLocked ? 0x4208 : ST77XX_WHITE);
   String typeText = String(cwaPracticeTypeNames[cwaSelectedPracticeType]);
-  tft.getTextBounds(typeText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, typeText.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(cardX + (cardW - w) / 2, cardY + 60);
   tft.print(typeText);
 
@@ -277,20 +277,20 @@ void drawCWAPracticeTypeSelectUI(Adafruit_ST7789& tft) {
   if (currentTypeLocked) {
     tft.setTextColor(ST77XX_RED);
     String lockMsg = "LOCKED";
-    tft.getTextBounds(lockMsg, 0, 0, &x1, &y1, &w, &h);
+    getTextBounds_compat(tft, lockMsg.c_str(), 0, 0, &x1, &y1, &w, &h);
     tft.setCursor(cardX + (cardW - w) / 2, cardY + 85);
     tft.print(lockMsg);
 
     tft.setTextSize(1);
     tft.setTextColor(0x7BEF);
     String hint = "Unlocks at Session 11";
-    tft.getTextBounds(hint, 0, 0, &x1, &y1, &w, &h);
+    getTextBounds_compat(tft, hint.c_str(), 0, 0, &x1, &y1, &w, &h);
     tft.setCursor(cardX + (cardW - w) / 2, cardY + 105);
     tft.print(hint);
   } else {
     tft.setTextColor(ST77XX_CYAN);
     String desc = String(cwaPracticeTypeDescriptions[cwaSelectedPracticeType]);
-    tft.getTextBounds(desc, 0, 0, &x1, &y1, &w, &h);
+    getTextBounds_compat(tft, desc.c_str(), 0, 0, &x1, &y1, &w, &h);
     tft.setCursor(cardX + (cardW - w) / 2, cardY + 95);
     tft.print(desc);
   }
@@ -298,7 +298,7 @@ void drawCWAPracticeTypeSelectUI(Adafruit_ST7789& tft) {
   tft.setTextSize(1);
   tft.setTextColor(0x7BEF);
   String hint = String(cwaSelectedPracticeType + 1) + " of " + String(CWA_TOTAL_PRACTICE_TYPES);
-  tft.getTextBounds(hint, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, hint.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(cardX + (cardW - w) / 2, cardY + 125);
   tft.print(hint);
 
@@ -312,7 +312,7 @@ void drawCWAPracticeTypeSelectUI(Adafruit_ST7789& tft) {
   tft.setTextSize(1);
   tft.setTextColor(COLOR_WARNING);
   String helpText = "\x18\x19 Select  ENTER Continue  ESC Back";
-  tft.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, helpText.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor((SCREEN_WIDTH - w) / 2, SCREEN_HEIGHT - 12);
   tft.print(helpText);
 }
@@ -326,7 +326,7 @@ void drawCWAPracticeTypeSelectUI(Adafruit_ST7789& tft) {
  *    2 = Redraw UI
  *    3 = Start QSO practice (sessions 11-13)
  */
-int handleCWAPracticeTypeSelectInput(char key, Adafruit_ST7789& tft) {
+int handleCWAPracticeTypeSelectInput(char key, LGFX& tft) {
   bool advancedLocked = (cwaSelectedSession <= 10);
   bool currentTypeLocked = advancedLocked && (cwaSelectedPracticeType != PRACTICE_COPY);
 
@@ -351,7 +351,7 @@ int handleCWAPracticeTypeSelectInput(char key, Adafruit_ST7789& tft) {
       int16_t x1, y1;
       uint16_t w, h;
       String msg = "Available at Session 11+";
-      tft.getTextBounds(msg, 0, 0, &x1, &y1, &w, &h);
+      getTextBounds_compat(tft, msg.c_str(), 0, 0, &x1, &y1, &w, &h);
       tft.setCursor((SCREEN_WIDTH - w) / 2, 215);
       tft.print(msg);
       delay(1500);
@@ -377,7 +377,7 @@ int handleCWAPracticeTypeSelectInput(char key, Adafruit_ST7789& tft) {
 /*
  * Draw message type selection screen
  */
-void drawCWAMessageTypeSelectUI(Adafruit_ST7789& tft) {
+void drawCWAMessageTypeSelectUI(LGFX& tft) {
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   int cardX = 20;
@@ -393,28 +393,28 @@ void drawCWAMessageTypeSelectUI(Adafruit_ST7789& tft) {
   int16_t x1, y1;
   uint16_t w, h;
   String context = String(cwaPracticeTypeNames[cwaSelectedPracticeType]);
-  tft.getTextBounds(context, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, context.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(cardX + (cardW - w) / 2, cardY + 18);
   tft.print(context);
 
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_WHITE);
   String typeText = String(cwaMessageTypeNames[cwaSelectedMessageType]);
-  tft.getTextBounds(typeText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, typeText.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(cardX + (cardW - w) / 2, cardY + 60);
   tft.print(typeText);
 
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_CYAN);
   String desc = String(cwaMessageTypeDescriptions[cwaSelectedMessageType]);
-  tft.getTextBounds(desc, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, desc.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(cardX + (cardW - w) / 2, cardY + 95);
   tft.print(desc);
 
   tft.setTextSize(1);
   tft.setTextColor(0x7BEF);
   String hint = String(cwaSelectedMessageType + 1) + " of " + String(CWA_TOTAL_MESSAGE_TYPES);
-  tft.getTextBounds(hint, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, hint.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(cardX + (cardW - w) / 2, cardY + 125);
   tft.print(hint);
 
@@ -428,7 +428,7 @@ void drawCWAMessageTypeSelectUI(Adafruit_ST7789& tft) {
   tft.setTextSize(1);
   tft.setTextColor(COLOR_WARNING);
   String helpText = "\x18\x19 Select  ENTER Start  ESC Back";
-  tft.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, helpText.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor((SCREEN_WIDTH - w) / 2, SCREEN_HEIGHT - 12);
   tft.print(helpText);
 }
@@ -442,7 +442,7 @@ void drawCWAMessageTypeSelectUI(Adafruit_ST7789& tft) {
  *    2 = Redraw UI
  *    3 = Start sending practice
  */
-int handleCWAMessageTypeSelectInput(char key, Adafruit_ST7789& tft) {
+int handleCWAMessageTypeSelectInput(char key, LGFX& tft) {
   if (key == KEY_UP) {
     if (cwaSelectedMessageType > MESSAGE_CHARACTERS) {
       cwaSelectedMessageType = (CWAMessageType)((int)cwaSelectedMessageType - 1);
@@ -478,7 +478,7 @@ int handleCWAMessageTypeSelectInput(char key, Adafruit_ST7789& tft) {
 /*
  * Initialize CW Academy mode (entry point from Training menu)
  */
-void startCWAcademy(Adafruit_ST7789& tft) {
+void startCWAcademy(LGFX& tft) {
   loadCWAProgress();
   drawCWATrackSelectUI(tft);
 }

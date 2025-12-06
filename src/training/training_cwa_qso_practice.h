@@ -261,7 +261,7 @@ QSOState qsoState = QSO_READY;
 /*
  * Draw QSO Practice UI (Modern, preserving header)
  */
-void drawCWAQSOPracticeUI(Adafruit_ST7789& tft) {
+void drawCWAQSOPracticeUI(LGFX& tft) {
   // Get session index (11-13 maps to 0-2)
   int sessionIndex = cwaSelectedSession - 11;
   if (sessionIndex < 0 || sessionIndex > 2) {
@@ -432,7 +432,7 @@ void drawCWAQSOPracticeUI(Adafruit_ST7789& tft) {
         String word = expected.substring(lineStart, i + 1);
         int16_t x1, y1;
         uint16_t w, h;
-        tft.getTextBounds(word, 0, 0, &x1, &y1, &w, &h);
+        getTextBounds_compat(tft, word.c_str(), 0, 0, &x1, &y1, &w, &h);
 
         if (w > SCREEN_WIDTH - 40) {
           yPos += 12;
@@ -461,7 +461,7 @@ void drawCWAQSOPracticeUI(Adafruit_ST7789& tft) {
 /*
  * Start QSO Practice mode
  */
-void startCWAQSOPractice(Adafruit_ST7789& tft) {
+void startCWAQSOPractice(LGFX& tft) {
   // Load personalization
   loadQSOPersonalization();
 
@@ -487,7 +487,7 @@ void startCWAQSOPractice(Adafruit_ST7789& tft) {
 /*
  * Play QSO exchange at current playback speed
  */
-void playQSOExchange(int sessionIndex, int exchangeIndex, Adafruit_ST7789& tft) {
+void playQSOExchange(int sessionIndex, int exchangeIndex, LGFX& tft) {
   const QSOExchange* exchange = &qso_exchanges[sessionIndex][exchangeIndex];
 
   if (exchange->messageTemplate == nullptr) {
@@ -520,7 +520,7 @@ void playQSOExchange(int sessionIndex, int exchangeIndex, Adafruit_ST7789& tft) 
 /*
  * Handle QSO practice input - Interactive copy practice
  */
-int handleCWAQSOPracticeInput(char key, Adafruit_ST7789& tft) {
+int handleCWAQSOPracticeInput(char key, LGFX& tft) {
   int sessionIndex = cwaSelectedSession - 11;
   if (sessionIndex < 0 || sessionIndex > 2) {
     sessionIndex = 0;

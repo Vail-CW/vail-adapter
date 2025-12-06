@@ -6,15 +6,11 @@
 #ifndef QSO_LOGGER_UI_H
 #define QSO_LOGGER_UI_H
 
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7789.h>
-#include <Fonts/FreeSansBold12pt7b.h>
-#include <Fonts/FreeSans9pt7b.h>
 #include "../core/config.h"
 #include "qso_logger.h"  // Same folder
 
 // Forward declarations from main file
-extern Adafruit_ST7789 tft;
+extern LGFX tft;
 void drawHeader();
 
 // ============================================
@@ -25,7 +21,7 @@ void drawHeader();
  * Draw Tools submenu
  * Currently only has QSO Logger, but designed for future expansion
  */
-void drawToolsMenu(Adafruit_ST7789& tft) {
+void drawToolsMenu(LGFX& tft) {
   // Tools menu is drawn by main menu system using drawMenuItems()
   // This function is a placeholder for future custom rendering
 }
@@ -37,7 +33,7 @@ void drawToolsMenu(Adafruit_ST7789& tft) {
 /*
  * Draw QSO Logger submenu
  */
-void drawQSOLoggerMenu(Adafruit_ST7789& tft) {
+void drawQSOLoggerMenu(LGFX& tft) {
   // QSO Logger menu is drawn by main menu system using drawMenuItems()
   // This function is a placeholder for future custom rendering
 }
@@ -50,7 +46,7 @@ void drawQSOLoggerMenu(Adafruit_ST7789& tft) {
  * Draw QSO Log Entry UI
  * Card-based form matching existing VAIL SUMMIT style
  */
-void drawQSOLogEntryUI(Adafruit_ST7789& tft) {
+void drawQSOLogEntryUI(LGFX& tft) {
   // Draw header
   drawHeader();
 
@@ -119,7 +115,7 @@ void drawQSOLogEntryUI(Adafruit_ST7789& tft) {
     if (logEntryState.isEditing && (millis() / 500) % 2 == 0) {
       int16_t x1, y1;
       uint16_t w, h;
-      tft.getTextBounds(displayValue, 0, 0, &x1, &y1, &w, &h);
+      getTextBounds_compat(tft, displayValue.c_str(), 0, 0, &x1, &y1, &w, &h);
       tft.fillRect(18 + w + 2, cardY + 28, 3, 16, COLOR_WARNING);
     }
   } else {
@@ -183,7 +179,7 @@ void drawQSOLogEntryUI(Adafruit_ST7789& tft) {
 
   int16_t x1, y1;
   uint16_t w, h;
-  tft.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, helpText.c_str(), 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   tft.setCursor(centerX, footerY);
   tft.print(helpText);
@@ -197,7 +193,7 @@ void drawQSOLogEntryUI(Adafruit_ST7789& tft) {
  * Draw View Logs UI
  * Scrollable list of logged contacts
  */
-void drawQSOViewLogsUI(Adafruit_ST7789& tft) {
+void drawQSOViewLogsUI(LGFX& tft) {
   // Draw header
   drawHeader();
 
@@ -205,15 +201,15 @@ void drawQSOViewLogsUI(Adafruit_ST7789& tft) {
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42 - 20, COLOR_BACKGROUND);
 
   // Title
-  tft.setFont(&FreeSansBold12pt7b);
+  tft.setFont(nullptr);  // Use default font
   tft.setTextColor(COLOR_TITLE);
   tft.setTextSize(1);
   int16_t x1, y1;
   uint16_t w, h;
-  tft.getTextBounds("VIEW LOGS", 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, "VIEW LOGS", 0, 0, &x1, &y1, &w, &h);
   tft.setCursor((SCREEN_WIDTH - w) / 2, 70);
   tft.print("VIEW LOGS");
-  tft.setFont(); // Reset font
+  tft.setFont(nullptr); // Reset font
 
   // Placeholder message
   tft.setTextSize(2);
@@ -231,7 +227,7 @@ void drawQSOViewLogsUI(Adafruit_ST7789& tft) {
   tft.setTextSize(1);
   tft.setTextColor(COLOR_WARNING); // Yellow
   String helpText = "ESC Back";
-  tft.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, helpText.c_str(), 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   tft.setCursor(centerX, footerY);
   tft.print(helpText);
@@ -245,7 +241,7 @@ void drawQSOViewLogsUI(Adafruit_ST7789& tft) {
  * Draw Statistics UI
  * Summary statistics and band/mode breakdown
  */
-void drawQSOStatisticsUI(Adafruit_ST7789& tft) {
+void drawQSOStatisticsUI(LGFX& tft) {
   // Draw header
   drawHeader();
 
@@ -253,15 +249,15 @@ void drawQSOStatisticsUI(Adafruit_ST7789& tft) {
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42 - 20, COLOR_BACKGROUND);
 
   // Title
-  tft.setFont(&FreeSansBold12pt7b);
+  tft.setFont(nullptr);  // Use default font
   tft.setTextColor(COLOR_TITLE);
   tft.setTextSize(1);
   int16_t x1, y1;
   uint16_t w, h;
-  tft.getTextBounds("STATISTICS", 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, "STATISTICS", 0, 0, &x1, &y1, &w, &h);
   tft.setCursor((SCREEN_WIDTH - w) / 2, 70);
   tft.print("STATISTICS");
-  tft.setFont(); // Reset font
+  tft.setFont(nullptr); // Reset font
 
   // Placeholder message
   tft.setTextSize(2);
@@ -279,7 +275,7 @@ void drawQSOStatisticsUI(Adafruit_ST7789& tft) {
   tft.setTextSize(1);
   tft.setTextColor(COLOR_WARNING); // Yellow
   String helpText = "ESC Back";
-  tft.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, helpText.c_str(), 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   tft.setCursor(centerX, footerY);
   tft.print(helpText);
@@ -293,7 +289,7 @@ void drawQSOStatisticsUI(Adafruit_ST7789& tft) {
  * Draw Export UI
  * Export logs to ADIF format
  */
-void drawQSOExportUI(Adafruit_ST7789& tft) {
+void drawQSOExportUI(LGFX& tft) {
   // Draw header
   drawHeader();
 
@@ -301,15 +297,15 @@ void drawQSOExportUI(Adafruit_ST7789& tft) {
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42 - 20, COLOR_BACKGROUND);
 
   // Title
-  tft.setFont(&FreeSansBold12pt7b);
+  tft.setFont(nullptr);  // Use default font
   tft.setTextColor(COLOR_TITLE);
   tft.setTextSize(1);
   int16_t x1, y1;
   uint16_t w, h;
-  tft.getTextBounds("EXPORT LOGS", 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, "EXPORT LOGS", 0, 0, &x1, &y1, &w, &h);
   tft.setCursor((SCREEN_WIDTH - w) / 2, 70);
   tft.print("EXPORT LOGS");
-  tft.setFont(); // Reset font
+  tft.setFont(nullptr); // Reset font
 
   // Placeholder message
   tft.setTextSize(2);
@@ -327,7 +323,7 @@ void drawQSOExportUI(Adafruit_ST7789& tft) {
   tft.setTextSize(1);
   tft.setTextColor(COLOR_WARNING); // Yellow
   String helpText = "ESC Back";
-  tft.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, helpText.c_str(), 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   tft.setCursor(centerX, footerY);
   tft.print(helpText);

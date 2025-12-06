@@ -225,6 +225,12 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
                 <p>Send morse code messages to your connected ham radio via 3.5mm output jack.</p>
                 <a href="/radio" class="btn btn-primary">Radio Mode</a>
             </div>
+
+            <div class="card">
+                <h2><span class="card-icon">💾</span> Storage Management</h2>
+                <p>Manage files on the SD card. Upload, download, and delete files for data logging and backups.</p>
+                <a href="/storage" class="btn btn-primary">Manage Storage</a>
+            </div>
         </div>
 
         <!-- Remote Training & Games Section -->

@@ -1,0 +1,419 @@
+/*
+ * Web Pages - Storage Management
+ * SD card file management interface
+ */
+
+#ifndef WEB_PAGES_STORAGE_H
+#define WEB_PAGES_STORAGE_H
+
+const char STORAGE_HTML[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storage Management - VAIL SUMMIT</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 1000px; margin: 0 auto; }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 25px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            backdrop-filter: blur(10px);
+        }
+        h1 { font-size: 2rem; margin-bottom: 10px; }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 15px;
+            color: #00d4ff;
+            text-decoration: none;
+            font-size: 1.1rem;
+        }
+        .back-link:hover { text-decoration: underline; }
+        .card {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .storage-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-box {
+            background: rgba(0,212,255,0.2);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-bottom: 5px;
+        }
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00d4ff, #00a8cc);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+        .upload-section {
+            margin: 20px 0;
+            padding: 20px;
+            background: rgba(0,212,255,0.1);
+            border-radius: 10px;
+            border: 2px dashed rgba(0,212,255,0.3);
+        }
+        .file-input-wrapper {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        input[type="file"] {
+            flex: 1;
+            padding: 10px;
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 8px;
+            color: #fff;
+        }
+        .btn {
+            padding: 12px 24px;
+            background: #00d4ff;
+            color: #1e3c72;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn:hover { background: #00b8e6; }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-danger {
+            background: #ff4444;
+            color: #fff;
+        }
+        .btn-danger:hover { background: #cc0000; }
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 0.85rem;
+        }
+        .file-list {
+            margin-top: 20px;
+        }
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex: 1;
+        }
+        .file-icon {
+            font-size: 1.5rem;
+        }
+        .file-details {
+            flex: 1;
+        }
+        .file-name {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        .file-size {
+            font-size: 0.85rem;
+            opacity: 0.7;
+        }
+        .file-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .status-message {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        .status-message.success {
+            background: rgba(0,255,0,0.2);
+            border: 1px solid rgba(0,255,0,0.3);
+        }
+        .status-message.error {
+            background: rgba(255,0,0,0.2);
+            border: 1px solid rgba(255,0,0,0.3);
+        }
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="back-link">← Back to Dashboard</a>
+
+        <header>
+            <h1>💾 Storage Management</h1>
+            <p>Manage files on your SD card</p>
+        </header>
+
+        <div id="statusMessage" class="status-message"></div>
+
+        <!-- Storage Stats -->
+        <div class="card">
+            <h2 style="margin-bottom: 20px;">SD Card Status</h2>
+            <div class="storage-stats">
+                <div class="stat-box">
+                    <div class="stat-label">Total Space</div>
+                    <div class="stat-value" id="totalSpace">-- MB</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Used Space</div>
+                    <div class="stat-value" id="usedSpace">-- MB</div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">Free Space</div>
+                    <div class="stat-value" id="freeSpace">-- MB</div>
+                </div>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%;">
+                    <span id="progressText">0%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload Section -->
+        <div class="card">
+            <h2 style="margin-bottom: 15px;">Upload File</h2>
+            <div class="upload-section">
+                <div class="file-input-wrapper">
+                    <input type="file" id="fileInput" />
+                    <button class="btn" onclick="uploadFile()">Upload</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- File List -->
+        <div class="card">
+            <h2 style="margin-bottom: 15px;">Files</h2>
+            <button class="btn btn-small" onclick="refreshFiles()" style="margin-bottom: 15px;">🔄 Refresh</button>
+            <div id="fileList" class="file-list">
+                <div class="empty-state">Loading files...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Show status message
+        function showMessage(message, type) {
+            const msgEl = document.getElementById('statusMessage');
+            msgEl.textContent = message;
+            msgEl.className = 'status-message ' + type;
+            msgEl.style.display = 'block';
+            setTimeout(() => {
+                msgEl.style.display = 'none';
+            }, 5000);
+        }
+
+        // Load storage status
+        async function loadStorageStatus() {
+            try {
+                const response = await fetch('/api/storage/status');
+                const data = await response.json();
+
+                if (!data.available) {
+                    showMessage('SD card not available', 'error');
+                    document.getElementById('totalSpace').textContent = 'N/A';
+                    document.getElementById('usedSpace').textContent = 'N/A';
+                    document.getElementById('freeSpace').textContent = 'N/A';
+                    return;
+                }
+
+                document.getElementById('totalSpace').textContent = data.totalMB + ' MB';
+                document.getElementById('usedSpace').textContent = data.usedMB + ' MB';
+                document.getElementById('freeSpace').textContent = data.freeMB + ' MB';
+
+                const usedPercent = Math.round((data.usedMB / data.totalMB) * 100);
+                document.getElementById('progressFill').style.width = usedPercent + '%';
+                document.getElementById('progressText').textContent = usedPercent + '%';
+
+            } catch (error) {
+                console.error('Failed to load storage status:', error);
+                showMessage('Failed to load storage status', 'error');
+            }
+        }
+
+        // Load file list
+        async function loadFiles() {
+            try {
+                const response = await fetch('/api/storage/files');
+                const files = await response.json();
+
+                const fileListEl = document.getElementById('fileList');
+
+                if (files.length === 0) {
+                    fileListEl.innerHTML = '<div class="empty-state">No files on SD card</div>';
+                    return;
+                }
+
+                let html = '';
+                files.forEach(file => {
+                    const icon = file.isDir ? '📁' : '📄';
+                    const sizeText = file.isDir ? 'Folder' : formatBytes(file.size);
+
+                    html += `
+                        <div class="file-item">
+                            <div class="file-info">
+                                <span class="file-icon">${icon}</span>
+                                <div class="file-details">
+                                    <div class="file-name">${file.name}</div>
+                                    <div class="file-size">${sizeText}</div>
+                                </div>
+                            </div>
+                            <div class="file-actions">
+                                ${!file.isDir ? `<button class="btn btn-small" onclick="downloadFile('${file.name}')">Download</button>` : ''}
+                                <button class="btn btn-small btn-danger" onclick="deleteFile('${file.name}')">Delete</button>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                fileListEl.innerHTML = html;
+
+            } catch (error) {
+                console.error('Failed to load files:', error);
+                document.getElementById('fileList').innerHTML = '<div class="empty-state">Failed to load files</div>';
+            }
+        }
+
+        // Format bytes to human-readable
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        // Upload file
+        async function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+
+            if (!file) {
+                showMessage('Please select a file', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/api/storage/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showMessage('File uploaded successfully', 'success');
+                    fileInput.value = '';
+                    await refreshFiles();
+                } else {
+                    showMessage('Upload failed: ' + (result.error || 'Unknown error'), 'error');
+                }
+
+            } catch (error) {
+                console.error('Upload error:', error);
+                showMessage('Upload failed', 'error');
+            }
+        }
+
+        // Download file
+        function downloadFile(filename) {
+            window.location.href = `/api/storage/download?file=/${filename}`;
+        }
+
+        // Delete file
+        async function deleteFile(filename) {
+            if (!confirm(`Delete ${filename}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/storage/delete?file=/${filename}`, {
+                    method: 'DELETE'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showMessage('File deleted successfully', 'success');
+                    await refreshFiles();
+                } else {
+                    showMessage('Delete failed: ' + (result.error || 'Unknown error'), 'error');
+                }
+
+            } catch (error) {
+                console.error('Delete error:', error);
+                showMessage('Delete failed', 'error');
+            }
+        }
+
+        // Refresh files and stats
+        async function refreshFiles() {
+            await loadStorageStatus();
+            await loadFiles();
+        }
+
+        // Load on page load
+        refreshFiles();
+    </script>
+</body>
+</html>
+)rawliteral";
+
+#endif // WEB_PAGES_STORAGE_H

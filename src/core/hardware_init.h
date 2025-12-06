@@ -7,13 +7,64 @@
 #define HARDWARE_INIT_H
 
 #include <Wire.h>
-#include <Adafruit_ST7789.h>
+#define LGFX_USE_V1
+#include <LovyanGFX.hpp>
 #include <Adafruit_LC709203F.h>
 #include <Adafruit_MAX1704X.h>
 #include "config.h"  // Same folder, no path change needed
 
+// LovyanGFX configuration for ST7796S 4.0" display
+class LGFX : public lgfx::LGFX_Device {
+  lgfx::Panel_ST7796 _panel_instance;
+  lgfx::Bus_SPI _bus_instance;
+
+public:
+  LGFX(void) {
+    {
+      auto cfg = _bus_instance.config();
+      cfg.spi_host = SPI2_HOST;
+      cfg.spi_mode = 0;
+      cfg.freq_write = 40000000;  // 40MHz write speed
+      cfg.freq_read = 16000000;   // 16MHz read speed
+      cfg.spi_3wire = false;
+      cfg.use_lock = true;
+      cfg.dma_channel = SPI_DMA_CH_AUTO;
+      cfg.pin_sclk = TFT_SCK;
+      cfg.pin_mosi = TFT_MOSI;
+      cfg.pin_miso = TFT_MISO;
+      cfg.pin_dc = TFT_DC;
+      _bus_instance.config(cfg);
+      _panel_instance.setBus(&_bus_instance);
+    }
+
+    {
+      auto cfg = _panel_instance.config();
+      cfg.pin_cs = TFT_CS;
+      cfg.pin_rst = TFT_RST;
+      cfg.pin_busy = -1;
+      cfg.memory_width = 320;
+      cfg.memory_height = 480;
+      cfg.panel_width = 320;
+      cfg.panel_height = 480;
+      cfg.offset_x = 0;
+      cfg.offset_y = 0;
+      cfg.offset_rotation = 0;
+      cfg.dummy_read_pixel = 8;
+      cfg.dummy_read_bits = 1;
+      cfg.readable = true;
+      cfg.invert = false;       // Color inversion disabled
+      cfg.rgb_order = false;    // BGR color order (swaps red and blue)
+      cfg.dlen_16bit = false;
+      cfg.bus_shared = true;    // Shared SPI bus (for future SD card support)
+      _panel_instance.config(cfg);
+    }
+
+    setPanel(&_panel_instance);
+  }
+};
+
 // Forward declarations from main file
-extern Adafruit_ST7789 tft;
+extern LGFX tft;
 extern Adafruit_LC709203F lc;
 extern Adafruit_MAX17048 maxlipo;
 extern bool hasLC709203;
@@ -67,14 +118,17 @@ void initBatteryMonitor() {
 }
 
 /*
- * Initialize display
+ * Initialize display (LovyanGFX ST7796S)
  */
 void initDisplay() {
-  Serial.println("Initializing display...");
-  tft.init(240, 320);  // Initialize with hardware dimensions
-  tft.setRotation(SCREEN_ROTATION);  // Then rotate to landscape
+  Serial.println("Initializing 4.0\" ST7796S display...");
+  tft.init();
+  tft.setRotation(SCREEN_ROTATION);  // Set landscape orientation
   tft.fillScreen(COLOR_BACKGROUND);
-  Serial.println("Display initialized");
+  Serial.print("Display initialized: ");
+  Serial.print(tft.width());
+  Serial.print("×");
+  Serial.println(tft.height());
 }
 
 /*

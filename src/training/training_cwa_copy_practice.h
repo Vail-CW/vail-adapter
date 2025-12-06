@@ -130,7 +130,7 @@ String generateCWAContent() {
 /*
  * Draw copy practice UI
  */
-void drawCWACopyPracticeUI(Adafruit_ST7789& tft) {
+void drawCWACopyPracticeUI(LGFX& tft) {
   tft.fillScreen(COLOR_BACKGROUND);
   drawHeader();
 
@@ -190,8 +190,8 @@ void drawCWACopyPracticeUI(Adafruit_ST7789& tft) {
     tft.print("Type what you heard:");
 
     // Show current input
-    tft.fillRect(15, 120, 290, 50, 0x1082);  // Input box
-    tft.drawRect(15, 120, 290, 50, 0x34BF);
+    tft.fillRect(20, 120, 440, 50, 0x1082);  // Input box (scaled for 480px width)
+    tft.drawRect(20, 120, 440, 50, 0x34BF);
 
     tft.setTextSize(3);
     tft.setTextColor(ST77XX_WHITE);
@@ -206,8 +206,8 @@ void drawCWACopyPracticeUI(Adafruit_ST7789& tft) {
     tft.print("Type what you hear:");
 
     // Show empty input box ready for typing
-    tft.fillRect(15, 120, 290, 50, 0x1082);  // Input box
-    tft.drawRect(15, 120, 290, 50, 0x34BF);
+    tft.fillRect(20, 120, 440, 50, 0x1082);  // Input box (scaled for 480px width)
+    tft.drawRect(20, 120, 440, 50, 0x34BF);
 
     tft.setTextSize(1);
     tft.setTextColor(0x7BEF);
@@ -228,7 +228,7 @@ void drawCWACopyPracticeUI(Adafruit_ST7789& tft) {
   }
   int16_t x1, y1;
   uint16_t w, h;
-  tft.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, helpText.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor((SCREEN_WIDTH - w) / 2, SCREEN_HEIGHT - 12);
   tft.print(helpText);
 }
@@ -240,7 +240,7 @@ void drawCWACopyPracticeUI(Adafruit_ST7789& tft) {
 /*
  * Start a new round of practice
  */
-void startCWACopyRound(Adafruit_ST7789& tft) {
+void startCWACopyRound(LGFX& tft) {
   cwaCopyRound++;
   cwaCopyInput = "";
   cwaCopyTarget = generateCWAContent();
@@ -262,7 +262,7 @@ void startCWACopyRound(Adafruit_ST7789& tft) {
 /*
  * Start copy practice mode
  */
-void startCWACopyPractice(Adafruit_ST7789& tft) {
+void startCWACopyPractice(LGFX& tft) {
   cwaCopyRound = 0;
   cwaCopyCorrect = 0;
   cwaCopyTotal = 0;
@@ -283,7 +283,7 @@ void startCWACopyPractice(Adafruit_ST7789& tft) {
  * Handle input for copy practice mode
  * Returns: -1 to exit, 0 for normal input, 2 for redraw
  */
-int handleCWACopyPracticeInput(char key, Adafruit_ST7789& tft) {
+int handleCWACopyPracticeInput(char key, LGFX& tft) {
   // ESC always exits
   if (key == KEY_ESC) {
     return -1;  // Return to message type selection

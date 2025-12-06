@@ -9,24 +9,35 @@
 // ============================================
 // Firmware Version Information
 // ============================================
-#define FIRMWARE_VERSION "0.1"
-#define FIRMWARE_DATE "2025-11-10"  // Update this date each time you build new firmware
+#define FIRMWARE_VERSION "0.2-4inch"
+#define FIRMWARE_DATE "2025-01-22"  // Update this date each time you build new firmware
 #define FIRMWARE_NAME "VAIL SUMMIT"
 
 // ============================================
-// LCD Display (ST7789V) - SPI Interface
+// LCD Display (ST7796S 4.0") - SPI Interface
 // ============================================
 #define TFT_CS      10    // Chip Select
-#define TFT_DC      11    // Data/Command
-#define TFT_RST     12    // Reset
-// #define TFT_BL      13    // Backlight (hardwired to 3.3V - GPIO 13 now used for capacitive touch)
-#define TFT_MOSI    35    // SPI Data (hardware SPI)
+#define TFT_RST     11    // Hardware Reset
+#define TFT_DC      12    // Data/Command
+#define TFT_MOSI    35    // SPI Data Out (hardware SPI)
 #define TFT_SCK     36    // SPI Clock (hardware SPI)
+#define TFT_MISO    37    // SPI Data In (required for ST7796S)
+#define TFT_BL      39    // Backlight control (GPIO 39)
 
 // Display Settings
-#define SCREEN_WIDTH    320
-#define SCREEN_HEIGHT   240
-#define SCREEN_ROTATION 1     // 0=Portrait, 1=Landscape, 2=Portrait flipped, 3=Landscape flipped
+#define SCREEN_WIDTH    480
+#define SCREEN_HEIGHT   320
+#define SCREEN_ROTATION 3     // 0=Portrait, 1=Landscape, 2=Portrait flipped, 3=Landscape flipped
+
+// ============================================
+// SD Card - SPI Interface (shares SPI bus with display)
+// ============================================
+#define SD_CS       38    // SD Card Chip Select
+#define SD_MOSI     35    // SPI Data Out (shared with display)
+#define SD_SCK      36    // SPI Clock (shared with display)
+#define SD_MISO     37    // SPI Data In (shared with display)
+// Note: SD card shares hardware SPI bus with display
+// Only CS pin is unique; MOSI/SCK/MISO are shared with TFT
 
 // ============================================
 // CardKB Keyboard - I2C Interface
@@ -80,6 +91,14 @@
 #define DEFAULT_VOLUME  50    // Default volume (0-100%)
 #define VOLUME_MIN      0     // Minimum volume
 #define VOLUME_MAX      100   // Maximum volume
+
+// Brightness Control (PWM for LCD backlight)
+#define DEFAULT_BRIGHTNESS      100   // Default brightness (0-100%)
+#define BRIGHTNESS_MIN          10    // Minimum brightness (prevent completely dark)
+#define BRIGHTNESS_MAX          100   // Maximum brightness
+#define BRIGHTNESS_PWM_CHANNEL  0     // ESP32 LEDC channel for backlight
+#define BRIGHTNESS_PWM_FREQ     5000  // PWM frequency in Hz
+#define BRIGHTNESS_PWM_RESOLUTION 8   // 8-bit resolution (0-255)
 
 // ============================================
 // Iambic Paddle Key - Digital Inputs
@@ -136,6 +155,29 @@
 #define DEBUG_ENABLED true
 
 // ============================================
+// Web Files Download Configuration
+// ============================================
+// GitHub raw URL for downloading web interface files to SD card
+// Update OWNER/REPO/BRANCH when repository is public
+#define WEB_FILES_BASE_URL "https://raw.githubusercontent.com/OWNER/REPO/BRANCH/web/www/"
+#define WEB_FILES_MANIFEST "manifest.json"
+#define WEB_FILES_PATH "/www/"  // SD card path for web files
+
+// ============================================
+// Color Definitions (LovyanGFX compatible - 16-bit RGB565)
+// ============================================
+// LovyanGFX uses different color names than Adafruit, so define ST77XX_* constants
+#define ST77XX_BLACK       0x0000  // Black
+#define ST77XX_WHITE       0xFFFF  // White
+#define ST77XX_RED         0xF800  // Red
+#define ST77XX_GREEN       0x07E0  // Green
+#define ST77XX_BLUE        0x001F  // Blue
+#define ST77XX_CYAN        0x07FF  // Cyan
+#define ST77XX_MAGENTA     0xF81F  // Magenta
+#define ST77XX_YELLOW      0xFFE0  // Yellow
+#define ST77XX_ORANGE      0xFC00  // Orange
+
+// ============================================
 // UI Color Scheme
 // ============================================
 #define COLOR_BACKGROUND    ST77XX_BLACK
@@ -149,11 +191,40 @@
 #define COLOR_SEPARATOR     ST77XX_WHITE
 
 // ============================================
+// UI Layout Constants (scaled for 480×320 display)
+// ============================================
+#define HEADER_HEIGHT       60    // Top status bar height
+#define FOOTER_HEIGHT       30    // Bottom instruction bar height
+#define CARD_MAIN_WIDTH     450   // Main menu card width
+#define CARD_MAIN_HEIGHT    80    // Main menu card height
+#define CARD_STACK_WIDTH_1  405   // First stacked card width
+#define CARD_STACK_WIDTH_2  375   // Second stacked card width
+#define ICON_RADIUS         30    // Menu card icon circle radius
+#define STATUS_ICON_SIZE    36    // Status bar icon size (battery, WiFi)
+#define GROUND_Y            300   // Ground position for Morse Shooter game
+
+// ============================================
 // Menu Configuration
 // ============================================
-#define MENU_ITEMS      6
+// MENU_ITEMS is deprecated - use MAIN_MENU_ITEMS from menu_ui.h instead
+// Keeping for backwards compatibility during transition
+#define MENU_ITEMS      4
 #define MENU_START_Y    55
 #define MENU_ITEM_HEIGHT 35
-#define MENU_TEXT_SIZE  2
+#define MENU_TEXT_SIZE  3     // Increased from 2 for better readability on larger display
+
+// ============================================
+// LovyanGFX Compatibility Helpers
+// ============================================
+// LovyanGFX doesn't have getTextBounds() like Adafruit_GFX
+// This inline function provides compatibility by using textWidth() and fontHeight()
+template<typename T>
+inline void getTextBounds_compat(T& display, const char* text, int16_t x, int16_t y,
+                                  int16_t* x1, int16_t* y1, uint16_t* w, uint16_t* h) {
+  *w = display.textWidth(text);
+  *h = display.fontHeight();
+  *x1 = x;
+  *y1 = y - *h;  // LovyanGFX draws from baseline, Adafruit from top-left
+}
 
 #endif // CONFIG_H

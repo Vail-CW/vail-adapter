@@ -7,8 +7,6 @@
 #define TRAINING_KOCH_UI_H
 
 #include "training_koch_core.h"
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7789.h>
 
 // Forward declaration
 extern void drawHeader();
@@ -17,7 +15,7 @@ extern void drawHeader();
 // Help Screen
 // ============================================
 
-void drawKochHelp(Adafruit_ST7789& tft) {
+void drawKochHelp(LGFX& tft) {
   tft.fillScreen(COLOR_BACKGROUND);
   drawHeader();
 
@@ -134,7 +132,7 @@ void drawKochHelp(Adafruit_ST7789& tft) {
 // Character Selection (Practice Mode)
 // ============================================
 
-void drawCharacterSelector(Adafruit_ST7789& tft) {
+void drawCharacterSelector(LGFX& tft) {
   tft.fillScreen(COLOR_BACKGROUND);
   drawHeader();
 
@@ -214,7 +212,7 @@ void drawCharacterSelector(Adafruit_ST7789& tft) {
 // Settings Overlay
 // ============================================
 
-void drawKochSettings(Adafruit_ST7789& tft) {
+void drawKochSettings(LGFX& tft) {
   tft.fillScreen(COLOR_BACKGROUND);
   drawHeader();
 
@@ -264,7 +262,7 @@ void drawKochSettings(Adafruit_ST7789& tft) {
 // Main UI Drawing
 // ============================================
 
-void drawKochUI(Adafruit_ST7789& tft) {
+void drawKochUI(LGFX& tft) {
   // If in character selection mode, draw selector and return
   if (kochInCharSelectMode) {
     drawCharacterSelector(tft);
@@ -323,7 +321,7 @@ void drawKochUI(Adafruit_ST7789& tft) {
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_CYAN);
   String lessonStr = String(kochProgress.currentLesson) + "/" + String(KOCH_TOTAL_LESSONS);
-  tft.getTextBounds(lessonStr, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, lessonStr.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(card1X + (CARD_WIDTH - w) / 2, CARD_Y + 20);
   tft.print(lessonStr);
 
@@ -352,7 +350,7 @@ void drawKochUI(Adafruit_ST7789& tft) {
   tft.setTextSize(2);
   tft.setTextColor(ready ? ST77XX_GREEN : (accuracy > 50 ? ST77XX_YELLOW : ST77XX_RED));
   String accStr = String(accuracy) + "%";
-  tft.getTextBounds(accStr, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, accStr.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(card2X + (CARD_WIDTH - w) / 2, CARD_Y + 20);
   tft.print(accStr);
 
@@ -374,7 +372,7 @@ void drawKochUI(Adafruit_ST7789& tft) {
   tft.setTextSize(2);
   tft.setTextColor(ST77XX_MAGENTA);
   String scoreStr = String(getCurrentCorrect()) + "/" + String(getCurrentTotal());
-  tft.getTextBounds(scoreStr, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, scoreStr.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor(card3X + (CARD_WIDTH - w) / 2, CARD_Y + 20);
   tft.print(scoreStr);
 
@@ -418,7 +416,7 @@ void drawKochUI(Adafruit_ST7789& tft) {
                       "/" + String(KOCH_MIN_ATTEMPTS) + " attempts, " + String(accuracy) + "% → 90%";
   }
 
-  tft.getTextBounds(progText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(tft, progText.c_str(), 0, 0, &x1, &y1, &w, &h);
   tft.setCursor((SCREEN_WIDTH - w) / 2, PROG_Y + 6);
   tft.print(progText);
 
@@ -458,7 +456,7 @@ void drawKochUI(Adafruit_ST7789& tft) {
     tft.setTextSize(3);
     tft.setTextColor(kochCorrectAnswer ? ST77XX_GREEN : ST77XX_RED);
     String resultMsg = kochCorrectAnswer ? "CORRECT!" : "TRY AGAIN";
-    tft.getTextBounds(resultMsg, 0, 0, &x1, &y1, &w, &h);
+    getTextBounds_compat(tft, resultMsg.c_str(), 0, 0, &x1, &y1, &w, &h);
     tft.setCursor((SCREEN_WIDTH - w) / 2, CONTENT_Y + 72);
     tft.print(resultMsg);
 
@@ -490,14 +488,14 @@ void drawKochUI(Adafruit_ST7789& tft) {
     tft.setTextSize(3);
     tft.setTextColor(ST77XX_GREEN);
     String readyMsg = "READY";
-    tft.getTextBounds(readyMsg, 0, 0, &x1, &y1, &w, &h);
+    getTextBounds_compat(tft, readyMsg.c_str(), 0, 0, &x1, &y1, &w, &h);
     tft.setCursor((SCREEN_WIDTH - w) / 2, CONTENT_Y + 10);
     tft.print(readyMsg);
 
     tft.setTextSize(2);
     tft.setTextColor(0x7BEF);
     String startMsg = "Press SPACE";
-    tft.getTextBounds(startMsg, 0, 0, &x1, &y1, &w, &h);
+    getTextBounds_compat(tft, startMsg.c_str(), 0, 0, &x1, &y1, &w, &h);
     tft.setCursor((SCREEN_WIDTH - w) / 2, CONTENT_Y + 45);
     tft.print(startMsg);
   }
@@ -512,7 +510,7 @@ void drawKochUI(Adafruit_ST7789& tft) {
     int progress = (elapsed * 100) / 3000;
     tft.setTextColor(ST77XX_RED);
     String resetMsg = "Resetting... " + String(progress) + "%";
-    tft.getTextBounds(resetMsg, 0, 0, &x1, &y1, &w, &h);
+    getTextBounds_compat(tft, resetMsg.c_str(), 0, 0, &x1, &y1, &w, &h);
     tft.setCursor((SCREEN_WIDTH - w) / 2, 222);
     tft.print(resetMsg);
   } else {

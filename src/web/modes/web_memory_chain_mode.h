@@ -6,8 +6,6 @@
 #ifndef WEB_MEMORY_CHAIN_MODE_H
 #define WEB_MEMORY_CHAIN_MODE_H
 
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7789.h>
 #include "../../core/config.h"
 #include "../../core/morse_code.h"
 #include "../../audio/i2s_audio.h"
@@ -233,7 +231,7 @@ void onWebMemoryDecoded(String morse, String text) {
 /*
  * Initialize web memory chain mode with settings from browser
  */
-void startWebMemoryChainMode(Adafruit_ST7789& tft, int difficulty, int mode, int wpm, bool sound, bool hints) {
+void startWebMemoryChainMode(LGFX& tft, int difficulty, int mode, int wpm, bool sound, bool hints) {
   Serial.println("Starting Web Memory Chain Mode...");
 
   // Initialize game state
@@ -303,7 +301,7 @@ void startWebMemoryChainMode(Adafruit_ST7789& tft, int difficulty, int mode, int
 /*
  * Handle keyboard input in web memory chain mode
  */
-int handleWebMemoryChainInput(char key, Adafruit_ST7789& tft) {
+int handleWebMemoryChainInput(char key, LGFX& tft) {
   if (key == KEY_ESC) {
     Serial.println("Exiting web memory chain mode");
     webMemoryGame.gameActive = false;

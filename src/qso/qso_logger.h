@@ -110,20 +110,20 @@ enum LogEntryField {
 // ============================================
 
 LogEntryState logEntryState = {
-  .currentField = 0,
-  .callsign = "",
-  .frequency = "14.025",  // Default to 20m CW
-  .modeIndex = 0,         // Default to CW
-  .rstSent = "599",
-  .rstRcvd = "599",
-  .date = "",
-  .time = "",
-  .notes = "",
-  .myGrid = "",
-  .myPOTA = "",
-  .theirGrid = "",
-  .theirPOTA = "",
-  .isEditing = false
+  0,          // currentField
+  "",         // callsign
+  "14.025",   // frequency - Default to 20m CW
+  0,          // modeIndex - Default to CW
+  "599",      // rstSent
+  "599",      // rstRcvd
+  "",         // date
+  "",         // time
+  "",         // notes
+  "",         // myGrid
+  "",         // myPOTA
+  "",         // theirGrid
+  "",         // theirPOTA
+  false       // isEditing
 };
 
 // Operator settings

@@ -228,7 +228,7 @@ bool isValidMorseMessage(const char* message) {
 // ============================================
 
 // Draw main CW Memories list screen
-void drawCWMemoriesUI(Adafruit_ST7789 &display) {
+void drawCWMemoriesUI(LGFX &display) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -238,7 +238,7 @@ void drawCWMemoriesUI(Adafruit_ST7789 &display) {
   int16_t x1, y1;
   uint16_t w, h;
   String title = "CW MEMORIES";
-  display.getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, title.c_str(), 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, 55);
   display.print(title);
@@ -289,14 +289,14 @@ void drawCWMemoriesUI(Adafruit_ST7789 &display) {
   display.setTextSize(1);
   display.setTextColor(COLOR_WARNING);
   String helpText = "\x18\x19 Select  ENTER Menu  ESC Back";
-  display.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, helpText.c_str(), 0, 0, &x1, &y1, &w, &h);
   centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, SCREEN_HEIGHT - 12);
   display.print(helpText);
 }
 
 // Draw context menu (full screen)
-void drawContextMenu(Adafruit_ST7789 &display) {
+void drawContextMenu(LGFX &display) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -306,7 +306,7 @@ void drawContextMenu(Adafruit_ST7789 &display) {
   int16_t x1, y1;
   uint16_t w, h;
   String title = "SLOT " + String(cwMemorySelection + 1);
-  display.getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, title.c_str(), 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, 55);
   display.print(title);
@@ -316,7 +316,7 @@ void drawContextMenu(Adafruit_ST7789 &display) {
     display.setTextSize(1);
     display.setTextColor(0x7BEF);  // Light gray
     String label = String(cwMemories[cwMemorySelection].label);
-    display.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
+    getTextBounds_compat(display, label.c_str(), 0, 0, &x1, &y1, &w, &h);
     centerX = (SCREEN_WIDTH - w) / 2;
     display.setCursor(centerX, 75);
     display.print(label);
@@ -341,7 +341,7 @@ void drawContextMenu(Adafruit_ST7789 &display) {
 
       display.setTextSize(2);
       display.setTextColor(isSelected ? ST77XX_WHITE : ST77XX_CYAN);
-      display.getTextBounds(options[i], 0, 0, &x1, &y1, &w, &h);
+      getTextBounds_compat(display, options[i], 0, 0, &x1, &y1, &w, &h);
       centerX = (SCREEN_WIDTH - w) / 2;
       display.setCursor(centerX, yPos + 8);
       display.print(options[i]);
@@ -361,7 +361,7 @@ void drawContextMenu(Adafruit_ST7789 &display) {
 
       display.setTextSize(2);
       display.setTextColor(isSelected ? ST77XX_WHITE : ST77XX_CYAN);
-      display.getTextBounds(options[i], 0, 0, &x1, &y1, &w, &h);
+      getTextBounds_compat(display, options[i], 0, 0, &x1, &y1, &w, &h);
       centerX = (SCREEN_WIDTH - w) / 2;
       display.setCursor(centerX, yPos + 8);
       display.print(options[i]);
@@ -372,14 +372,14 @@ void drawContextMenu(Adafruit_ST7789 &display) {
   display.setTextSize(1);
   display.setTextColor(COLOR_WARNING);
   String helpText = "\x18\x19 Select  ENTER Confirm  ESC Back";
-  display.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, helpText.c_str(), 0, 0, &x1, &y1, &w, &h);
   centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, SCREEN_HEIGHT - 12);
   display.print(helpText);
 }
 
 // Draw edit screen (label or message input)
-void drawEditScreen(Adafruit_ST7789 &display) {
+void drawEditScreen(LGFX &display) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -389,7 +389,7 @@ void drawEditScreen(Adafruit_ST7789 &display) {
   int16_t x1, y1;
   uint16_t w, h;
   String title = (editMode == EDIT_CREATE_LABEL || editMode == EDIT_CREATE_MESSAGE) ? "CREATE PRESET" : "EDIT PRESET";
-  display.getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, title.c_str(), 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, 55);
   display.print(title);
@@ -467,14 +467,14 @@ void drawEditScreen(Adafruit_ST7789 &display) {
   display.setTextSize(1);
   display.setTextColor(COLOR_WARNING);
   String helpText = "Type text  ENTER Save  ESC Cancel";
-  display.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, helpText.c_str(), 0, 0, &x1, &y1, &w, &h);
   centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, SCREEN_HEIGHT - 12);
   display.print(helpText);
 }
 
 // Draw delete confirmation dialog (full screen)
-void drawDeleteConfirmation(Adafruit_ST7789 &display, int slot) {
+void drawDeleteConfirmation(LGFX &display, int slot) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -484,7 +484,7 @@ void drawDeleteConfirmation(Adafruit_ST7789 &display, int slot) {
   int16_t x1, y1;
   uint16_t w, h;
   String title = "DELETE PRESET?";
-  display.getTextBounds(title, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, title.c_str(), 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, 55);
   display.print(title);
@@ -493,7 +493,7 @@ void drawDeleteConfirmation(Adafruit_ST7789 &display, int slot) {
   display.setTextSize(1);
   display.setTextColor(ST77XX_WHITE);
   String label = "\"" + String(cwMemories[slot].label) + "\"";
-  display.getTextBounds(label, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, label.c_str(), 0, 0, &x1, &y1, &w, &h);
   centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, 85);
   display.print(label);
@@ -502,7 +502,7 @@ void drawDeleteConfirmation(Adafruit_ST7789 &display, int slot) {
   display.setTextSize(1);
   display.setTextColor(0x7BEF);  // Light gray
   String warning = "This action cannot be undone";
-  display.getTextBounds(warning, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, warning.c_str(), 0, 0, &x1, &y1, &w, &h);
   centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, 105);
   display.print(warning);
@@ -524,7 +524,7 @@ void drawDeleteConfirmation(Adafruit_ST7789 &display, int slot) {
 
     display.setTextSize(2);
     display.setTextColor(isSelected ? ST77XX_WHITE : ST77XX_CYAN);
-    display.getTextBounds(options[i], 0, 0, &x1, &y1, &w, &h);
+    getTextBounds_compat(display, options[i], 0, 0, &x1, &y1, &w, &h);
     centerX = (SCREEN_WIDTH - w) / 2;
     display.setCursor(centerX, yPos + 8);
     display.print(options[i]);
@@ -534,7 +534,7 @@ void drawDeleteConfirmation(Adafruit_ST7789 &display, int slot) {
   display.setTextSize(1);
   display.setTextColor(COLOR_WARNING);
   String helpText = "\x18\x19 Select  ENTER Confirm  ESC Cancel";
-  display.getTextBounds(helpText, 0, 0, &x1, &y1, &w, &h);
+  getTextBounds_compat(display, helpText.c_str(), 0, 0, &x1, &y1, &w, &h);
   centerX = (SCREEN_WIDTH - w) / 2;
   display.setCursor(centerX, SCREEN_HEIGHT - 12);
   display.print(helpText);
@@ -553,7 +553,7 @@ bool shouldDrawCWMemoriesList() {
 // Mode Entry Function
 // ============================================
 
-void startCWMemoriesMode(Adafruit_ST7789 &display) {
+void startCWMemoriesMode(LGFX &display) {
   cwMemorySelection = 0;
   cwMemoryScrollOffset = 0;
   contextMenuActive = CONTEXT_NONE;
@@ -573,7 +573,7 @@ void startCWMemoriesMode(Adafruit_ST7789 &display) {
 // ============================================
 
 // Handle input in edit mode (label or message entry)
-int handleEditModeInput(char key, Adafruit_ST7789 &display) {
+int handleEditModeInput(char key, LGFX &display) {
   int maxLength = (editMode == EDIT_CREATE_LABEL || editMode == EDIT_EDIT_LABEL)
                   ? CW_MEMORY_LABEL_MAX_LENGTH
                   : CW_MEMORY_MESSAGE_MAX_LENGTH;
@@ -667,7 +667,7 @@ int handleEditModeInput(char key, Adafruit_ST7789 &display) {
 }
 
 // Handle context menu input
-int handleContextMenuInput(char key, Adafruit_ST7789 &display) {
+int handleContextMenuInput(char key, LGFX &display) {
   int maxOptions = (contextMenuActive == CONTEXT_EMPTY_SLOT) ? 2 : 4;
 
   if (key == KEY_UP) {
@@ -757,7 +757,7 @@ int handleContextMenuInput(char key, Adafruit_ST7789 &display) {
 }
 
 // Handle delete confirmation input
-int handleDeleteConfirmationInput(char key, Adafruit_ST7789 &display) {
+int handleDeleteConfirmationInput(char key, LGFX &display) {
   if (key == KEY_UP || key == KEY_DOWN || key == KEY_LEFT || key == KEY_RIGHT) {
     contextMenuSelection = (contextMenuSelection == 0) ? 1 : 0;
     drawDeleteConfirmation(display, cwMemorySelection);
@@ -797,7 +797,7 @@ int handleDeleteConfirmationInput(char key, Adafruit_ST7789 &display) {
 }
 
 // Main input handler
-int handleCWMemoriesInput(char key, Adafruit_ST7789 &display) {
+int handleCWMemoriesInput(char key, LGFX &display) {
   // Handle edit mode
   if (editMode != EDIT_NONE) {
     return handleEditModeInput(key, display);
