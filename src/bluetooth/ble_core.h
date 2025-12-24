@@ -172,8 +172,7 @@ void startBLEAdvertising(const char* serviceName) {
   }
 
   NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
-  pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x06);  // Functions that help with iPhone connections
+  // Note: setScanResponse() and setMinPreferred() removed - deprecated in newer NimBLE API
 
   NimBLEDevice::startAdvertising();
   bleCore.connectionState = BLE_STATE_ADVERTISING;

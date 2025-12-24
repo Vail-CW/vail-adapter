@@ -108,20 +108,21 @@ void drawBrightnessDisplay(LGFX &display) {
   // Clear display area
   display.fillRect(0, 50, SCREEN_WIDTH, 140, COLOR_BACKGROUND);
 
-  // Draw brightness card with rounded corners
+  // Clean brightness card
   int cardX = 30;
   int cardY = 70;
   int cardW = SCREEN_WIDTH - 60;
   int cardH = 100;
-  int radius = 10;
 
-  // Card background
-  display.fillRoundRect(cardX, cardY, cardW, cardH, radius, ST77XX_BLUE);
-  display.drawRoundRect(cardX, cardY, cardW, cardH, radius, ST77XX_WHITE);
+  // Solid card background
+  display.fillRoundRect(cardX, cardY, cardW, cardH, 10, COLOR_BG_LAYER2);
+
+  // Subtle border
+  display.drawRoundRect(cardX, cardY, cardW, cardH, 10, COLOR_BORDER_SUBTLE);
 
   // Brightness percentage text (large)
   display.setFont(&FreeSansBold12pt7b);
-  display.setTextColor(ST77XX_WHITE);
+  display.setTextColor(COLOR_TEXT_PRIMARY);
   display.setTextSize(2);
 
   char brightnessText[8];
@@ -131,28 +132,36 @@ void drawBrightnessDisplay(LGFX &display) {
   uint16_t w, h;
   getTextBounds_compat(display, brightnessText, 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
-  display.setCursor(centerX, cardY + 60);
+  display.setCursor(centerX, cardY + 50);
   display.print(brightnessText);
 
-  // Brightness bar below percentage
+  // Clean brightness bar below percentage
   int barX = cardX + 20;
-  int barY = cardY + 75;
+  int barY = cardY + 70;
   int barW = cardW - 40;
-  int barH = 12;
+  int barH = 14;
 
-  // Draw bar background (empty)
-  display.fillRoundRect(barX, barY, barW, barH, 5, ST77XX_BLACK);
+  // Bar container (dark background)
+  display.fillRoundRect(barX, barY, barW, barH, 7, COLOR_BG_DEEP);
 
-  // Draw filled portion based on brightness
+  // Filled portion with solid color based on brightness
   int fillW = (barW * brightnessValue) / 100;
   if (fillW > 0) {
-    // Use yellow/orange gradient for brightness (sun-like)
-    uint16_t barColor = ST77XX_YELLOW;
-    if (brightnessValue < 30) barColor = ST77XX_ORANGE;
-    else if (brightnessValue > 70) barColor = ST77XX_WHITE;
+    // Single solid color based on brightness level
+    uint16_t fillColor;
+    if (brightnessValue > 70) {
+      fillColor = COLOR_WARNING_PASTEL;  // Warm orange/yellow for bright
+    } else if (brightnessValue > 30) {
+      fillColor = COLOR_ACCENT_CYAN;     // Cyan for medium
+    } else {
+      fillColor = COLOR_CARD_TEAL;       // Teal for dim
+    }
 
-    display.fillRoundRect(barX, barY, fillW, barH, 5, barColor);
+    display.fillRoundRect(barX + 2, barY + 2, fillW - 4, barH - 4, 5, fillColor);
   }
+
+  // Border on bar
+  display.drawRoundRect(barX, barY, barW, barH, 7, COLOR_BORDER_LIGHT);
 
   // Draw footer help text
   display.setFont(nullptr);

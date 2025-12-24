@@ -564,7 +564,7 @@ void startCWMemoriesMode(LGFX &display) {
   editBuffer[0] = '\0';
   editCursorPos = 0;
 
-  drawCWMemoriesUI(display);
+  // UI is now handled by LVGL - see lv_mode_screens.h
   beep(TONE_SELECT, BEEP_SHORT);
 }
 

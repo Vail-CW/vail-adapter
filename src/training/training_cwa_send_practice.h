@@ -23,6 +23,7 @@ bool cwaSendShowingFeedback = false;     // Showing feedback
 bool cwaSendShowReference = true;        // Show what to send
 unsigned long cwaSendStartTime = 0;      // Session start time (for 15 min timer)
 unsigned long cwaSendKeyStartTime = 0;   // When student started keying
+bool cwaSendNeedsUIUpdate = false;       // Flag to trigger UI refresh when decoded text changes
 
 // Decoder for sending practice
 MorseDecoderAdaptive cwaSendDecoder(15, 15, 30);  // 15 WPM for sending practice
@@ -153,6 +154,25 @@ void drawCWASendingPracticeUI(LGFX& tft) {
 }
 
 /*
+ * Draw only the decoded text area (for real-time updates without full redraw)
+ */
+void drawCWASendDecodedOnly(LGFX& tft) {
+  // Only update if we're in the sending state (not showing feedback)
+  if (cwaSendShowingFeedback) return;
+
+  // Clear the decoded text area (y=135, text size 1 = 8px height)
+  tft.fillRect(15, 135, SCREEN_WIDTH - 30, 12, COLOR_BACKGROUND);
+
+  // Redraw decoded text
+  tft.setTextSize(1);
+  tft.setTextColor(ST77XX_CYAN);
+  tft.setCursor(15, 135);
+  tft.print("Decoded: ");
+  tft.setTextColor(ST77XX_YELLOW);
+  tft.print(cwaSendDecoded.length() > 0 ? cwaSendDecoded : "(waiting...)");
+}
+
+/*
  * Start CWA Sending Practice mode
  */
 void startCWASendingPractice(LGFX& tft) {
@@ -171,6 +191,7 @@ void startCWASendingPractice(LGFX& tft) {
     for (int i = 0; i < text.length(); i++) {
       cwaSendDecoded += text[i];
     }
+    cwaSendNeedsUIUpdate = true;  // Trigger UI refresh
   };
 
   // Reinitialize I2S

@@ -33,12 +33,13 @@ This project uses modular documentation. For detailed information on specific to
 - Upload Speed: **921600**
 
 **Required Libraries** (Install via Arduino Library Manager):
-1. LovyanGFX by lovyan03 (display graphics for ST7796S)
-2. Adafruit MAX1704X (battery monitoring)
-3. Adafruit LC709203F (backup battery monitor support)
-4. WebSockets by Markus Sattler
-5. ArduinoJson by Benoit Blanchon
-6. ESPAsyncWebServer (install from GitHub)
+1. LovyanGFX by lovyan03 (display driver for ST7796S)
+2. lvgl by LVGL (UI framework - v8.3.x)
+3. Adafruit MAX1704X (battery monitoring)
+4. Adafruit LC709203F (backup battery monitor support)
+5. WebSockets by Markus Sattler
+6. ArduinoJson by Benoit Blanchon
+7. ESPAsyncWebServer (install from GitHub)
 
 **Arduino ESP32 Core:** Version 2.0.14 (required for ST7796S display compatibility)
 
@@ -56,10 +57,12 @@ For detailed build instructions, firmware updates, and GitHub Actions workflow, 
 
 ### Architecture Overview
 
-The system operates as a **mode-based state machine**:
-- Each mode has its own input handler and UI renderer
-- Main loop delegates to the appropriate mode handler based on `currentMode`
-- Modular header files isolate each feature (training, games, radio, settings, web)
+The system operates as a **mode-based state machine with LVGL UI**:
+- **LVGL** handles all UI rendering, input processing, and screen transitions
+- Each mode has its own LVGL screen created by `src/lvgl/` modules
+- Main loop calls `lv_timer_handler()` to process LVGL tasks
+- Mode changes trigger screen transitions with animations
+- CardKB input is processed through LVGL's input driver system
 
 **Key modes:**
 - Training: `MODE_HEAR_IT_TYPE_IT`, `MODE_PRACTICE`, `MODE_CW_ACADEMY_*`
@@ -72,7 +75,7 @@ For detailed architecture information, see **[docs/ARCHITECTURE.md](docs/ARCHITE
 
 ### Hardware Interfaces
 
-**Display:** ST7796S 4.0" 480×320 LCD (landscape orientation) - uses LovyanGFX library
+**Display:** ST7796S 4.0" 480×320 LCD (landscape orientation) - LovyanGFX driver with LVGL rendering
 **SD Card:** Integrated on display board (CS=38, shares SPI with display, FAT32 format required)
 **Keyboard:** CardKB I2C (address 0x5F)
 **Paddle Input:** GPIO 6 (DIT), GPIO 9 (DAH)
@@ -87,16 +90,16 @@ For complete pin assignments and hardware details, see **[docs/HARDWARE.md](docs
 
 ### Menu Navigation
 
-The device uses a card-based menu UI with keyboard navigation:
+The device uses LVGL-based card menus with keyboard navigation:
 
 **Navigation Keys:**
-- **Up/Down arrows** - Scroll through menu cards
-- **Right arrow** - Select highlighted menu item (enter submenu/mode)
-- **Enter** - Select highlighted menu item (same as Right arrow)
-- **ESC** - Go back to parent menu / Exit current mode
+- **Up/Down arrows** - Navigate between menu items (mapped to `LV_KEY_PREV`/`LV_KEY_NEXT`)
+- **Left/Right arrows** - Adjust values in sliders/settings (mapped to `LV_KEY_LEFT`/`LV_KEY_RIGHT`)
+- **Enter** - Select/activate focused item (mapped to `LV_KEY_ENTER`)
+- **ESC** - Go back to parent menu / Exit current mode (mapped to `LV_KEY_ESC`)
 - **ESC (triple press)** - Enter deep sleep mode from main menu
 
-Each menu card displays an icon, title, and right arrow (→) visual indicator. The right arrow key input matches the visual arrow shown on cards.
+Menu screens use LVGL's input group system for keyboard focus management. Each navigable widget is added to the group via `addNavigableWidget()`.
 
 For detailed menu architecture, see **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#menu-navigation)**.
 
@@ -193,9 +196,209 @@ For detailed feature documentation, see **[docs/FEATURES.md](docs/FEATURES.md)**
 
 For complete web interface documentation and API endpoints, see **[docs/WEB_INTERFACE.md](docs/WEB_INTERFACE.md)**.
 
+## LVGL UI System
+
+The UI is built entirely with LVGL (Light and Versatile Graphics Library) v8.3.x. LovyanGFX serves as the display driver, while LVGL handles all rendering, input, and animations.
+
+### LVGL Configuration
+
+**lv_conf.h Location:** `Arduino/libraries/lv_conf.h` (next to lvgl folder, NOT in project)
+
+**Key Settings:**
+```cpp
+#define LV_COLOR_DEPTH 16           // RGB565
+#define LV_COLOR_16_SWAP 0          // Byte swap handled in flush callback
+#define LV_MEM_SIZE (48U * 1024U)   // 48KB internal heap
+#define LV_TICK_CUSTOM 1            // Uses millis() for timing
+#define LV_DISP_DEF_REFR_PERIOD 33  // ~30 FPS
+#define LV_INDEV_DEF_READ_PERIOD 30 // Input polling rate
+```
+
+**Enabled Fonts:** Montserrat 12, 14, 16, 18, 20, 22, 24, 28
+
+**Enabled Widgets:** btn, label, slider, dropdown, list, textarea, msgbox, bar, checkbox, switch, roller, table, menu, spinner, led
+
+### LVGL File Structure
+
+```
+src/lvgl/
+├── lv_init.h              # Display/input driver initialization
+├── lv_screen_manager.h    # Screen transitions, navigation groups
+├── lv_theme_summit.h      # Custom dark theme and styles
+├── lv_widgets_summit.h    # Reusable widget factories
+├── lv_splash_screen.h     # Boot splash with progress bar
+├── lv_menu_screens.h      # Menu screen creators
+├── lv_settings_screens.h  # Settings screen creators
+├── lv_training_screens.h  # Training mode screens
+├── lv_game_screens.h      # Game mode screens
+├── lv_mode_screens.h      # Network/radio mode screens
+└── lv_mode_integration.h  # Mode state machine integration
+```
+
+### Display Driver (lv_init.h)
+
+```cpp
+// Initialize LVGL with LovyanGFX display
+bool initLVGL(LGFX& tft);
+
+// Get input group for keyboard navigation
+lv_group_t* getLVGLInputGroup();
+
+// Key mapping: CardKB → LVGL
+// KEY_UP (0xB5)    → LV_KEY_PREV
+// KEY_DOWN (0xB6)  → LV_KEY_NEXT
+// KEY_LEFT (0xB4)  → LV_KEY_LEFT
+// KEY_RIGHT (0xB7) → LV_KEY_RIGHT
+// KEY_ENTER (0x0D) → LV_KEY_ENTER
+// KEY_ESC (0x1B)   → LV_KEY_ESC
+```
+
+**Display Flush:** Uses `pushPixels(..., true)` with swap565 enabled for correct colors on SPI display.
+
+### Screen Manager (lv_screen_manager.h)
+
+```cpp
+// Create a new screen with default styling
+lv_obj_t* createScreen();
+
+// Load screen with animation (clears navigation group handled externally)
+void loadScreen(lv_obj_t* screen, ScreenAnimType anim);
+
+// Add widget to navigation group with ESC handler
+void addNavigableWidget(lv_obj_t* widget);
+
+// Clear all widgets from navigation group
+void clearNavigationGroup();
+
+// Set global back navigation callback
+void setBackCallback(BackActionCallback callback);
+```
+
+**Screen Transitions:**
+- `SCREEN_ANIM_NONE` - Instant switch
+- `SCREEN_ANIM_FADE` - Fade in/out (default)
+- `SCREEN_ANIM_SLIDE_LEFT` - Slide left (entering submenu)
+- `SCREEN_ANIM_SLIDE_RIGHT` - Slide right (going back)
+
+### Theme System (lv_theme_summit.h)
+
+Custom dark theme with cyan/teal accent colors:
+```cpp
+// Initialize theme (call after LVGL init)
+void initSummitTheme();
+
+// Color palette
+LV_COLOR_BG_DEEP      // 0x0841 - Deep dark background
+LV_COLOR_BG_LAYER2    // 0x1082 - Slightly lighter
+LV_COLOR_ACCENT       // 0x07FF - Cyan accent
+LV_COLOR_TEXT_PRIMARY // 0xFFFF - White text
+LV_COLOR_TEXT_SECONDARY // 0x8410 - Gray text
+LV_COLOR_SUCCESS      // 0x07E0 - Green
+LV_COLOR_WARNING      // 0xFD20 - Orange
+LV_COLOR_ERROR        // 0xF800 - Red
+
+// Style getters
+lv_style_t* getStyleMenuCard();        // Menu button style
+lv_style_t* getStyleMenuCardFocused(); // Focused state with glow
+lv_style_t* getStyleLabelTitle();      // Large title text
+lv_style_t* getStyleLabelBody();       // Normal body text
+```
+
+### Creating LVGL Screens
+
+**Pattern for new screens:**
+```cpp
+lv_obj_t* createMyScreen() {
+    // 1. Clear old navigation widgets
+    clearNavigationGroup();
+
+    // 2. Create screen with theme background
+    lv_obj_t* screen = createScreen();
+    applyScreenStyle(screen);
+
+    // 3. Add UI elements
+    lv_obj_t* btn = lv_btn_create(screen);
+    // ... configure button ...
+
+    // 4. Add navigable widgets to input group
+    addNavigableWidget(btn);
+
+    return screen;
+}
+```
+
+**Loading screens:**
+```cpp
+lv_obj_t* screen = createMyScreen();
+loadScreen(screen, SCREEN_ANIM_SLIDE_LEFT);
+```
+
+### Mode Integration (lv_mode_integration.h)
+
+Bridges LVGL screens with the mode state machine:
+
+```cpp
+// Initialize (call after LVGL and theme init)
+void initLVGLModeIntegration();
+
+// Show initial screen after boot
+void showInitialLVGLScreen();
+
+// Menu selection callback (triggers mode change)
+void onLVGLMenuSelect(int target_mode);
+
+// Back navigation callback (ESC key)
+void onLVGLBackNavigation();
+
+// Create screen for any mode
+lv_obj_t* createScreenForModeInt(int mode);
+
+// Get parent mode for back navigation
+int getParentModeInt(int mode);
+```
+
+### Main Loop Integration
+
+```cpp
+void loop() {
+    // Process LVGL (handles UI, input, animations)
+    lv_timer_handler();
+
+    // Other non-UI tasks...
+}
+```
+
+### LVGL Critical Constraints
+
+1. **Navigation group management** - Always call `clearNavigationGroup()` BEFORE creating a new screen's widgets, then add widgets with `addNavigableWidget()`
+2. **Screen deletion** - Use `loadScreen()` with delete flag; don't manually delete screens
+3. **Input state constants** - Use `LV_INDEV_STATE_PR` and `LV_INDEV_STATE_REL` (not `_PRESSED`/`_RELEASED`)
+4. **Color byte swap** - Handle in flush callback with `pushPixels(..., true)`, keep `LV_COLOR_16_SWAP = 0`
+5. **lv_conf.h location** - Must be in `Arduino/libraries/` folder next to lvgl, NOT in project folder
+6. **Font availability** - Only use fonts enabled in lv_conf.h (Montserrat 12-28)
+7. **Static variables in headers** - LVGL screen files use static variables; be aware of include order
+
 ## Common Development Patterns
 
-### Adding a New Menu Mode
+### Adding a New Menu Mode (LVGL)
+
+1. Add enum value to `MenuMode` in vail-summit.ino
+2. Add mode constant to `lv_mode_integration.h` (e.g., `#define LVGL_MODE_NEW_FEATURE 80`)
+3. Create screen function in appropriate `src/lvgl/lv_*_screens.h`:
+   ```cpp
+   lv_obj_t* createNewFeatureScreen() {
+       lv_obj_t* screen = createScreen();
+       applyScreenStyle(screen);
+       // Add widgets, call addNavigableWidget() for each
+       return screen;
+   }
+   ```
+4. Add to `createScreenForModeInt()` in `lv_mode_integration.h`
+5. Add to menu items array in `lv_menu_screens.h`
+6. Add parent mapping in `getParentModeInt()` for back navigation
+7. Add Preferences namespaces for persistent settings
+
+### Adding a New Menu Mode (Legacy Pattern - deprecated)
 
 1. Add enum value to `MenuMode` in vail-summit.ino
 2. Create header file in appropriate `src/` folder (e.g., `src/training/training_newmode.h`) with state, UI, and input handler
@@ -217,8 +420,12 @@ Always use these functions instead of direct I2S manipulation. They handle volum
 
 ### Display Optimization
 
-- Only redraw what changes (use return codes from input handlers)
-- Disable all display updates during audio-critical operations
+**LVGL handles most optimization automatically:**
+- LVGL only redraws dirty regions (partial updates)
+- Use `lv_obj_invalidate()` to force redraw of specific objects
+- Screen transitions use `lv_scr_load_anim()` with configurable duration
+
+**For direct LovyanGFX access (rare):**
 - Use `fillRect()` to clear regions before redrawing text
 - Use `getTextBounds_compat()` template function for text measurement (LovyanGFX compatibility wrapper)
 
@@ -236,17 +443,29 @@ For more development patterns, see **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)*
 
 ## Critical Constraints
 
+### Audio System
 1. **Never use `analogRead(A3)` or `analogRead(15)`** - breaks I2S audio completely
 2. **Initialize I2S before display** - I2S needs higher DMA priority
 3. **No display updates during audio playback** in practice/training modes - causes glitches
 4. **Always use `beep()` or I2S functions for audio** - never manipulate GPIO 5 directly (repurposed pin)
-5. **Load Preferences at startup, save immediately on change** - don't batch writes
-6. **WebSocket handling must be non-blocking** - use state machine pattern in update loop
-7. **Always initialize QSO structs** - `memset(&qso, 0, sizeof(QSO))` before populating to prevent garbage data
-8. **LovyanGFX API compatibility** - Use `getTextBounds_compat()` instead of `getTextBounds()`, use `nullptr` for default fonts
-9. **Display color order** - ST7796S requires BGR mode (`cfg.rgb_order = false`) for correct colors
-10. **SD card initialization** - Must be done AFTER display init (or on-demand) to avoid SPI bus conflicts
-11. **SD card format** - Must use FAT32 (exFAT not supported by Arduino SD library)
+
+### LVGL UI
+5. **lv_conf.h location** - Must be in `Arduino/libraries/` folder next to lvgl library, NOT in project
+6. **Color byte swap** - Use `pushPixels(..., true)` in flush callback, keep `LV_COLOR_16_SWAP = 0`
+7. **Navigation group order** - Call `clearNavigationGroup()` BEFORE creating screen widgets
+8. **Input state constants** - Use `LV_INDEV_STATE_PR`/`LV_INDEV_STATE_REL` (v8.3 API)
+9. **Screen deletion** - Let `loadScreen()` handle deletion via `lv_scr_load_anim(..., true)`
+
+### Display Hardware
+10. **Display color order** - ST7796S requires BGR mode (`cfg.rgb_order = false`)
+11. **LovyanGFX API compatibility** - Use `getTextBounds_compat()` instead of `getTextBounds()`, use `nullptr` for default fonts
+
+### Storage & Data
+12. **Load Preferences at startup, save immediately on change** - don't batch writes
+13. **WebSocket handling must be non-blocking** - use state machine pattern in update loop
+14. **Always initialize QSO structs** - `memset(&qso, 0, sizeof(QSO))` before populating to prevent garbage data
+15. **SD card initialization** - Must be done AFTER display init (or on-demand) to avoid SPI bus conflicts
+16. **SD card format** - Must use FAT32 (exFAT not supported by Arduino SD library)
 
 For troubleshooting common issues, see **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#troubleshooting)**.
 
@@ -316,7 +535,8 @@ vail-summit/
 ├── src/
 │   ├── core/           # Core system files
 │   ├── audio/          # Audio system and morse decoder
-│   ├── ui/             # UI components and menu system
+│   ├── lvgl/           # LVGL UI screens and integration (NEW)
+│   ├── ui/             # Legacy UI components (being migrated)
 │   ├── training/       # Training modes
 │   ├── games/          # Games
 │   ├── radio/          # Radio integration
@@ -327,7 +547,8 @@ vail-summit/
 │   │   ├── api/        # REST API endpoints
 │   │   ├── pages/      # HTML/CSS/JS pages
 │   │   └── modes/      # WebSocket handlers
-│   └── network/        # Network services
+│   ├── network/        # Network services
+│   └── storage/        # SD card management
 ├── vail-summit.ino     # Main sketch file
 └── docs/               # Documentation
 ```
@@ -337,6 +558,20 @@ vail-summit/
 - `config.h` - Hardware configuration, pin assignments, timing constants, color scheme
 - `morse_code.h` - Morse lookup table and timing calculations (PARIS method)
 - `hardware_init.h` - Hardware initialization routines
+
+### LVGL UI System (`src/lvgl/`)
+
+- `lv_init.h` - LVGL initialization, display driver (LovyanGFX flush), CardKB input driver
+- `lv_screen_manager.h` - Screen stack, transitions, navigation group management
+- `lv_theme_summit.h` - Custom dark theme, color palette, reusable styles
+- `lv_widgets_summit.h` - Widget factory functions (cards, sliders, inputs)
+- `lv_splash_screen.h` - Boot splash screen with mountain logo and progress bar
+- `lv_menu_screens.h` - Menu screen creators (main, CW, training, settings, etc.)
+- `lv_settings_screens.h` - Settings screens (volume, brightness, CW, callsign, WiFi)
+- `lv_training_screens.h` - Training mode screen creators
+- `lv_game_screens.h` - Game mode screen creators
+- `lv_mode_screens.h` - Network/radio mode screen creators
+- `lv_mode_integration.h` - Bridges LVGL with mode state machine, handles navigation
 
 ### Audio System (`src/audio/`)
 

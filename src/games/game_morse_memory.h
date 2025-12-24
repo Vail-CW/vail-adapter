@@ -773,7 +773,8 @@ void startMemoryGame(LGFX& tft) {
   resetMemoryKeyerState();
   inMemorySettings = false;
   memorySettingsSelection = 0;
-  drawMemoryGameUI(tft);
+
+  // UI is now handled by LVGL - see lv_game_screens.h
 }
 
 /*

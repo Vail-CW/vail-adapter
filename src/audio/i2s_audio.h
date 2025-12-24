@@ -334,4 +334,60 @@ void beep(int frequency, int duration) {
   delay(duration + 10); // Small gap after beep
 }
 
+// ============================================
+// Internal Functions for Task Manager
+// ============================================
+// These functions are called from the audio task on Core 0
+// They are the actual I2S operations, separate from the request API
+
+/*
+ * Internal: Play a tone for a specific duration
+ * Called from audio task - blocks until complete
+ */
+void playToneInternal(int frequency, int duration_ms) {
+  playTone(frequency, duration_ms);
+}
+
+/*
+ * Internal: Start a continuous tone
+ * Called from audio task
+ */
+void startToneInternal(int frequency) {
+  if (!i2s_initialized) {
+    return;
+  }
+
+  if (!tone_playing || current_frequency != frequency) {
+    phase = 0.0;
+    current_frequency = frequency;
+  }
+
+  tone_playing = true;
+  continueTone(frequency);
+}
+
+/*
+ * Internal: Continue filling the audio buffer
+ * Called from audio task when tone is playing
+ */
+void continueToneInternal(int frequency) {
+  continueTone(frequency);
+}
+
+/*
+ * Internal: Stop the current tone
+ * Called from audio task
+ */
+void stopToneInternal() {
+  stopTone();
+}
+
+/*
+ * Internal: Check if tone is playing
+ * Can be called from any core
+ */
+bool isTonePlayingInternal() {
+  return tone_playing;
+}
+
 #endif // I2S_AUDIO_H

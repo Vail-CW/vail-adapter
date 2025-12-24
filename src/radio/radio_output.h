@@ -114,7 +114,7 @@ void startRadioOutput(LGFX &display) {
   digitalWrite(RADIO_KEY_DIT_PIN, LOW);  // Not keyed
   digitalWrite(RADIO_KEY_DAH_PIN, LOW);  // Not keyed
 
-  drawRadioOutputUI(display);
+  // UI is now handled by LVGL - see lv_mode_screens.h
 }
 
 // Draw radio output UI

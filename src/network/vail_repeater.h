@@ -212,10 +212,7 @@ void startVailRepeater(LGFX &display) {
   vailUserListMode = false;
   connectedUsers.clear();
 
-  // Redraw header with correct title
-  drawHeader();
-
-  drawVailUI(display);
+  // UI is now handled by LVGL - see lv_mode_screens.h
 }
 
 // Connect to Vail repeater
@@ -828,68 +825,71 @@ void drawVailUI(LGFX &display) {
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
-  // Main info card - modern rounded rect
+  // Clean main info card
   int cardX = 20;
-  int cardY = 55;
+  int cardY = 60;
   int cardW = SCREEN_WIDTH - 40;
-  int cardH = 130;
+  int cardH = 120;
 
-  display.fillRoundRect(cardX, cardY, cardW, cardH, 12, 0x1082); // Dark blue fill
-  display.drawRoundRect(cardX, cardY, cardW, cardH, 12, 0x34BF); // Light blue outline
+  // Solid card background
+  display.fillRoundRect(cardX, cardY, cardW, cardH, 10, COLOR_BG_LAYER2);
+
+  // Subtle border
+  display.drawRoundRect(cardX, cardY, cardW, cardH, 10, COLOR_BORDER_SUBTLE);
 
   // Channel
   display.setTextSize(1);
-  display.setTextColor(0x7BEF); // Light gray
-  display.setCursor(cardX + 15, cardY + 20);
+  display.setTextColor(COLOR_TEXT_SECONDARY);
+  display.setCursor(cardX + 15, cardY + 15);
   display.print("Channel");
 
-  display.setTextColor(ST77XX_WHITE);
+  display.setTextColor(COLOR_TEXT_PRIMARY);
   display.setTextSize(2);
-  display.setCursor(cardX + 15, cardY + 38);
+  display.setCursor(cardX + 15, cardY + 30);
   display.print(vailChannel);
 
   // Status
   display.setTextSize(1);
-  display.setTextColor(0x7BEF); // Light gray
-  display.setCursor(cardX + 15, cardY + 65);
+  display.setTextColor(COLOR_TEXT_SECONDARY);
+  display.setCursor(cardX + 15, cardY + 60);
   display.print("Status");
 
   display.setTextSize(1);
-  display.setCursor(cardX + 15, cardY + 83);
+  display.setCursor(cardX + 15, cardY + 75);
   if (vailState == VAIL_CONNECTED) {
-    display.setTextColor(ST77XX_GREEN);
+    display.setTextColor(COLOR_SUCCESS_PASTEL);
     display.print("Connected");
   } else if (vailState == VAIL_CONNECTING) {
-    display.setTextColor(ST77XX_YELLOW);
+    display.setTextColor(COLOR_WARNING_PASTEL);
     display.print("Connecting...");
   } else if (vailState == VAIL_ERROR) {
-    display.setTextColor(ST77XX_RED);
+    display.setTextColor(COLOR_ERROR_PASTEL);
     display.print("Error");
   } else {
-    display.setTextColor(ST77XX_RED);
+    display.setTextColor(COLOR_ERROR_PASTEL);
     display.print("Disconnected");
   }
 
   // Speed
   display.setTextSize(1);
-  display.setTextColor(0x7BEF); // Light gray
-  display.setCursor(cardX + 15, cardY + 105);
+  display.setTextColor(COLOR_TEXT_SECONDARY);
+  display.setCursor(cardX + 15, cardY + 100);
   display.print("Speed");
 
-  display.setTextColor(ST77XX_CYAN);
+  display.setTextColor(COLOR_ACCENT_CYAN);
   display.setTextSize(1);
-  display.setCursor(cardX + 70, cardY + 105);
+  display.setCursor(cardX + 70, cardY + 100);
   display.print(cwSpeed);
   display.print(" WPM");
 
   // Operators (only when connected)
   if (vailState == VAIL_CONNECTED) {
-    display.setTextColor(0x7BEF); // Light gray
-    display.setCursor(cardX + 170, cardY + 105);
+    display.setTextColor(COLOR_TEXT_SECONDARY);
+    display.setCursor(cardX + 170, cardY + 100);
     display.print("Ops");
 
-    display.setTextColor(ST77XX_GREEN);
-    display.setCursor(cardX + 210, cardY + 105);
+    display.setTextColor(COLOR_SUCCESS_PASTEL);
+    display.setCursor(cardX + 210, cardY + 100);
     display.print(connectedClients);
   }
 

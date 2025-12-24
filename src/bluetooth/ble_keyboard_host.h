@@ -124,7 +124,7 @@ class BLEKBClientCallbacks : public NimBLEClientCallbacks {
 
 // Scan callbacks for device discovery
 class BLEKBScanCallbacks : public NimBLEScanCallbacks {
-  void onResult(NimBLEAdvertisedDevice* advertisedDevice) override {
+  void onResult(const NimBLEAdvertisedDevice* advertisedDevice) override {
     // Check if device advertises HID service
     if (advertisedDevice->haveServiceUUID()) {
       if (advertisedDevice->isAdvertisingService(NimBLEUUID(HID_SERVICE_UUID))) {
@@ -159,7 +159,7 @@ class BLEKBScanCallbacks : public NimBLEScanCallbacks {
     }
   }
 
-  void onScanEnd(NimBLEScanResults results) override {
+  void onScanEnd(const NimBLEScanResults& results, int reason) override {
     Serial.print("BLEKB: Scan complete, found ");
     Serial.print(bleKBHost.foundCount);
     Serial.println(" HID devices");
@@ -374,7 +374,7 @@ bool connectToBLEKeyboardByAddress(const char* address) {
   bleKBHost.pClient->setConnectionParams(12, 12, 0, 200);
 
   // Connect to the device
-  NimBLEAddress bleAddr(address);
+  NimBLEAddress bleAddr(std::string(address));
   if (!bleKBHost.pClient->connect(bleAddr)) {
     Serial.println("BLEKB: Connection failed");
     bleKBHost.state = BLEKB_STATE_ERROR;
@@ -398,10 +398,10 @@ bool connectToBLEKeyboardByAddress(const char* address) {
 
   // Get Report characteristic (may be multiple, we need the input report)
   // The characteristic with notify property is the input report
-  std::vector<NimBLERemoteCharacteristic*>* chars = pService->getCharacteristics(true);
+  const std::vector<NimBLERemoteCharacteristic*>& chars = pService->getCharacteristics(true);
   bleKBHost.pReportChar = nullptr;
 
-  for (auto& pChar : *chars) {
+  for (auto pChar : chars) {
     if (pChar->getUUID() == NimBLEUUID(HID_REPORT_CHAR_UUID)) {
       if (pChar->canNotify()) {
         bleKBHost.pReportChar = pChar;

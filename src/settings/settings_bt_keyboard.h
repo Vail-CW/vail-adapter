@@ -504,7 +504,7 @@ void updateBTKeyboardSettingsUI(LGFX &display) {
           // Connection failed, go back to device list
           btkbUIState = BTKB_UI_DEVICE_LIST;
           drawBTKeyboardSettingsUI(display);
-          beep(TONE_LOW, 300);  // Error feedback
+          beep(TONE_ERROR, 300);  // Error feedback
         }
         break;
 

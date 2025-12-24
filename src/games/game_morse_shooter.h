@@ -816,7 +816,7 @@ void startMorseShooter(LGFX& tft) {
     Serial.println(")");
   };
 
-  drawMorseShooterUI(tft);
+  // UI is now handled by LVGL - see lv_game_screens.h
 }
 
 /*

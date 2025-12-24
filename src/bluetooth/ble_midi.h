@@ -121,9 +121,7 @@ class MIDICharacteristicCallbacks : public NimBLECharacteristicCallbacks {
     Serial.println("MIDI onRead");
   }
 
-  void onNotify(NimBLECharacteristic* pCharacteristic) override {
-    Serial.println("MIDI onNotify");
-  }
+  // Note: onNotify() removed - not in NimBLECharacteristicCallbacks base class
 
   void onStatus(NimBLECharacteristic* pCharacteristic, int code) override {
     Serial.print("MIDI onStatus: code=");
@@ -331,7 +329,7 @@ void startBTMIDI(LGFX& display) {
   // Start advertising
   startBLEAdvertising("MIDI");
 
-  drawBTMIDIUI(display);
+  // UI is now handled by LVGL - see lv_mode_screens.h
 }
 
 // Stop BT MIDI mode

@@ -27,25 +27,30 @@ int batteryPercent = 100;
 bool isCharging = false;
 
 /*
- * Draw battery icon with charge level and charging indicator (scaled for 4" display)
+ * Draw battery icon with charge level and charging indicator (clean minimal style)
  */
 void drawBatteryIcon(int x, int y) {
-  // Battery outline (scaled to 36x20 pixels from 24x14)
-  tft.drawRect(x, y, STATUS_ICON_SIZE, 20, ST77XX_WHITE);
-  tft.fillRect(x + STATUS_ICON_SIZE, y + 6, 3, 8, ST77XX_WHITE); // Battery nub (scaled)
+  // Clean battery outline (smaller, 24x12)
+  int battW = 24;
+  int battH = 12;
 
-  // Determine battery color based on percentage
+  tft.drawRoundRect(x, y, battW, battH, 2, COLOR_BORDER_LIGHT);
+
+  // Battery nub (small terminal)
+  tft.fillRect(x + battW, y + 4, 2, 4, COLOR_BORDER_LIGHT);
+
+  // Determine fill color based on level
   uint16_t fillColor;
   if (batteryPercent > 60) {
-    fillColor = ST77XX_GREEN;
+    fillColor = COLOR_SUCCESS_PASTEL;  // Soft green for high
   } else if (batteryPercent > 20) {
-    fillColor = ST77XX_YELLOW;
+    fillColor = COLOR_ACCENT_CYAN;     // Soft cyan for medium
   } else {
-    fillColor = ST77XX_RED;
+    fillColor = COLOR_ERROR_PASTEL;    // Soft red for low
   }
 
-  // Fill battery based on percentage (30 pixels max fill, scaled from 20)
-  int fillWidth = (batteryPercent * 30) / 100;
+  // Solid fill based on percentage
+  int fillWidth = (batteryPercent * (battW - 4)) / 100;
 
   if (DEBUG_ENABLED) {
     Serial.print("Drawing battery: ");
@@ -56,48 +61,46 @@ void drawBatteryIcon(int x, int y) {
     Serial.println(isCharging ? "YES" : "NO");
   }
 
+  // Solid color fill (no banding)
   if (fillWidth > 0) {
-    tft.fillRect(x + 3, y + 3, fillWidth, 14, fillColor); // Scaled fill area
+    tft.fillRect(x + 2, y + 2, fillWidth, battH - 4, fillColor);
   }
 
-  // Draw charging indicator (white lightning bolt with black outline for contrast) - scaled
+  // Simple charging indicator
   if (isCharging) {
-    // Draw black outline first for better visibility (scaled positions)
-    tft.fillTriangle(x + 19, y + 5, x + 15, y + 12, x + 24, y + 12, ST77XX_BLACK);
-    tft.fillTriangle(x + 15, y + 12, x + 19, y + 19, x + 14, y + 12, ST77XX_BLACK);
-    // Draw white lightning bolt on top (scaled positions)
-    tft.fillTriangle(x + 20, y + 6, x + 16, y + 12, x + 23, y + 12, ST77XX_WHITE);
-    tft.fillTriangle(x + 16, y + 12, x + 20, y + 18, x + 15, y + 12, ST77XX_WHITE);
+    // Small white lightning bolt
+    tft.fillTriangle(x + battW/2 + 2, y + 2, x + battW/2 - 1, y + battH/2, x + battW/2 + 1, y + battH/2, ST77XX_WHITE);
+    tft.fillTriangle(x + battW/2 - 1, y + battH/2, x + battW/2 + 2, y + battH - 2, x + battW/2, y + battH/2, ST77XX_WHITE);
   }
 }
 
 /*
- * Draw WiFi icon with signal strength bars (scaled for 4" display)
+ * Draw WiFi icon with signal strength bars (clean minimal style)
  */
 void drawWiFiIcon(int x, int y) {
-  // WiFi icon (signal bars) - 25% larger than previous
-  uint16_t wifiColor = wifiConnected ? ST77XX_GREEN : ST77XX_RED;
+  // Simple WiFi bars (smaller, cleaner)
+  uint16_t barColor = wifiConnected ? COLOR_ACCENT_CYAN : COLOR_TEXT_DISABLED;
 
-  // Draw signal strength bars (4 bars, increasing height) - enlarged for better visibility
-  tft.fillRect(x, y + 11, 4, 4, wifiColor);       // Shortest bar (was 3x3)
-  tft.fillRect(x + 7, y + 7, 4, 8, wifiColor);    // Medium-short bar (was 3x6)
-  tft.fillRect(x + 14, y + 3, 4, 12, wifiColor);  // Medium-tall bar (was 3x9)
-  tft.fillRect(x + 21, y - 1, 4, 16, wifiColor);  // Tallest bar (was 3x12)
+  // Draw 4 signal bars (increasing height)
+  tft.fillRect(x, y + 8, 3, 4, barColor);
+  tft.fillRect(x + 5, y + 5, 3, 7, barColor);
+  tft.fillRect(x + 10, y + 2, 3, 10, barColor);
+  tft.fillRect(x + 15, y, 3, 12, barColor);
 }
 
 /*
- * Draw all status icons (WiFi and battery) - scaled for 4" display
+ * Draw all status icons (WiFi and battery) - clean minimal layout
  */
 void drawStatusIcons() {
-  int iconX = SCREEN_WIDTH - 15; // Start from right edge (scaled)
-  int iconY = 20; // Vertically centered in 60px header (HEADER_HEIGHT)
+  int iconX = SCREEN_WIDTH - 10; // Start from right edge
+  int iconY = (HEADER_HEIGHT - 12) / 2; // Vertically center 12px icons
 
-  // Draw battery icon (scaled - 39px wide including nub)
-  iconX -= 45; // Scaled from 30
+  // Draw battery icon (24px wide + 2px nub = 26px total)
+  iconX -= 28;
   drawBatteryIcon(iconX, iconY);
 
-  // Draw WiFi icon (enlarged - now ~27px wide)
-  iconX -= 40; // Increased from 35 to accommodate larger icon
+  // Draw WiFi icon (18px wide)
+  iconX -= 24;
   drawWiFiIcon(iconX, iconY);
 }
 

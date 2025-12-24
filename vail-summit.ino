@@ -10,6 +10,10 @@
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
 
+// LVGL Graphics Library
+// Uses lv_conf.h from Arduino/libraries folder (next to lvgl folder)
+#include <lvgl.h>
+
 // Use LovyanGFX built-in fonts (in lgfx::v1::fonts namespace)
 // Available: FreeSansBold9pt7b, FreeSansBold12pt7b, FreeSansBold18pt7b, etc.
 using namespace lgfx::v1::fonts;
@@ -28,12 +32,22 @@ using namespace lgfx::v1::fonts;
 // Core modules
 #include "src/audio/i2s_audio.h"
 #include "src/core/morse_code.h"
+#include "src/core/task_manager.h"
 
-// Hardware initialization
+// Hardware initialization (defines LGFX class, must come before LVGL modules)
 #include "src/core/hardware_init.h"
 
-// Boot splash screen
-#include "src/core/splash_screen.h"
+// LVGL modules (must come after hardware_init.h for LGFX type)
+#include "src/lvgl/lv_init.h"
+#include "src/lvgl/lv_screen_manager.h"
+#include "src/lvgl/lv_theme_summit.h"
+#include "src/lvgl/lv_widgets_summit.h"
+#include "src/lvgl/lv_menu_screens.h"
+
+// LVGL is the only UI system - no legacy rendering
+
+// Boot splash screen (LVGL version)
+#include "src/lvgl/lv_splash_screen.h"
 
 // Status bar
 #include "src/ui/status_bar.h"
@@ -46,6 +60,8 @@ using namespace lgfx::v1::fonts;
 #include "src/training/training_practice.h"
 #include "src/training/training_koch_method.h"
 #include "src/training/training_cwa.h"
+#include "src/training/training_license_ui.h"
+#include "src/training/training_license_input.h"
 
 // Games
 #include "src/games/game_morse_shooter.h"
@@ -108,6 +124,19 @@ using namespace lgfx::v1::fonts;
 // Menu navigation (must come after all mode headers that define input handlers)
 #include "src/ui/menu_navigation.h"
 
+// Additional LVGL screen modules (must come after settings modules for type access)
+#include "src/lvgl/lv_settings_screens.h"
+#include "src/lvgl/lv_training_screens.h"
+#include "src/lvgl/lv_game_screens.h"
+#include "src/lvgl/lv_mode_screens.h"
+#include "src/lvgl/lv_mode_integration.h"
+
+// ============================================
+// cwKeyType accessor functions for LVGL (needed because cwKeyType is KeyType enum)
+// ============================================
+int getCwKeyTypeAsInt() { return (int)cwKeyType; }
+void setCwKeyTypeFromInt(int keyType) { cwKeyType = (KeyType)keyType; }
+
 // ============================================
 // Global Hardware Objects
 // ============================================
@@ -129,6 +158,10 @@ LGFX tft;
 MenuMode currentMode = MODE_MAIN_MENU;
 int currentSelection = 0;
 bool menuActive = true;
+
+// Getter/setter for currentMode to allow LVGL integration without circular includes
+int getCurrentModeAsInt() { return (int)currentMode; }
+void setCurrentModeFromInt(int mode) { currentMode = (MenuMode)mode; }
 
 // ============================================
 // Setup - Hardware Initialization
@@ -209,12 +242,38 @@ void setup() {
   // Initialize LCD (after I2S to avoid DMA conflicts)
   initDisplay();
 
-  // Show boot splash screen immediately for visual feedback
-  drawBootSplashScreen(tft);
+  // Initialize LVGL library with display and input drivers
+  Serial.println("Initializing LVGL...");
+  if (!initLVGL(tft)) {
+    Serial.println("CRITICAL ERROR: LVGL initialization failed!");
+    // Can't continue without LVGL - display error and halt
+    tft.fillScreen(0xF800);  // Red background
+    tft.setTextColor(0xFFFF);
+    tft.setCursor(10, 100);
+    tft.println("LVGL INIT FAILED");
+    while (1) delay(1000);
+  }
+  Serial.println("LVGL initialized successfully");
+  // Initialize theme manager (must be before initSummitTheme)
+  initThemeManager();
+  // Load saved theme preference
+  loadThemeSettings();
+  // Initialize VAIL SUMMIT theme styles (uses active theme colors)
+  initSummitTheme();
+  // Initialize mode integration (menu callbacks, back navigation)
+  initLVGLModeIntegration();
+
+  // Set up FreeRTOS task manager (audio on Core 0, UI on Core 1)
+  Serial.println("Setting up task manager...");
+  setupTaskManager();
+
+  // Show LVGL boot splash screen immediately for visual feedback
+  showSplashScreen();
+  setSplashStage(1);  // "Initializing I2C..."
 
   // Initialize GPIO pins
   initPins();
-  updateSplashProgress(tft, 20);
+  setSplashStage(2);  // "Starting audio..."
 
   // SD card initialization moved to on-demand (when storage page is accessed)
   // This avoids SPI bus conflicts with display during boot
@@ -222,7 +281,7 @@ void setup() {
 
   // Initialize battery monitoring (I2C chip)
   initBatteryMonitor();
-  updateSplashProgress(tft, 30);
+  setSplashStage(3);  // "Loading settings..."
 
   // Initialize WiFi and attempt auto-connect
   Serial.println("Initializing WiFi...");
@@ -245,7 +304,7 @@ void setup() {
 
   autoConnectWiFi();
   Serial.println("WiFi initialized");
-  updateSplashProgress(tft, 50);
+  setSplashStage(4);  // "Configuring WiFi..."
   // NOTE: OTA server starts on-demand when entering firmware update menu
 
   // Load CW settings from preferences
@@ -267,7 +326,7 @@ void setup() {
   // Load saved web password
   Serial.println("Loading web password...");
   loadSavedWebPassword();
-  updateSplashProgress(tft, 65);
+  setSplashStage(5);  // "Starting web server..."
 
   // Load Koch Method progress
   Serial.println("Loading Koch Method progress...");
@@ -286,7 +345,7 @@ void setup() {
   // Load QSO Logger operator settings
   Serial.println("Loading QSO Logger settings...");
   loadOperatorSettings();
-  updateSplashProgress(tft, 85);
+  setSplashStage(6);  // "Initializing UI..."
 
   // Load BLE keyboard settings (for auto-reconnect on boot)
   Serial.println("Loading BLE keyboard settings...");
@@ -295,11 +354,16 @@ void setup() {
   // Initial status update
   Serial.println("Updating status...");
   updateStatus();
-  updateSplashProgress(tft, 100);
+  setSplashStage(7);  // "Almost ready..."
 
-  // Draw initial menu
-  Serial.println("Drawing menu...");
-  drawMenu();
+  // Brief pause to show 100% complete
+  setSplashStage(8);  // "Ready!"
+  delay(300);  // Brief pause to show completion
+
+  // Clean up splash screen and show initial LVGL menu
+  Serial.println("Drawing LVGL menu...");
+  cleanupSplashScreen();  // Free splash screen resources
+  showInitialLVGLScreen();
 
   Serial.println("Setup complete!");
 
@@ -328,29 +392,22 @@ char readKeyboardNonBlocking() {
 }
 
 // ============================================
-// Main Loop - Event Processing
+// Main Loop - Event Processing (LVGL-Only)
 // ============================================
 
 void loop() {
+
+  // Process LVGL timer tasks (handles ALL UI, input, animations, redraws)
+  // LVGL reads CardKB directly via its input driver
+  lv_timer_handler();
 
   // Check for pending web server restart (after file upload)
   if (isWebServerRestartPending()) {
     restartWebServer();
   }
 
-  // Check for pending web files download prompt (only in main menu mode)
-  if (currentMode == MODE_MAIN_MENU && isWebFilesPromptPending()) {
-    clearWebFilesPromptPending();
-    if (handleFirstBootWebFilesPrompt(readKeyboardNonBlocking)) {
-      // Download completed or started, redraw menu
-      drawMenu();
-    } else {
-      // User declined, redraw menu
-      drawMenu();
-    }
-  }
-
-  // Update status periodically (NEVER during practice/games/radio/bt mode to avoid audio interference)
+  // Update status data periodically (NEVER during audio-critical modes)
+  // Note: LVGL screens will read this data when they refresh
   static unsigned long lastStatusUpdate = 0;
   if (currentMode != MODE_PRACTICE &&
       currentMode != MODE_HEAR_IT_TYPE_IT &&
@@ -363,22 +420,19 @@ void loop() {
       currentMode != MODE_WEB_MEMORY_CHAIN &&
       currentMode != MODE_BT_HID &&
       currentMode != MODE_BT_MIDI &&
-      millis() - lastStatusUpdate > 5000) { // Update every 5 seconds
+      millis() - lastStatusUpdate > 5000) {
     updateStatus();
-    // Redraw status icons with new data
-    drawStatusIcons();
     lastStatusUpdate = millis();
   }
 
   // Update practice oscillator if in practice mode
   if (currentMode == MODE_PRACTICE) {
-    // Call this frequently to keep audio buffer filled
-    // No display updates during practice to maximize audio performance
     updatePracticeOscillator();
 
-    // Update decoded text display when new text is decoded (only if not actively keying)
+    // Update LVGL decoded text display when new text is decoded
+    // Only update when not actively playing tone to avoid audio glitches
     if (needsUIUpdate && !isTonePlaying()) {
-      drawDecodedTextOnly(tft);
+      updatePracticeDecoderDisplay(decodedText.c_str());
       needsUIUpdate = false;
     }
   }
@@ -386,6 +440,12 @@ void loop() {
   // Update CW Academy sending practice (paddle input processing)
   if (currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE) {
     updateCWASendingPractice();
+
+    // Update decoded text display when new text is decoded
+    if (cwaSendNeedsUIUpdate && !isTonePlaying()) {
+      drawCWASendDecodedOnly(tft);
+      cwaSendNeedsUIUpdate = false;
+    }
   }
 
   // Update Vail repeater if in Vail mode
@@ -395,27 +455,16 @@ void loop() {
 
   // Update Morse Shooter game if in game mode
   if (currentMode == MODE_MORSE_SHOOTER) {
-    // Input polled every loop for responsiveness
     updateMorseShooterInput(tft);
-    // Visuals updated less frequently
     updateMorseShooterVisuals(tft);
   }
 
   // Update Memory Chain game if in game mode
   if (currentMode == MODE_MORSE_MEMORY) {
-    // Update game state machine
     updateMemoryGame();
-    // Poll paddle input (same pattern as practice mode)
     bool ditPressed = (digitalRead(DIT_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
     bool dahPressed = (digitalRead(DAH_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DAH_PIN) > TOUCH_THRESHOLD);
     handleMemoryPaddleInput(ditPressed, dahPressed);
-
-    // Update UI if state changed
-    extern bool memoryNeedsUIUpdate;
-    if (memoryNeedsUIUpdate) {
-      drawMemoryUI(tft);
-      memoryNeedsUIUpdate = false;
-    }
   }
 
   // Update Radio Output if in radio output mode
@@ -426,7 +475,6 @@ void loop() {
   // Update Web Practice mode if active
   if (currentMode == MODE_WEB_PRACTICE) {
     updateWebPracticeMode();
-    // Also need to process WebSocket events
     extern AsyncWebSocket practiceWebSocket;
     practiceWebSocket.cleanupClients();
   }
@@ -434,7 +482,6 @@ void loop() {
   // Update Web Memory Chain mode if active
   if (currentMode == MODE_WEB_MEMORY_CHAIN) {
     updateWebMemoryChain();
-    // Also need to process WebSocket events
     extern AsyncWebSocket memoryChainWebSocket;
     memoryChainWebSocket.cleanupClients();
   }
@@ -442,7 +489,6 @@ void loop() {
   // Update Web Hear It Type It mode if active
   if (currentMode == MODE_WEB_HEAR_IT) {
     updateWebHearItMode();
-    // Also need to process WebSocket events
     extern AsyncWebSocket hearItWebSocket;
     hearItWebSocket.cleanupClients();
   }
@@ -458,46 +504,14 @@ void loop() {
   }
 
   // Update BLE Keyboard host (for auto-reconnect, etc.)
-  // Only update if not in existing BLE modes that might conflict
   if (currentMode != MODE_BT_HID && currentMode != MODE_BT_MIDI) {
     updateBLEKeyboardHost();
   }
 
-  // Check for keyboard input (reduce I2C polling frequency during practice/game/radio/bt modes)
-  static unsigned long lastKeyCheck = 0;
-  unsigned long keyCheckInterval = (currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_WEB_PRACTICE || currentMode == MODE_WEB_MEMORY_CHAIN || currentMode == MODE_WEB_HEAR_IT || currentMode == MODE_BT_HID || currentMode == MODE_BT_MIDI) ? 50 : 10; // Slower polling in practice/game/radio/web/bt
-
-  if (millis() - lastKeyCheck >= keyCheckInterval) {
-    char key = 0;
-
-    // First check BLE keyboard if connected (priority over CardKB)
-    // Only check if not in conflicting BLE modes
-    if (currentMode != MODE_BT_HID && currentMode != MODE_BT_MIDI) {
-      if (isBLEKeyboardConnected() && hasBLEKeyboardInput()) {
-        key = getBLEKeyboardKey();
-      }
-    }
-
-    // Fall back to CardKB if no BLE key
-    if (key == 0) {
-      Wire.requestFrom(CARDKB_ADDR, 1);
-      if (Wire.available()) {
-        key = Wire.read();
-      }
-    }
-
-    if (key != 0) {
-      handleKeyPress(key);
-    }
-
-    lastKeyCheck = millis();
-  }
-
-  // Reset ESC counter if timeout exceeded
-  if (escPressCount > 0 && (millis() - lastEscPressTime > TRIPLE_ESC_TIMEOUT)) {
-    escPressCount = 0;
-  }
-
-  // Minimal delay in practice, game, radio, web, vail, and bluetooth modes for better audio/graphics performance
-  delay((currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE || currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY || currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_WEB_PRACTICE || currentMode == MODE_VAIL_REPEATER || currentMode == MODE_BT_HID || currentMode == MODE_BT_MIDI) ? 1 : 10);
+  // Minimal delay - faster for audio-critical modes
+  delay((currentMode == MODE_PRACTICE || currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE ||
+         currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY ||
+         currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_WEB_PRACTICE ||
+         currentMode == MODE_VAIL_REPEATER || currentMode == MODE_BT_HID ||
+         currentMode == MODE_BT_MIDI) ? 1 : 10);
 }

@@ -40,6 +40,12 @@ struct KochProgress {
   int sessionTotal;         // Total attempts this session
 };
 
+// Practice vs Test mode
+enum KochMode {
+  KOCH_MODE_TEST,      // Stats tracked, full character set, must pass to advance
+  KOCH_MODE_PRACTICE   // Stats NOT tracked, can select specific chars (1-5)
+};
+
 // Global Koch state
 KochProgress kochProgress = {
   1,                        // Start with lesson 1 (K and M)
@@ -58,21 +64,113 @@ bool kochCorrectAnswer = false;
 bool kochInSettingsMode = false;
 bool kochInHelpMode = false;
 bool kochInCharSelectMode = false;
+bool kochInModeSelectionScreen = false;  // Mode selection screen state
+uint8_t kochModeSelection = KOCH_MODE_TEST;  // Default selection (TEST mode)
 int kochSettingsSelection = 0;  // 0=WPM, 1=Group Length
 int kochHelpPage = 0;  // Help screen page number
 unsigned long kochResetHoldStartTime = 0;
 bool kochResetHoldActive = false;
 
-// Practice vs Test mode
-enum KochMode {
-  KOCH_MODE_TEST,      // Stats tracked, full character set, must pass to advance
-  KOCH_MODE_PRACTICE   // Stats NOT tracked, can select specific chars (1-5)
-};
+// Tutorial/Welcome state (mandatory on first launch)
+bool kochInTutorialMode = false;
+int kochTutorialStep = 0;  // 0=Welcome, 1=How it works, 2=Controls
+
+// New character introduction state
+bool kochShowingNewChar = false;
+char kochNewCharacter = ' ';
+int kochNewCharPlayCount = 0;  // Play 3 times
+
+// Character grid display state
+bool kochShowingGrid = false;
 
 KochMode kochCurrentMode = KOCH_MODE_TEST;  // Default to test mode
 String kochPracticeChars = "";  // Selected characters for practice mode (1-5 chars)
 int kochPracticeCorrect = 0;    // Practice mode stats (not saved)
 int kochPracticeTotal = 0;
+
+// ============================================
+// Conversational Messaging System
+// ============================================
+
+// Message types for context-aware encouragement
+enum KochMessageType {
+  MSG_WELCOME,
+  MSG_ENCOURAGEMENT,
+  MSG_SUCCESS,
+  MSG_MILESTONE,
+  MSG_NEW_CHARACTER,
+  MSG_NEED_HELP,
+  MSG_CELEBRATION
+};
+
+// Enhanced state tracking for game-like features
+int kochCurrentStreak = 0;        // Consecutive correct answers
+int kochBestStreak = 0;           // Best streak this session
+int kochMilestonesHit = 0;        // Milestone flags (bitmask)
+bool kochFirstTimeUser = true;    // Show tutorial on first launch
+String kochCurrentMessage = "";   // Active message to display
+uint16_t kochMessageColor = ST77XX_WHITE;
+
+// Milestone achievement flags (bitmask)
+#define MILESTONE_FIRST_CORRECT     (1 << 0)
+#define MILESTONE_5_STREAK          (1 << 1)
+#define MILESTONE_10_STREAK         (1 << 2)
+#define MILESTONE_10_ATTEMPTS       (1 << 3)
+#define MILESTONE_FIRST_90          (1 << 4)
+#define MILESTONE_LESSON_COMPLETE   (1 << 5)
+#define MILESTONE_HALFWAY           (1 << 6)
+#define MILESTONE_COMPLETE_ALL      (1 << 7)
+
+// Get conversational message based on context
+String getKochMessage(KochMessageType type, int accuracy = 0, int streak = 0) {
+  switch (type) {
+    case MSG_WELCOME:
+      return "Welcome to Koch Method! Let's learn morse code together!";
+
+    case MSG_ENCOURAGEMENT:
+      if (accuracy < 50) {
+        return "Keep practicing! Every mistake is a step toward mastery.";
+      } else if (accuracy < 70) {
+        return "You're doing great! Keep going!";
+      } else if (accuracy < 85) {
+        return "Nice work! You're at " + String(accuracy) + "% accuracy.";
+      } else if (accuracy < 90) {
+        return "Excellent! You're almost there!";
+      } else {
+        return "Amazing! You've hit 90%! Ready to level up?";
+      }
+
+    case MSG_SUCCESS:
+      return "CORRECT!";
+
+    case MSG_MILESTONE:
+      if (streak == 5) {
+        return "WOW! 5 in a row! You're on fire!";
+      } else if (streak == 10) {
+        return "Unstoppable! 10 in a row!";
+      } else if (streak >= 20) {
+        return "INCREDIBLE! " + String(streak) + " in a row!";
+      } else {
+        return "Great job!";
+      }
+
+    case MSG_NEW_CHARACTER:
+      return "Congratulations! You've unlocked a new character!";
+
+    case MSG_NEED_HELP:
+      if (accuracy < 50) {
+        return "Try slowing down to 15 WPM (Press S)";
+      } else {
+        return "Need a break? Press P to practice specific characters";
+      }
+
+    case MSG_CELEBRATION:
+      return "Lesson complete! New character unlocked!";
+
+    default:
+      return "";
+  }
+}
 
 // ============================================
 // Preferences Management
@@ -86,6 +184,12 @@ void loadKochProgress() {
   kochProgress.groupLength = prefs.getInt("length", KOCH_DEFAULT_GROUP_LENGTH);
   kochProgress.sessionCorrect = prefs.getInt("correct", 0);
   kochProgress.sessionTotal = prefs.getInt("total", 0);
+
+  // Load new conversational/game-like fields
+  kochFirstTimeUser = prefs.getBool("firstTime", true);
+  kochMilestonesHit = prefs.getInt("achievements", 0);
+  kochBestStreak = prefs.getInt("bestStreak", 0);
+
   prefs.end();
 
   // Validate loaded values
@@ -112,6 +216,12 @@ void saveKochProgress() {
   prefs.putInt("length", kochProgress.groupLength);
   prefs.putInt("correct", kochProgress.sessionCorrect);
   prefs.putInt("total", kochProgress.sessionTotal);
+
+  // Save new conversational/game-like fields
+  prefs.putBool("firstTime", kochFirstTimeUser);
+  prefs.putInt("achievements", kochMilestonesHit);
+  prefs.putInt("bestStreak", kochBestStreak);
+
   prefs.end();
 
   Serial.print("Koch Method - Saved progress: Lesson ");
@@ -162,7 +272,7 @@ String generateKochGroup() {
 // ============================================
 
 // Calculate current session accuracy percentage
-int getSessionAccuracy() {
+int getKochSessionAccuracy() {
   if (kochCurrentMode == KOCH_MODE_PRACTICE) {
     if (kochPracticeTotal == 0) return 0;
     return (kochPracticeCorrect * 100) / kochPracticeTotal;
@@ -187,7 +297,7 @@ bool canAdvanceLesson() {
   if (kochCurrentMode == KOCH_MODE_PRACTICE) return false;  // Can't advance in practice mode
   if (kochProgress.sessionTotal < KOCH_MIN_ATTEMPTS) return false;
   if (kochProgress.currentLesson >= KOCH_TOTAL_LESSONS) return false;
-  return getSessionAccuracy() >= KOCH_ACCURACY_THRESHOLD;
+  return getKochSessionAccuracy() >= KOCH_ACCURACY_THRESHOLD;
 }
 
 // Advance to next lesson
@@ -196,6 +306,25 @@ void advanceLesson() {
     kochProgress.currentLesson++;
     kochProgress.sessionCorrect = 0;
     kochProgress.sessionTotal = 0;
+
+    // Trigger new character introduction
+    kochNewCharacter = KOCH_SEQUENCE[kochProgress.currentLesson - 1];
+    kochShowingNewChar = true;
+    kochNewCharPlayCount = 0;
+
+    // Mark milestone
+    kochMilestonesHit |= MILESTONE_LESSON_COMPLETE;
+
+    // Special milestone at halfway point
+    if (kochProgress.currentLesson == 22) {
+      kochMilestonesHit |= MILESTONE_HALFWAY;
+    }
+
+    // Special milestone when completing all lessons
+    if (kochProgress.currentLesson == KOCH_TOTAL_LESSONS) {
+      kochMilestonesHit |= MILESTONE_COMPLETE_ALL;
+    }
+
     saveKochProgress();
     beep(TONE_SUCCESS, BEEP_LONG);
     Serial.print("Koch Method - Advanced to lesson ");
@@ -273,7 +402,94 @@ void checkKochAnswer(LGFX& tft) {
     if (kochCorrectAnswer) {
       kochProgress.sessionCorrect++;
     }
-    saveKochProgress();  // Save after each test attempt
+  }
+
+  // ============================================
+  // Streak Tracking & Milestone Celebrations
+  // ============================================
+
+  if (kochCorrectAnswer) {
+    // Increment streak
+    kochCurrentStreak++;
+    if (kochCurrentStreak > kochBestStreak) {
+      kochBestStreak = kochCurrentStreak;
+    }
+
+    // Check for streak milestones
+    if (kochCurrentStreak == 5 && !(kochMilestonesHit & MILESTONE_5_STREAK)) {
+      kochMilestonesHit |= MILESTONE_5_STREAK;
+      kochCurrentMessage = getKochMessage(MSG_MILESTONE, 0, 5);
+      kochMessageColor = ST77XX_YELLOW;
+      beep(TONE_SUCCESS, BEEP_LONG);
+    } else if (kochCurrentStreak == 10 && !(kochMilestonesHit & MILESTONE_10_STREAK)) {
+      kochMilestonesHit |= MILESTONE_10_STREAK;
+      kochCurrentMessage = getKochMessage(MSG_MILESTONE, 0, 10);
+      kochMessageColor = ST77XX_YELLOW;
+      beep(TONE_SUCCESS, BEEP_LONG);
+      delay(100);
+      beep(TONE_SUCCESS, BEEP_LONG);
+    } else {
+      kochCurrentMessage = getKochMessage(MSG_SUCCESS);
+      kochMessageColor = ST77XX_GREEN;
+    }
+
+    // First correct milestone
+    if (!(kochMilestonesHit & MILESTONE_FIRST_CORRECT)) {
+      kochMilestonesHit |= MILESTONE_FIRST_CORRECT;
+      kochCurrentMessage = "Your first correct answer! Many more to come!";
+      kochMessageColor = ST77XX_GREEN;
+    }
+  } else {
+    // Reset streak on wrong answer
+    kochCurrentStreak = 0;
+    kochCurrentMessage = "Almost! The correct answer was " + kochCurrentGroup + ". Let's try another one!";
+    kochMessageColor = ST77XX_RED;
+  }
+
+  // Check for 10 attempts milestone
+  if (getCurrentTotal() == 10 && !(kochMilestonesHit & MILESTONE_10_ATTEMPTS)) {
+    kochMilestonesHit |= MILESTONE_10_ATTEMPTS;
+    kochCurrentMessage = "10 attempts! You're building muscle memory!";
+    kochMessageColor = ST77XX_CYAN;
+  }
+
+  // Check for first 90% milestone
+  int accuracy = getKochSessionAccuracy();
+  if (accuracy >= 90 && getCurrentTotal() >= KOCH_MIN_ATTEMPTS && !(kochMilestonesHit & MILESTONE_FIRST_90)) {
+    kochMilestonesHit |= MILESTONE_FIRST_90;
+    kochCurrentMessage = "You did it! 90% accuracy achieved!";
+    kochMessageColor = ST77XX_YELLOW;
+  }
+
+  // ============================================
+  // Contextual Help Hints (Test mode only)
+  // ============================================
+
+  if (kochCurrentMode == KOCH_MODE_TEST) {
+    int total = getCurrentTotal();
+
+    // Hint: Struggling badly (<50% after 10+ attempts)
+    if (total >= 10 && accuracy < 50) {
+      kochCurrentMessage = "Try slowing down to 15 WPM (Press S)";
+      kochMessageColor = ST77XX_CYAN;
+    }
+
+    // Hint: Stuck just below threshold (85-89% after 20+ attempts)
+    else if (total >= 20 && accuracy >= 85 && accuracy < 90) {
+      kochCurrentMessage = "Almost there! Just a few more!";
+      kochMessageColor = ST77XX_YELLOW;
+    }
+
+    // Hint: Extended struggle (<70% after 20+ attempts)
+    else if (total >= 20 && accuracy < 70) {
+      kochCurrentMessage = "Need a break? Press P to practice specific characters";
+      kochMessageColor = ST77XX_CYAN;
+    }
+  }
+
+  // Save progress (test mode only)
+  if (kochCurrentMode == KOCH_MODE_TEST) {
+    saveKochProgress();
   }
 
   // Show feedback
@@ -302,8 +518,9 @@ void checkKochAnswer(LGFX& tft) {
   Serial.print("/");
   Serial.print(getCurrentTotal());
   Serial.print(" (");
-  Serial.print(getSessionAccuracy());
-  Serial.println("%)");
+  Serial.print(accuracy);
+  Serial.print("%) Streak: ");
+  Serial.println(kochCurrentStreak);
 }
 
 #endif // TRAINING_KOCH_CORE_H

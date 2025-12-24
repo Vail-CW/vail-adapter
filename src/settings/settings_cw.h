@@ -83,32 +83,37 @@ void startCWSettings(LGFX &display) {
 // Draw CW settings UI
 void drawCWSettingsUI(LGFX &display) {
   // Clear screen (preserve header)
-  display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
+  display.fillRect(0, HEADER_HEIGHT + 2, SCREEN_WIDTH, SCREEN_HEIGHT - HEADER_HEIGHT - 2, COLOR_BACKGROUND);
 
-  // Modern card container
+  // Clean container card
   int cardX = 20;
-  int cardY = 55;
+  int cardY = 60;
   int cardW = SCREEN_WIDTH - 40;
   int cardH = 150;
 
-  display.fillRoundRect(cardX, cardY, cardW, cardH, 12, 0x1082); // Dark blue fill
-  display.drawRoundRect(cardX, cardY, cardW, cardH, 12, 0x34BF); // Light blue outline
+  // Solid card background
+  display.fillRoundRect(cardX, cardY, cardW, cardH, 10, COLOR_BG_LAYER2);
+
+  // Subtle border
+  display.drawRoundRect(cardX, cardY, cardW, cardH, 10, COLOR_BORDER_SUBTLE);
 
   // Setting 0: Speed (WPM)
   int yPos = cardY + 15;
   bool isSelected = (cwSettingSelection == 0);
 
   if (isSelected) {
-    display.fillRoundRect(cardX + 8, yPos, cardW - 16, 38, 8, 0x249F); // Blue highlight
+    // Clean selection highlight
+    display.fillRoundRect(cardX + 8, yPos, cardW - 16, 36, 8, COLOR_CARD_CYAN);
+    display.drawRoundRect(cardX + 8, yPos, cardW - 16, 36, 8, COLOR_BORDER_ACCENT);
   }
 
   display.setTextSize(1);
-  display.setTextColor(isSelected ? ST77XX_WHITE : 0x7BEF); // Light gray
+  display.setTextColor(isSelected ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY);
   display.setCursor(cardX + 15, yPos + 8);
   display.print("Speed");
 
   display.setTextSize(2);
-  display.setTextColor(isSelected ? ST77XX_WHITE : ST77XX_CYAN);
+  display.setTextColor(isSelected ? COLOR_ACCENT_CYAN : COLOR_TEXT_SECONDARY);
   display.setCursor(cardX + 15, yPos + 20);
   display.print(cwSpeed);
   display.print(" WPM");
@@ -118,16 +123,18 @@ void drawCWSettingsUI(LGFX &display) {
   isSelected = (cwSettingSelection == 1);
 
   if (isSelected) {
-    display.fillRoundRect(cardX + 8, yPos, cardW - 16, 38, 8, 0x249F); // Blue highlight
+    // Clean selection highlight
+    display.fillRoundRect(cardX + 8, yPos, cardW - 16, 36, 8, COLOR_CARD_CYAN);
+    display.drawRoundRect(cardX + 8, yPos, cardW - 16, 36, 8, COLOR_BORDER_ACCENT);
   }
 
   display.setTextSize(1);
-  display.setTextColor(isSelected ? ST77XX_WHITE : 0x7BEF); // Light gray
+  display.setTextColor(isSelected ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY);
   display.setCursor(cardX + 15, yPos + 8);
   display.print("Tone");
 
   display.setTextSize(2);
-  display.setTextColor(isSelected ? ST77XX_WHITE : ST77XX_CYAN);
+  display.setTextColor(isSelected ? COLOR_ACCENT_CYAN : COLOR_TEXT_SECONDARY);
   display.setCursor(cardX + 15, yPos + 20);
   display.print(cwTone);
   display.print(" Hz");
@@ -137,16 +144,18 @@ void drawCWSettingsUI(LGFX &display) {
   isSelected = (cwSettingSelection == 2);
 
   if (isSelected) {
-    display.fillRoundRect(cardX + 8, yPos, cardW - 16, 38, 8, 0x249F); // Blue highlight
+    // Clean selection highlight
+    display.fillRoundRect(cardX + 8, yPos, cardW - 16, 36, 8, COLOR_CARD_CYAN);
+    display.drawRoundRect(cardX + 8, yPos, cardW - 16, 36, 8, COLOR_BORDER_ACCENT);
   }
 
   display.setTextSize(1);
-  display.setTextColor(isSelected ? ST77XX_WHITE : 0x7BEF); // Light gray
+  display.setTextColor(isSelected ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY);
   display.setCursor(cardX + 15, yPos + 8);
   display.print("Key Type");
 
   display.setTextSize(2);
-  display.setTextColor(isSelected ? ST77XX_WHITE : ST77XX_CYAN);
+  display.setTextColor(isSelected ? COLOR_ACCENT_CYAN : COLOR_TEXT_SECONDARY);
   display.setCursor(cardX + 15, yPos + 20);
   if (cwKeyType == KEY_STRAIGHT) {
     display.print("Straight");

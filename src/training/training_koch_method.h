@@ -15,6 +15,55 @@
 // ============================================
 
 int handleKochInput(char key, LGFX& tft) {
+  // Handle tutorial mode input (mandatory on first launch)
+  if (kochInTutorialMode) {
+    if (key == ' ') {
+      // Advance to next tutorial step
+      if (kochTutorialStep < 2) {
+        kochTutorialStep++;
+        beep(TONE_SELECT, BEEP_SHORT);
+        return 2;  // Full redraw
+      } else {
+        // Tutorial complete - mark user as no longer first-time
+        kochInTutorialMode = false;
+        kochFirstTimeUser = false;
+        saveKochProgress();
+        beep(TONE_SUCCESS, BEEP_LONG);
+        Serial.println("Tutorial complete - starting training");
+        return 2;  // Full redraw
+      }
+    }
+    return 0;  // Ignore all other keys during tutorial
+  }
+
+  // Handle new character introduction screen
+  if (kochShowingNewChar) {
+    if (key == ' ') {
+      // Play the new character 3 times, then show grid
+      if (kochNewCharPlayCount < 3) {
+        String charStr;
+        charStr += kochNewCharacter;
+        playMorseString(charStr.c_str(), kochProgress.wpm);
+        kochNewCharPlayCount++;
+        return 0;  // Keep showing intro
+      } else {
+        // Done playing, show character grid
+        kochShowingNewChar = false;
+        kochShowingGrid = true;
+        return 2;  // Full redraw to grid
+      }
+    }
+    return 0;  // Ignore other keys
+  }
+
+  // Handle character grid display
+  if (kochShowingGrid) {
+    // Any key exits grid
+    kochShowingGrid = false;
+    beep(TONE_SELECT, BEEP_SHORT);
+    return 2;  // Full redraw back to main UI
+  }
+
   // Handle character selection mode input (Practice mode only)
   if (kochInCharSelectMode) {
     if (key == KEY_ESC) {
@@ -83,6 +132,28 @@ int handleKochInput(char key, LGFX& tft) {
     if (key == KEY_ENTER || key == KEY_ENTER_ALT) {
       kochInSettingsMode = false;
       saveKochProgress();
+      beep(TONE_SELECT, BEEP_SHORT);
+      return 2;
+    }
+
+    // Quick preset keys
+    if (key == '1') {
+      kochProgress.wpm = 15;  // Beginner
+      beep(TONE_SELECT, BEEP_SHORT);
+      return 2;
+    }
+    if (key == '2') {
+      kochProgress.wpm = 20;  // Standard
+      beep(TONE_SELECT, BEEP_SHORT);
+      return 2;
+    }
+    if (key == '3') {
+      kochProgress.wpm = 25;  // Advanced
+      beep(TONE_SELECT, BEEP_SHORT);
+      return 2;
+    }
+    if (key == '4') {
+      kochProgress.wpm = 30;  // Expert
       beep(TONE_SELECT, BEEP_SHORT);
       return 2;
     }
@@ -168,8 +239,15 @@ int handleKochInput(char key, LGFX& tft) {
     return 2;
   }
 
+  // Show character grid
+  if (key == 'G' || key == 'g') {
+    kochShowingGrid = true;
+    beep(TONE_SELECT, BEEP_SHORT);
+    return 2;
+  }
+
   // Toggle Practice/Test mode
-  if (key == 'P' || key == 'p') {
+  if (key == KEY_TAB) {
     if (kochCurrentMode == KOCH_MODE_PRACTICE) {
       // Switch to test mode
       kochCurrentMode = KOCH_MODE_TEST;
@@ -274,6 +352,7 @@ void startKochMethod(LGFX& tft) {
   kochInCharSelectMode = false;
   kochResetHoldActive = false;
   kochUserInput = "";
+  kochCurrentStreak = 0;  // Reset streak on mode entry
 
   // Default to test mode on startup
   kochCurrentMode = KOCH_MODE_TEST;
@@ -281,7 +360,19 @@ void startKochMethod(LGFX& tft) {
   kochPracticeCorrect = 0;
   kochPracticeTotal = 0;
 
-  // Draw initial UI
+  // Check if first-time user - trigger mandatory tutorial
+  if (kochFirstTimeUser) {
+    kochInTutorialMode = true;
+    kochTutorialStep = 0;
+    Serial.println("First-time user - starting mandatory tutorial");
+  } else {
+    kochInTutorialMode = false;
+    // Set welcome message for returning users
+    kochCurrentMessage = "Ready to practice? Press SPACE to begin!";
+    kochMessageColor = ST77XX_GREEN;
+  }
+
+  // Draw initial UI (will show tutorial if first-time)
   drawKochUI(tft);
 
   // Ready to start

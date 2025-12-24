@@ -25,6 +25,7 @@ extern MenuMode currentMode;
 
 // Forward declarations for mode-specific handlers
 int handleHearItTypeItInput(char key, LGFX& tft);
+int handleHearItConfigureInput(char key, LGFX& tft);  // New: Settings configuration input
 int handleWiFiInput(char key, LGFX& tft);
 int handleCWSettingsInput(char key, LGFX& tft);
 int handleVolumeInput(char key, LGFX& tft);
@@ -43,6 +44,11 @@ int handleMorseShooterInput(char key, LGFX& tft);
 int handleMemoryGameInput(char key, LGFX& tft);
 int handleWebPracticeInput(char key, LGFX& tft);
 int handleKochInput(char key, LGFX& tft);
+int handleLicenseSelectInput(char key, LGFX& tft);
+int handleLicenseQuizInput(char key, LGFX& tft);
+int handleLicenseStatsInput(char key, LGFX& tft);
+void startLicenseQuiz(LGFX& tft, int licenseType);
+void startLicenseStats(LGFX& tft);
 
 void drawHearItTypeItUI(LGFX& tft);
 void drawInputBox(LGFX& tft);
@@ -288,27 +294,74 @@ void selectMenuItem() {
 
     // Handle training menu selections
     if (currentSelection == 0) {
-      // Hear It Type It
-      currentMode = MODE_HEAR_IT_TYPE_IT;
-      loadHearItSettings();  // Load settings from preferences
-      randomSeed(analogRead(0)); // Seed random number generator
-      startNewCallsign();
+      // Hear It Type It - Open submenu
+      currentMode = MODE_HEAR_IT_MENU;
+      currentSelection = 0;
       drawMenu();
-      delay(1000); // Brief pause before starting
-      playCurrentCallsign();
-      drawHearItTypeItUI(tft);
+
     } else if (currentSelection == 1) {
-      // Practice
-      currentMode = MODE_PRACTICE;
-      startPracticeMode(tft);
-    } else if (currentSelection == 2) {
       // Koch Method
       currentMode = MODE_KOCH_METHOD;
       startKochMethod(tft);
-    } else if (currentSelection == 3) {
+    } else if (currentSelection == 2) {
       // CW Academy
       currentMode = MODE_CW_ACADEMY_TRACK_SELECT;
       startCWAcademy(tft);
+    }
+
+  } else if (currentMode == MODE_HEAR_IT_MENU) {
+    selectedItem = hearItMenuOptions[currentSelection];
+
+    // Handle Hear It submenu selections
+    if (currentSelection == 0) {
+      // Configure
+      currentMode = MODE_HEAR_IT_CONFIGURE;
+      loadHearItSettings();
+
+      // Initialize settings state from saved settings
+      settingsState.currentScreen = SETTINGS_SCREEN_MENU;
+      settingsState.menuSelection = 0;
+      settingsState.modeSelection = hearItSettings.mode;
+      settingsState.speedValue = hearItSettings.wpm;
+      settingsState.groupLength = hearItSettings.groupLength;
+      settingsState.gridCursor = 0;
+      settingsState.inPresetSelector = false;
+
+      // Initialize character selection grid from customChars
+      for (int i = 0; i < 36; i++) settingsState.charSelected[i] = false;
+      for (int i = 0; i < hearItSettings.customChars.length(); i++) {
+        char ch = hearItSettings.customChars[i];
+        if (ch >= 'A' && ch <= 'Z') {
+          settingsState.charSelected[ch - 'A'] = true;
+        } else if (ch >= '0' && ch <= '9') {
+          settingsState.charSelected[26 + ch - '0'] = true;
+        }
+      }
+
+      // Draw settings configuration screen
+      drawHearItConfigureUI(tft);
+
+    } else if (currentSelection == 1) {
+      // Start Training (Quick-start with saved settings)
+      currentMode = MODE_HEAR_IT_START;
+      loadHearItSettings();
+      randomSeed(analogRead(0));
+
+      // Initialize session stats
+      sessionStats.totalAttempts = 0;
+      sessionStats.totalCorrect = 0;
+      sessionStats.sessionStartTime = millis();
+
+      // Start directly in training state (no settings overlay)
+      currentHearItState = HEAR_IT_STATE_TRAINING;
+      inSettingsMode = false;
+
+      // Start first challenge
+      startNewCallsign();
+      drawHearItTypeItUI(tft);
+      delay(500);
+      playCurrentCallsign();
+      drawHearItTypeItUI(tft);
     }
   } else if (currentMode == MODE_GAMES_MENU) {
     selectedItem = gamesMenuOptions[currentSelection];
@@ -423,13 +476,29 @@ void selectMenuItem() {
       currentMode = MODE_ANTENNAS;
       drawComingSoon("Antennas");
     } else if (currentSelection == 4) {
-      // License Study - Coming Soon
-      currentMode = MODE_LICENSE_STUDY;
-      drawComingSoon("License Study");
+      // License Study - Enter license selection
+      currentMode = MODE_LICENSE_SELECT;
+      currentSelection = 0;
+      drawMenu();
     } else if (currentSelection == 5) {
       // Summit Chat - Coming Soon
       currentMode = MODE_SUMMIT_CHAT;
       drawComingSoon("Summit Chat");
+    }
+
+  } else if (currentMode == MODE_LICENSE_SELECT) {
+    selectedItem = licenseSelectOptions[currentSelection];
+
+    // Handle License Select menu (4 items: Technician, General, Extra, View Statistics)
+    if (currentSelection >= 0 && currentSelection <= 2) {
+      // Start quiz for selected license (0=Tech, 1=Gen, 2=Extra)
+      startLicenseQuiz(tft, currentSelection);
+    } else if (currentSelection == 3) {
+      // View Statistics
+      if (licenseSession.selectedLicense < 0 || licenseSession.selectedLicense > 2) {
+        licenseSession.selectedLicense = 0;  // Default to Technician
+      }
+      startLicenseStats(tft);
     }
 
   } else if (currentMode == MODE_QSO_LOGGER_MENU) {
@@ -487,7 +556,7 @@ void handleKeyPress(char key) {
   bool redraw = false;
 
   // Handle different modes
-  if (currentMode == MODE_HEAR_IT_TYPE_IT) {
+  if (currentMode == MODE_HEAR_IT_TYPE_IT || currentMode == MODE_HEAR_IT_START) {
     int result = handleHearItTypeItInput(key, tft);
     if (result == -1) {
       // Exit to training menu
@@ -501,6 +570,39 @@ void handleKeyPress(char key) {
     } else if (result == 3) {
       // Input box only redraw (faster for typing)
       drawInputBox(tft);
+    }
+    return;
+  }
+
+  // Handle Hear It Configure mode (settings configuration)
+  if (currentMode == MODE_HEAR_IT_CONFIGURE) {
+    int result = handleHearItConfigureInput(key, tft);
+    if (result == -1) {
+      // Exit to Hear It menu
+      currentMode = MODE_HEAR_IT_MENU;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    } else if (result == 2) {
+      // Full redraw requested
+      drawHearItConfigureUI(tft);
+    } else if (result == 3) {
+      // Transition to training mode after saving settings
+      currentMode = MODE_HEAR_IT_START;
+      currentHearItState = HEAR_IT_STATE_TRAINING;
+      inSettingsMode = false;
+
+      // Initialize session stats
+      sessionStats.totalAttempts = 0;
+      sessionStats.totalCorrect = 0;
+      sessionStats.sessionStartTime = millis();
+
+      // Start first challenge
+      startNewCallsign();
+      drawHearItTypeItUI(tft);
+      delay(500);
+      playCurrentCallsign();
+      drawHearItTypeItUI(tft);
     }
     return;
   }
@@ -965,10 +1067,36 @@ void handleKeyPress(char key) {
     return;
   }
 
+  // Handle License Quiz mode
+  if (currentMode == MODE_LICENSE_QUIZ) {
+    int result = handleLicenseQuizInput(key, tft);
+    if (result == -1) {
+      currentMode = MODE_LICENSE_SELECT;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    } else if (result == 2) {
+      // Redraw requested
+      drawLicenseQuizUI(tft);
+    }
+    return;
+  }
+
+  // Handle License Stats mode
+  if (currentMode == MODE_LICENSE_STATS) {
+    int result = handleLicenseStatsInput(key, tft);
+    if (result == -1) {
+      currentMode = MODE_LICENSE_SELECT;
+      currentSelection = 0;
+      beep(TONE_MENU_NAV, BEEP_SHORT);
+      drawMenu();
+    }
+    return;
+  }
+
   // Handle placeholder "Coming Soon" modes - ESC returns to Ham Tools menu
   if (currentMode == MODE_BAND_PLANS || currentMode == MODE_PROPAGATION ||
-      currentMode == MODE_ANTENNAS || currentMode == MODE_LICENSE_STUDY ||
-      currentMode == MODE_SUMMIT_CHAT) {
+      currentMode == MODE_ANTENNAS || currentMode == MODE_SUMMIT_CHAT) {
     if (key == KEY_ESC) {
       currentMode = MODE_HAM_TOOLS_MENU;
       currentSelection = 0;
@@ -984,7 +1112,8 @@ void handleKeyPress(char key) {
       currentMode == MODE_SETTINGS_MENU || currentMode == MODE_DEVICE_SETTINGS_MENU ||
       currentMode == MODE_WIFI_SUBMENU || currentMode == MODE_GENERAL_SUBMENU ||
       currentMode == MODE_HAM_TOOLS_MENU || currentMode == MODE_QSO_LOGGER_MENU ||
-      currentMode == MODE_BLUETOOTH_MENU || currentMode == MODE_DEVICE_BT_SUBMENU) {
+      currentMode == MODE_BLUETOOTH_MENU || currentMode == MODE_DEVICE_BT_SUBMENU ||
+      currentMode == MODE_LICENSE_SELECT || currentMode == MODE_HEAR_IT_MENU) {
     int maxItems = MAIN_MENU_ITEMS;
     if (currentMode == MODE_CW_MENU) maxItems = CW_MENU_ITEMS;
     if (currentMode == MODE_TRAINING_MENU) maxItems = TRAINING_MENU_ITEMS;
@@ -997,6 +1126,8 @@ void handleKeyPress(char key) {
     if (currentMode == MODE_QSO_LOGGER_MENU) maxItems = QSO_LOGGER_MENU_ITEMS;
     if (currentMode == MODE_BLUETOOTH_MENU) maxItems = BLUETOOTH_MENU_ITEMS;
     if (currentMode == MODE_DEVICE_BT_SUBMENU) maxItems = DEVICE_BT_SUBMENU_ITEMS;
+    if (currentMode == MODE_LICENSE_SELECT) maxItems = LICENSE_SELECT_ITEMS;
+    if (currentMode == MODE_HEAR_IT_MENU) maxItems = HEAR_IT_MENU_ITEMS;
 
     // Arrow key navigation
     if (key == KEY_UP) {
@@ -1030,6 +1161,13 @@ void handleKeyPress(char key) {
         // Back to CW menu
         currentMode = MODE_CW_MENU;
         currentSelection = 0;
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+        drawMenu();
+        return;
+      } else if (currentMode == MODE_LICENSE_SELECT) {
+        // Back to Ham Tools menu
+        currentMode = MODE_HAM_TOOLS_MENU;
+        currentSelection = 4;  // License Study position
         beep(TONE_MENU_NAV, BEEP_SHORT);
         drawMenu();
         return;
@@ -1109,6 +1247,10 @@ void handleKeyPress(char key) {
         drawMenuItems(bluetoothMenuOptions, bluetoothMenuIcons, BLUETOOTH_MENU_ITEMS);
       } else if (currentMode == MODE_DEVICE_BT_SUBMENU) {
         drawMenuItems(deviceBTSubmenuOptions, deviceBTSubmenuIcons, DEVICE_BT_SUBMENU_ITEMS);
+      } else if (currentMode == MODE_LICENSE_SELECT) {
+        drawMenuItems(licenseSelectOptions, licenseSelectIcons, LICENSE_SELECT_ITEMS);
+      } else if (currentMode == MODE_HEAR_IT_MENU) {
+        drawMenuItems(hearItMenuOptions, hearItMenuIcons, HEAR_IT_MENU_ITEMS);
       }
     }
   }

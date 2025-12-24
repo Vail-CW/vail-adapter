@@ -18,7 +18,10 @@ extern int currentSelection;
 enum MenuMode {
   MODE_MAIN_MENU,
   MODE_TRAINING_MENU,
+  MODE_HEAR_IT_MENU,       // New: Hear It Type It submenu
   MODE_HEAR_IT_TYPE_IT,
+  MODE_HEAR_IT_CONFIGURE,  // New: Settings configuration screen
+  MODE_HEAR_IT_START,      // New: Quick-start training mode
   MODE_PRACTICE,
   MODE_KOCH_METHOD,
   MODE_CW_ACADEMY_TRACK_SELECT,
@@ -65,6 +68,9 @@ enum MenuMode {
   MODE_PROPAGATION,
   MODE_ANTENNAS,
   MODE_LICENSE_STUDY,
+  MODE_LICENSE_SELECT,      // License Study: Select license type
+  MODE_LICENSE_QUIZ,        // License Study: Quiz mode
+  MODE_LICENSE_STATS,       // License Study: Statistics view
   MODE_SUMMIT_CHAT,
   // Device Bluetooth submenu
   MODE_DEVICE_BT_SUBMENU,
@@ -81,6 +87,7 @@ void drawStatusIcons();
 
 // Forward declarations for mode-specific UI functions
 void drawHearItTypeItUI(LGFX& tft);
+void drawHearItConfigureUI(LGFX& tft);  // New: Settings configuration screen
 void drawPracticeUI(LGFX& tft);
 void drawCWATrackSelectUI(LGFX& tft);
 void drawCWASessionSelectUI(LGFX& tft);
@@ -110,6 +117,8 @@ void drawKochUI(LGFX& tft);
 void drawBTHIDUI(LGFX& tft);
 void drawBTMIDIUI(LGFX& tft);
 void drawBTKeyboardSettingsUI(LGFX& tft);
+void drawLicenseQuizUI(LGFX& tft);
+void drawLicenseStatsUI(LGFX& tft);
 
 // Menu Options and Icons
 // Main menu now has 4 items: CW, Games, Ham Tools, Settings
@@ -161,19 +170,29 @@ String bluetoothMenuIcons[BLUETOOTH_MENU_ITEMS] = {
 };
 
 // Training submenu
-#define TRAINING_MENU_ITEMS 4
+#define TRAINING_MENU_ITEMS 3
 String trainingMenuOptions[TRAINING_MENU_ITEMS] = {
   "Hear It Type It",
-  "Practice",
   "Koch Method",
   "CW Academy"
 };
 
 String trainingMenuIcons[TRAINING_MENU_ITEMS] = {
   "H",  // Hear It Type It
-  "P",  // Practice
   "K",  // Koch Method
   "A"   // CW Academy
+};
+
+// Hear It Type It submenu
+#define HEAR_IT_MENU_ITEMS 2
+String hearItMenuOptions[HEAR_IT_MENU_ITEMS] = {
+  "Configure",
+  "Start Training"
+};
+
+String hearItMenuIcons[HEAR_IT_MENU_ITEMS] = {
+  "S",  // Settings (Configure)
+  "H"   // Start
 };
 
 // Games submenu
@@ -286,18 +305,37 @@ String qsoLoggerMenuIcons[QSO_LOGGER_MENU_ITEMS] = {
   "L"   // Logger Settings
 };
 
+// License Select submenu
+#define LICENSE_SELECT_ITEMS 4
+String licenseSelectOptions[LICENSE_SELECT_ITEMS] = {
+  "Technician",
+  "General",
+  "Extra",
+  "View Statistics"
+};
+
+String licenseSelectIcons[LICENSE_SELECT_ITEMS] = {
+  "T",  // Technician
+  "G",  // General
+  "E",  // Extra
+  "S"   // Statistics
+};
+
 // Radio menu removed - items now in CW menu
 
 /*
  * Draw header bar with title and status icons
  */
 void drawHeader() {
-  // Draw modern header bar
-  tft.fillRect(0, 0, SCREEN_WIDTH, HEADER_HEIGHT, 0x1082); // Dark blue header
+  // Clean minimal header - solid dark background with subtle border
+  tft.fillRect(0, 0, SCREEN_WIDTH, HEADER_HEIGHT, COLOR_BG_LAYER2);
 
-  // Draw title based on current mode using smooth font
-  tft.setFont(&FreeSansBold18pt7b);
-  tft.setTextColor(ST77XX_WHITE);
+  // Subtle bottom border
+  tft.drawLine(0, HEADER_HEIGHT, SCREEN_WIDTH, HEADER_HEIGHT, COLOR_BORDER_SUBTLE);
+
+  // Draw title based on current mode using clean font
+  tft.setFont(&FreeSansBold12pt7b);  // Smaller, cleaner font
+  tft.setTextColor(COLOR_TEXT_PRIMARY);
   tft.setTextSize(1);
   String title = "VAIL SUMMIT";
 
@@ -377,6 +415,12 @@ void drawHeader() {
     title = "ANTENNAS";
   } else if (currentMode == MODE_LICENSE_STUDY) {
     title = "LICENSE STUDY";
+  } else if (currentMode == MODE_LICENSE_SELECT) {
+    title = "LICENSE STUDY";
+  } else if (currentMode == MODE_LICENSE_QUIZ) {
+    title = "LICENSE STUDY";
+  } else if (currentMode == MODE_LICENSE_STATS) {
+    title = "LICENSE STUDY";
   } else if (currentMode == MODE_SUMMIT_CHAT) {
     title = "SUMMIT CHAT";
   } else if (currentMode == MODE_QSO_LOGGER_MENU) {
@@ -391,27 +435,23 @@ void drawHeader() {
     title = "LOGGER SETTINGS";
   }
 
-  tft.setCursor(15, 22); // Left-justified, vertically centered in 60px header
+  tft.setCursor(15, 15); // Left-justified, vertically centered in 45px header
   tft.print(title);
   tft.setFont(nullptr); // Reset to default font for status icons
 
   // Draw status icons
   drawStatusIcons();
-
-  // Draw subtle shadow line under header
-  tft.drawLine(0, HEADER_HEIGHT, SCREEN_WIDTH, HEADER_HEIGHT, 0x2104);
-  tft.drawLine(0, HEADER_HEIGHT + 1, SCREEN_WIDTH, HEADER_HEIGHT + 1, 0x0861);
 }
 
 /*
  * Draw footer with help text
  */
 void drawFooter() {
-  // Draw modern footer with instructions (single line centered in yellow) using smooth font
+  // Draw modern footer with instructions (single line centered in warm orange) using smooth font
   int footerY = SCREEN_HEIGHT - 22; // Positioned near bottom
   tft.setFont(&FreeSansBold9pt7b);
   tft.setTextSize(1);
-  tft.setTextColor(COLOR_WARNING); // Yellow
+  tft.setTextColor(COLOR_WARNING); // Warm orange (COLOR_WARNING_NEW)
 
   String helpText;
   if (currentMode == MODE_MAIN_MENU) {
@@ -436,103 +476,140 @@ void drawMenuItems(String options[], String icons[], int numItems) {
   // Clear only the menu area (between header and footer)
   tft.fillRect(0, HEADER_HEIGHT + 2, SCREEN_WIDTH, SCREEN_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - 2, COLOR_BACKGROUND);
 
-  // Draw menu items with carousel/stack design
+  // Draw menu items with clean minimal carousel/stack design
   // Main selected card (larger, using more screen space)
   int mainCardWidth = CARD_MAIN_WIDTH;
   int mainCardHeight = CARD_MAIN_HEIGHT;
   int mainCardX = (SCREEN_WIDTH - mainCardWidth) / 2;
-  int mainCardY = 110; // Scaled for larger display
+  int mainCardY = 110;
 
-  // Draw the selected card (large and prominent)
-  tft.fillRoundRect(mainCardX, mainCardY, mainCardWidth, mainCardHeight, 12, 0x249F); // Blue accent, rounded corners scaled
-  tft.drawRoundRect(mainCardX, mainCardY, mainCardWidth, mainCardHeight, 12, 0x34BF); // Lighter outline
+  // === MAIN SELECTED CARD (Clean Minimal) ===
 
-  // Draw icon circle for selected (scaled)
-  tft.fillCircle(mainCardX + 45, mainCardY + 40, ICON_RADIUS, 0x34BF);
-  tft.drawCircle(mainCardX + 45, mainCardY + 40, ICON_RADIUS, ST77XX_WHITE); // White outline
+  // Solid pastel background
+  tft.fillRoundRect(mainCardX, mainCardY, mainCardWidth, mainCardHeight, 12, COLOR_CARD_CYAN);
+
+  // Clean border
+  tft.drawRoundRect(mainCardX, mainCardY, mainCardWidth, mainCardHeight, 12, COLOR_BORDER_ACCENT);
+
+  // Icon circle (simple, clean)
+  int iconX = mainCardX + 40;
+  int iconY = mainCardY + 40;
+
+  // Solid icon circle
+  tft.fillCircle(iconX, iconY, 26, COLOR_ACCENT_BLUE);
+  tft.drawCircle(iconX, iconY, 26, COLOR_BORDER_LIGHT);
+
+  // Icon letter (clean white)
   tft.setFont(&FreeSansBold18pt7b);
   tft.setTextSize(1);
   tft.setTextColor(ST77XX_WHITE);
-  tft.setCursor(mainCardX + 33, mainCardY + 28); // Letter centered in 30px radius circle
+  tft.setCursor(mainCardX + 28, mainCardY + 27);
   tft.print(icons[currentSelection]);
   tft.setFont(nullptr);
 
-  // Draw menu text for selected (larger for 4" display) using smooth font
+  // Menu text (clean, no shadow)
   tft.setFont(&FreeSansBold18pt7b);
   tft.setTextSize(1);
-  tft.setTextColor(ST77XX_WHITE);
-  tft.setCursor(mainCardX + 95, mainCardY + 28); // Vertically centered in 80px card
+  tft.setTextColor(COLOR_TEXT_PRIMARY);
+  tft.setCursor(mainCardX + 85, mainCardY + 31);
   tft.print(options[currentSelection]);
   tft.setFont(nullptr);
 
-  // Draw selection arrow (scaled)
+  // Simple arrow indicator
   tft.fillTriangle(mainCardX + mainCardWidth - 30, mainCardY + 32,
                    mainCardX + mainCardWidth - 30, mainCardY + 48,
-                   mainCardX + mainCardWidth - 15, mainCardY + 40, ST77XX_WHITE);
+                   mainCardX + mainCardWidth - 15, mainCardY + 40, COLOR_TEXT_PRIMARY);
 
-  // Draw stacked cards underneath (previous items) - scaled for larger display
+  // === STACKED CARDS (Clean minimal) ===
   int stackCardWidth = CARD_STACK_WIDTH_1;
-  int stackCardHeight = 32; // Scaled from 24
+  int stackCardHeight = 32;
   int stackCardX = (SCREEN_WIDTH - stackCardWidth) / 2;
-  int stackOffset = 15; // Scaled from 10
+  int stackOffset = 12;
 
   // Draw card below (next item in list)
   if (currentSelection < numItems - 1) {
     int stackY1 = mainCardY + mainCardHeight + stackOffset;
-    tft.fillRoundRect(stackCardX, stackY1, stackCardWidth, stackCardHeight, 8, 0x2104);
 
-    // Draw small circle for icon (scaled)
-    tft.drawCircle(stackCardX + 18, stackY1 + 16, 12, 0x4208);
-    tft.setFont(&FreeSansBold9pt7b);  // Smaller font for grey cards
+    // Solid dimmed background
+    tft.fillRoundRect(stackCardX, stackY1, stackCardWidth, stackCardHeight, 8, COLOR_BG_LAYER2);
+
+    // Subtle border
+    tft.drawRoundRect(stackCardX, stackY1, stackCardWidth, stackCardHeight, 8, COLOR_BORDER_SUBTLE);
+
+    // Small icon circle
+    tft.fillCircle(stackCardX + 18, stackY1 + 16, 12, COLOR_CARD_BLUE);
+    tft.drawCircle(stackCardX + 18, stackY1 + 16, 12, COLOR_BORDER_SUBTLE);
+
+    // Icon letter
+    tft.setFont(&FreeSansBold9pt7b);
     tft.setTextSize(1);
-    tft.setTextColor(0x7BEF);
-    tft.setCursor(stackCardX + 13, stackY1 + 8); // Letter centered in 12px radius circle
+    tft.setTextColor(COLOR_TEXT_SECONDARY);
+    tft.setCursor(stackCardX + 11, stackY1 + 9);
     tft.print(icons[currentSelection + 1]);
 
-    // Draw text
-    tft.setFont(&FreeSansBold12pt7b);  // Keep 12pt for menu text
-    tft.setCursor(stackCardX + 38, stackY1 + 6); // Vertically centered in 32px card
+    // Text
+    tft.setFont(&FreeSansBold12pt7b);
+    tft.setTextColor(COLOR_TEXT_SECONDARY);
+    tft.setCursor(stackCardX + 38, stackY1 + 9);
     tft.print(options[currentSelection + 1]);
     tft.setFont(nullptr);
   }
 
-  // Draw card further below (next+1 item)
+  // Draw card further below (next+1 item) - more dimmed
   if (currentSelection < numItems - 2) {
-    int stackY2 = mainCardY + mainCardHeight + stackOffset + stackCardHeight + 8;
+    int stackY2 = mainCardY + mainCardHeight + stackOffset + stackCardHeight + 10;
     int stackCardWidth2 = CARD_STACK_WIDTH_2;
     int stackCardX2 = (SCREEN_WIDTH - stackCardWidth2) / 2;
-    tft.fillRoundRect(stackCardX2, stackY2, stackCardWidth2, 24, 6, 0x1082); // 24px tall card
 
-    // Draw small circle for icon (scaled)
-    tft.drawCircle(stackCardX2 + 15, stackY2 + 12, 9, 0x3186);
+    // Very dark background
+    tft.fillRoundRect(stackCardX2, stackY2, stackCardWidth2, 24, 8, COLOR_BG_LAYER2);
+
+    // Minimal border
+    tft.drawRoundRect(stackCardX2, stackY2, stackCardWidth2, 24, 8, COLOR_BORDER_SUBTLE);
+
+    // Tiny icon circle
+    tft.fillCircle(stackCardX2 + 15, stackY2 + 12, 9, COLOR_CARD_TEAL);
+    tft.drawCircle(stackCardX2 + 15, stackY2 + 12, 9, COLOR_BORDER_SUBTLE);
+
+    // Icon letter
     tft.setFont(&FreeSansBold9pt7b);
     tft.setTextSize(1);
-    tft.setTextColor(0x5AEB);
-    tft.setCursor(stackCardX2 + 10, stackY2 + 4); // Letter centered in 9px radius circle
+    tft.setTextColor(COLOR_TEXT_TERTIARY);
+    tft.setCursor(stackCardX2 + 10, stackY2 + 4);
     tft.print(icons[currentSelection + 2]);
 
-    // Draw text
-    tft.setCursor(stackCardX2 + 30, stackY2 + 4); // Vertically centered in 24px card
+    // Text
+    tft.setTextColor(COLOR_TEXT_TERTIARY);
+    tft.setCursor(stackCardX2 + 30, stackY2 + 4);
     tft.print(options[currentSelection + 2]);
     tft.setFont(nullptr);
   }
 
-  // Draw card above (previous item in list)
+  // Draw card above (previous item in list) - same glass style as card below
   if (currentSelection > 0) {
     int stackY0 = mainCardY - stackCardHeight - stackOffset;
-    tft.fillRoundRect(stackCardX, stackY0, stackCardWidth, stackCardHeight, 8, 0x2104);
 
-    // Draw small circle for icon (scaled)
-    tft.drawCircle(stackCardX + 18, stackY0 + 16, 12, 0x4208);
-    tft.setFont(&FreeSansBold9pt7b);  // Smaller font for grey cards
+    // Solid dimmed background
+    tft.fillRoundRect(stackCardX, stackY0, stackCardWidth, stackCardHeight, 8, COLOR_BG_LAYER2);
+
+    // Subtle border
+    tft.drawRoundRect(stackCardX, stackY0, stackCardWidth, stackCardHeight, 8, COLOR_BORDER_SUBTLE);
+
+    // Small icon circle
+    tft.fillCircle(stackCardX + 18, stackY0 + 16, 12, COLOR_CARD_BLUE);
+    tft.drawCircle(stackCardX + 18, stackY0 + 16, 12, COLOR_BORDER_SUBTLE);
+
+    // Icon letter
+    tft.setFont(&FreeSansBold9pt7b);
     tft.setTextSize(1);
-    tft.setTextColor(0x7BEF);
-    tft.setCursor(stackCardX + 13, stackY0 + 8); // Letter centered in 12px radius circle
+    tft.setTextColor(COLOR_TEXT_SECONDARY);
+    tft.setCursor(stackCardX + 11, stackY0 + 9);
     tft.print(icons[currentSelection - 1]);
 
-    // Draw text
-    tft.setFont(&FreeSansBold12pt7b);  // Keep 12pt for menu text
-    tft.setCursor(stackCardX + 38, stackY0 + 6); // Vertically centered in 32px card
+    // Text
+    tft.setFont(&FreeSansBold12pt7b);
+    tft.setTextColor(COLOR_TEXT_SECONDARY);
+    tft.setCursor(stackCardX + 38, stackY0 + 9);
     tft.print(options[currentSelection - 1]);
     tft.setFont(nullptr);
   }
@@ -547,7 +624,7 @@ void drawComingSoon(const char* featureName) {
 
   // Draw feature name using smooth font
   tft.setFont(&FreeSansBold18pt7b);
-  tft.setTextColor(ST77XX_CYAN);
+  tft.setTextColor(COLOR_ACCENT_CYAN);  // Soft cyan accent
   tft.setTextSize(1);
 
   // Center the feature name
@@ -559,7 +636,7 @@ void drawComingSoon(const char* featureName) {
 
   // Draw "Coming Soon" message using smooth font
   tft.setFont(&FreeSansBold18pt7b);
-  tft.setTextColor(COLOR_WARNING);
+  tft.setTextColor(COLOR_WARNING);  // Warm orange
   const char* comingSoon = "Coming Soon";
   getTextBounds_compat(tft, comingSoon, 0, 0, &x1, &y1, &w, &h);
   tft.setCursor((SCREEN_WIDTH - w) / 2, 152);
@@ -567,7 +644,7 @@ void drawComingSoon(const char* featureName) {
 
   // Draw description using smooth font
   tft.setFont(&FreeSansBold9pt7b);
-  tft.setTextColor(0x7BEF);  // Gray
+  tft.setTextColor(COLOR_TEXT_SECONDARY);  // Light gray
   const char* desc = "This feature is under development";
   getTextBounds_compat(tft, desc, 0, 0, &x1, &y1, &w, &h);
   tft.setCursor((SCREEN_WIDTH - w) / 2, 192);
@@ -594,11 +671,12 @@ void drawMenu() {
 
   // Draw footer (only for menu modes)
   if (currentMode == MODE_MAIN_MENU || currentMode == MODE_TRAINING_MENU ||
-      currentMode == MODE_GAMES_MENU || currentMode == MODE_CW_MENU ||
-      currentMode == MODE_SETTINGS_MENU || currentMode == MODE_HAM_TOOLS_MENU ||
-      currentMode == MODE_QSO_LOGGER_MENU || currentMode == MODE_DEVICE_SETTINGS_MENU ||
-      currentMode == MODE_WIFI_SUBMENU || currentMode == MODE_GENERAL_SUBMENU ||
-      currentMode == MODE_BLUETOOTH_MENU || currentMode == MODE_DEVICE_BT_SUBMENU) {
+      currentMode == MODE_HEAR_IT_MENU || currentMode == MODE_GAMES_MENU ||
+      currentMode == MODE_CW_MENU || currentMode == MODE_SETTINGS_MENU ||
+      currentMode == MODE_HAM_TOOLS_MENU || currentMode == MODE_QSO_LOGGER_MENU ||
+      currentMode == MODE_DEVICE_SETTINGS_MENU || currentMode == MODE_WIFI_SUBMENU ||
+      currentMode == MODE_GENERAL_SUBMENU || currentMode == MODE_BLUETOOTH_MENU ||
+      currentMode == MODE_DEVICE_BT_SUBMENU) {
     drawFooter();
   }
 
@@ -609,6 +687,8 @@ void drawMenu() {
     drawMenuItems(cwMenuOptions, cwMenuIcons, CW_MENU_ITEMS);
   } else if (currentMode == MODE_TRAINING_MENU) {
     drawMenuItems(trainingMenuOptions, trainingMenuIcons, TRAINING_MENU_ITEMS);
+  } else if (currentMode == MODE_HEAR_IT_MENU) {
+    drawMenuItems(hearItMenuOptions, hearItMenuIcons, HEAR_IT_MENU_ITEMS);
   } else if (currentMode == MODE_GAMES_MENU) {
     drawMenuItems(gamesMenuOptions, gamesMenuIcons, GAMES_MENU_ITEMS);
   } else if (currentMode == MODE_SETTINGS_MENU) {
@@ -683,6 +763,12 @@ void drawMenu() {
     drawMenuItems(deviceBTSubmenuOptions, deviceBTSubmenuIcons, DEVICE_BT_SUBMENU_ITEMS);
   } else if (currentMode == MODE_BT_KEYBOARD_SETTINGS) {
     drawBTKeyboardSettingsUI(tft);
+  } else if (currentMode == MODE_LICENSE_SELECT) {
+    drawMenuItems(licenseSelectOptions, licenseSelectIcons, LICENSE_SELECT_ITEMS);
+  } else if (currentMode == MODE_LICENSE_QUIZ) {
+    drawLicenseQuizUI(tft);
+  } else if (currentMode == MODE_LICENSE_STATS) {
+    drawLicenseStatsUI(tft);
   }
 }
 

@@ -164,7 +164,7 @@ void startBTHID(LGFX& display) {
   // Start advertising
   startBLEAdvertising("HID Keyboard");
 
-  drawBTHIDUI(display);
+  // UI is now handled by LVGL - see lv_mode_screens.h
 }
 
 // Stop BT HID mode

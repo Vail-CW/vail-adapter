@@ -55,15 +55,16 @@ void drawVolumeDisplay(LGFX &display) {
   int cardY = 70;
   int cardW = SCREEN_WIDTH - 60;
   int cardH = 100;
-  int radius = 10;
 
-  // Card background
-  display.fillRoundRect(cardX, cardY, cardW, cardH, radius, ST77XX_BLUE);
-  display.drawRoundRect(cardX, cardY, cardW, cardH, radius, ST77XX_WHITE);
+  // Clean card background
+  display.fillRoundRect(cardX, cardY, cardW, cardH, 10, COLOR_BG_LAYER2);
+
+  // Subtle border
+  display.drawRoundRect(cardX, cardY, cardW, cardH, 10, COLOR_BORDER_SUBTLE);
 
   // Volume percentage text (large)
   display.setFont(&FreeSansBold12pt7b);
-  display.setTextColor(ST77XX_WHITE);
+  display.setTextColor(COLOR_TEXT_PRIMARY);
   display.setTextSize(2);
 
   char volumeText[8];
@@ -73,27 +74,36 @@ void drawVolumeDisplay(LGFX &display) {
   uint16_t w, h;
   getTextBounds_compat(display, volumeText, 0, 0, &x1, &y1, &w, &h);
   int centerX = (SCREEN_WIDTH - w) / 2;
-  display.setCursor(centerX, cardY + 60);
+  display.setCursor(centerX, cardY + 50);
   display.print(volumeText);
 
-  // Volume bar below percentage
+  // Clean volume bar below percentage
   int barX = cardX + 20;
-  int barY = cardY + 75;
+  int barY = cardY + 70;
   int barW = cardW - 40;
-  int barH = 12;
+  int barH = 14;
 
-  // Draw bar background (empty)
-  display.fillRoundRect(barX, barY, barW, barH, 5, ST77XX_BLACK);
+  // Bar container (dark background)
+  display.fillRoundRect(barX, barY, barW, barH, 7, COLOR_BG_DEEP);
 
-  // Draw filled portion based on volume
+  // Filled portion with solid color
   int fillW = (barW * volumeValue) / 100;
   if (fillW > 0) {
-    uint16_t barColor = ST77XX_GREEN;
-    if (volumeValue < 30) barColor = ST77XX_RED;
-    else if (volumeValue < 60) barColor = ST77XX_YELLOW;
+    // Single solid color based on volume level
+    uint16_t fillColor;
+    if (volumeValue > 70) {
+      fillColor = COLOR_ACCENT_CYAN;
+    } else if (volumeValue > 30) {
+      fillColor = COLOR_CARD_CYAN;
+    } else {
+      fillColor = COLOR_CARD_TEAL;
+    }
 
-    display.fillRoundRect(barX, barY, fillW, barH, 5, barColor);
+    display.fillRoundRect(barX + 2, barY + 2, fillW - 4, barH - 4, 5, fillColor);
   }
+
+  // Border on bar
+  display.drawRoundRect(barX, barY, barW, barH, 7, COLOR_BORDER_LIGHT);
 
   // Draw footer help text
   display.setFont(nullptr);

@@ -178,22 +178,55 @@
 #define ST77XX_ORANGE      0xFC00  // Orange
 
 // ============================================
-// UI Color Scheme
+// UI Color Scheme - Modern Minimal Design
 // ============================================
-#define COLOR_BACKGROUND    ST77XX_BLACK
-#define COLOR_TITLE         ST77XX_CYAN
-#define COLOR_TEXT          ST77XX_WHITE
-#define COLOR_HIGHLIGHT_BG  ST77XX_BLUE
-#define COLOR_HIGHLIGHT_FG  ST77XX_WHITE
-#define COLOR_SUCCESS       ST77XX_GREEN
-#define COLOR_ERROR         ST77XX_RED
-#define COLOR_WARNING       ST77XX_YELLOW
-#define COLOR_SEPARATOR     ST77XX_WHITE
+
+// Background & Base Colors (Dark, Subtle)
+#define COLOR_BG_DEEP           0x0841  // RGB(15, 20, 35) - Deep dark background
+#define COLOR_BG_LAYER2         0x1082  // RGB(20, 30, 50) - Subtle raised layer
+
+// Card & Surface Colors (Pastel Blue-Green)
+#define COLOR_CARD_BLUE         0x32AB  // RGB(50, 85, 90) - Soft muted blue
+#define COLOR_CARD_TEAL         0x2B0E  // RGB(40, 95, 115) - Soft teal
+#define COLOR_CARD_CYAN         0x3471  // RGB(50, 140, 140) - Muted cyan
+#define COLOR_CARD_MINT         0x3D53  // RGB(60, 170, 155) - Soft mint
+
+// Accent Colors (Subtle Highlights)
+#define COLOR_ACCENT_BLUE       0x4D5F  // RGB(75, 170, 255) - Soft bright blue
+#define COLOR_ACCENT_CYAN       0x5EB9  // RGB(90, 215, 210) - Soft cyan accent
+#define COLOR_ACCENT_GREEN      0x5712  // RGB(85, 225, 150) - Soft green accent
+
+// Status Colors (Pastels)
+#define COLOR_SUCCESS_PASTEL    0x4E91  // RGB(75, 210, 140) - Soft pastel green
+#define COLOR_WARNING_PASTEL    0xFE27  // RGB(255, 195, 60) - Soft pastel orange
+#define COLOR_ERROR_PASTEL      0xFACB  // RGB(250, 90, 90) - Soft pastel red
+
+// Border & Outline Colors
+#define COLOR_BORDER_SUBTLE     0x39EC  // RGB(55, 65, 100) - Very subtle border
+#define COLOR_BORDER_LIGHT      0x632C  // RGB(100, 100, 100) - Light neutral border
+#define COLOR_BORDER_ACCENT     0x6D7F  // RGB(110, 170, 255) - Soft blue border
+
+// Text Hierarchy Colors
+#define COLOR_TEXT_PRIMARY      0xFFFF  // RGB(255, 255, 255) - White (main text)
+#define COLOR_TEXT_SECONDARY    0xBDF7  // RGB(190, 190, 190) - Light gray (labels)
+#define COLOR_TEXT_TERTIARY     0x8410  // RGB(130, 130, 130) - Medium gray (hints)
+#define COLOR_TEXT_DISABLED     0x5ACB  // RGB(90, 90, 90) - Dark gray (inactive)
+
+// Legacy Color Aliases (for backward compatibility during transition)
+#define COLOR_BACKGROUND    COLOR_BG_DEEP
+#define COLOR_TITLE         COLOR_ACCENT_CYAN
+#define COLOR_TEXT          COLOR_TEXT_PRIMARY
+#define COLOR_HIGHLIGHT_BG  COLOR_CARD_CYAN
+#define COLOR_HIGHLIGHT_FG  COLOR_TEXT_PRIMARY
+#define COLOR_SUCCESS       COLOR_SUCCESS_PASTEL
+#define COLOR_ERROR         COLOR_ERROR_PASTEL
+#define COLOR_WARNING       COLOR_WARNING_PASTEL
+#define COLOR_SEPARATOR     COLOR_BORDER_SUBTLE
 
 // ============================================
 // UI Layout Constants (scaled for 480×320 display)
 // ============================================
-#define HEADER_HEIGHT       60    // Top status bar height
+#define HEADER_HEIGHT       45    // Top status bar height (reduced for better proportions)
 #define FOOTER_HEIGHT       30    // Bottom instruction bar height
 #define CARD_MAIN_WIDTH     450   // Main menu card width
 #define CARD_MAIN_HEIGHT    80    // Main menu card height

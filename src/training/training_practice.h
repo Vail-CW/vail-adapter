@@ -11,8 +11,6 @@
 #include "../settings/settings_cw.h"
 #include "../audio/morse_decoder_adaptive.h"
 
-// Forward declaration of drawHeader (defined in menu_ui.h)
-void drawHeader();
 
 // Practice mode state
 bool practiceActive = false;
@@ -21,6 +19,11 @@ bool dahPressed = false;
 bool lastDitPressed = false;
 bool lastDahPressed = false;
 unsigned long practiceStartupTime = 0;  // Track startup time for input delay
+
+// Deferred save state - debounces rapid setting changes when holding keys
+unsigned long lastSettingSaveTime = 0;
+bool settingSavePending = false;
+#define SETTING_SAVE_DEBOUNCE_MS 500  // Save 500ms after last change
 
 // Iambic keyer state
 unsigned long ditDahTimer = 0;
@@ -35,8 +38,6 @@ int ditDuration = 0;
 
 // Statistics
 unsigned long practiceStartTime = 0;
-int ditCount = 0;
-int dahCount = 0;
 
 // Decoder state
 MorseDecoderAdaptive decoder(20, 20, 30);  // Initial 20 WPM, buffer size 30
@@ -52,13 +53,17 @@ unsigned long lastElementTime = 0;  // Track last element for timeout flush
 
 // Forward declarations
 void startPracticeMode(LGFX &display);
-void drawPracticeUI(LGFX &display);
-void drawDecodedTextOnly(LGFX &display);
-int handlePracticeInput(char key, LGFX &display);
 void updatePracticeOscillator();
-void drawPracticeStats(LGFX &display);
 void straightKeyHandler();
 void iambicKeyerHandler();
+
+// LVGL-callable action functions
+void practiceHandleEsc();
+void practiceHandleClear();
+void practiceAdjustSpeed(int delta);
+void practiceCycleKeyType(int direction);
+void practiceToggleDecoding();
+void practiceCheckDeferredSave();
 
 // Start practice mode
 void startPracticeMode(LGFX &display) {
@@ -86,8 +91,6 @@ void startPracticeMode(LGFX &display) {
 
   // Reset statistics
   practiceStartTime = millis();
-  ditCount = 0;
-  dahCount = 0;
 
   // Reset decoder and clear any buffered state
   decoder.reset();
@@ -138,12 +141,6 @@ void startPracticeMode(LGFX &display) {
     Serial.println(" WPM");
   };
 
-  // Draw header with correct "PRACTICE" title
-  drawHeader();
-
-  // Draw practice UI
-  drawPracticeUI(display);
-
   Serial.println("Practice mode started with decoding enabled");
   Serial.print("Speed: ");
   Serial.print(cwSpeed);
@@ -159,477 +156,13 @@ void startPracticeMode(LGFX &display) {
   }
 }
 
-// Draw practice UI
-void drawPracticeUI(LGFX &display) {
-  // Clear screen but preserve header bar (0-HEADER_HEIGHT)
-  display.fillRect(0, HEADER_HEIGHT + 2, SCREEN_WIDTH, SCREEN_HEIGHT - HEADER_HEIGHT - 2, COLOR_BACKGROUND);
-
-  // Modern card-style info display (3 equal cards)
-  const int CARD_Y = 75;  // Positioned below 60px header
-  const int CARD_HEIGHT = 50;
-  const int CARD_SPACING = 4;
-  const int CARD_WIDTH = (SCREEN_WIDTH - (4 * CARD_SPACING)) / 3;
-
-  // Variables for text bounds
-  int16_t x1, y1;
-  uint16_t w, h;
-
-  // Get detected WPM for card 2
-  float detectedWPM = decoder.getWPM();
-
-  // Card 1: Set Speed
-  int card1X = CARD_SPACING;
-
-  // Card background (draw first)
-  display.fillRoundRect(card1X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 6, 0x2104);  // Dark gray
-  display.drawRoundRect(card1X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 6, 0x4A49);  // Light border
-
-  // Title badge for Card 1 (draw on top to hover over card)
-  display.fillRoundRect(card1X + 5, CARD_Y - 7, 60, 14, 4, ST77XX_CYAN);
-  display.setFont(&FreeSansBold9pt7b);
-  display.setTextSize(1);
-  display.setTextColor(ST77XX_BLACK);
-  display.setCursor(card1X + 8, CARD_Y - 7);
-  display.print("SET WPM");
-  display.setFont(nullptr);
-
-  // Speed value (centered) - use smooth font
-  display.setFont(&FreeSansBold18pt7b);
-  display.setTextSize(1);
-  display.setTextColor(ST77XX_CYAN);
-  String speedStr = String(cwSpeed);
-  getTextBounds_compat(display, speedStr.c_str(), 0, 0, &x1, &y1, &w, &h);
-  display.setCursor(card1X + (CARD_WIDTH - w) / 2, CARD_Y + 15);
-  display.print(speedStr);
-  display.setFont(nullptr);
-
-  // Card 2: Detected Speed
-  int card2X = card1X + CARD_WIDTH + CARD_SPACING;
-
-  // Clear the entire card area first to remove old overlapping text
-  display.fillRect(card2X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, COLOR_BACKGROUND);
-
-  // Card background (draw first)
-  display.fillRoundRect(card2X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 6, 0x2104);
-  display.drawRoundRect(card2X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 6, 0x4A49);
-
-  // Title badge for Card 2 (draw on top to hover over card)
-  display.fillRoundRect(card2X + 5, CARD_Y - 7, 55, 14, 4, ST77XX_GREEN);
-  display.setFont(&FreeSansBold9pt7b);
-  display.setTextSize(1);
-  display.setTextColor(ST77XX_BLACK);
-  display.setCursor(card2X + 8, CARD_Y - 7);
-  display.print("ACTUAL");
-  display.setFont(nullptr);
-
-  // WPM value (centered, color-coded) - use smooth font
-  display.setFont(&FreeSansBold18pt7b);
-  display.setTextSize(1);
-  if (detectedWPM > 0) {
-    if (abs(detectedWPM - cwSpeed) > 2) {
-      display.setTextColor(ST77XX_YELLOW);  // Yellow if different
-    } else {
-      display.setTextColor(ST77XX_GREEN);  // Green if same
-    }
-    String detStr = String(detectedWPM, 1);
-    getTextBounds_compat(display, detStr.c_str(), 0, 0, &x1, &y1, &w, &h);
-    display.setCursor(card2X + (CARD_WIDTH - w) / 2, CARD_Y + 15);
-    display.print(detStr);
-  } else {
-    display.setTextColor(0x7BEF);
-    display.setCursor(card2X + (CARD_WIDTH - 24) / 2, CARD_Y + 15);
-    display.print("--");
-  }
-  display.setFont(nullptr);
-
-  // Card 3: Key Type
-  int card3X = card2X + CARD_WIDTH + CARD_SPACING;
-
-  // Card background (draw first)
-  display.fillRoundRect(card3X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 6, 0x2104);
-  display.drawRoundRect(card3X, CARD_Y, CARD_WIDTH, CARD_HEIGHT, 6, 0x4A49);
-
-  // Title badge for Card 3 (draw on top to hover over card)
-  display.fillRoundRect(card3X + 5, CARD_Y - 7, 65, 14, 4, ST77XX_YELLOW);
-  display.setFont(&FreeSansBold9pt7b);
-  display.setTextSize(1);
-  display.setTextColor(ST77XX_BLACK);
-  display.setCursor(card3X + 8, CARD_Y - 7);
-  display.print("KEY TYPE");
-  display.setFont(nullptr);
-
-  // Key type value (centered) - use smooth font
-  display.setFont(&FreeSansBold12pt7b);
-  display.setTextSize(1);
-  display.setTextColor(ST77XX_YELLOW);
-  String keyStr;
-  if (cwKeyType == KEY_STRAIGHT) {
-    keyStr = "Straight";
-  } else if (cwKeyType == KEY_IAMBIC_A) {
-    keyStr = "Iambic A";
-  } else {
-    keyStr = "Iambic B";
-  }
-  getTextBounds_compat(display, keyStr.c_str(), 0, 0, &x1, &y1, &w, &h);
-  display.setCursor(card3X + (CARD_WIDTH - w) / 2, CARD_Y + 12);
-  display.print(keyStr);
-  display.setFont(nullptr);
-
-  // Decoded text area (if enabled) - modernized 2-line display
-  if (showDecoding) {
-    // Add space between cards and decoder box
-    const int DECODER_Y = 135;  // Positioned below cards (CARD_Y=75 + CARD_HEIGHT=50 + spacing)
-    const int DECODER_HEIGHT = 70;
-
-    // Clear any potential stray characters from previous renders first
-    display.fillRect(0, DECODER_Y, SCREEN_WIDTH, DECODER_HEIGHT, COLOR_BACKGROUND);
-
-    // Draw rounded rect background for decoder
-    display.fillRoundRect(5, DECODER_Y, SCREEN_WIDTH - 10, DECODER_HEIGHT, 8, 0x1082);  // Dark gray background
-    display.drawRoundRect(5, DECODER_Y, SCREEN_WIDTH - 10, DECODER_HEIGHT, 8, 0x4A49);  // Light gray border
-
-    // Title badge
-    display.fillRoundRect(15, DECODER_Y - 7, 80, 14, 4, ST77XX_CYAN);
-    display.setFont(&FreeSansBold9pt7b);
-    display.setTextSize(1);
-    display.setTextColor(ST77XX_BLACK);
-    display.setCursor(18, DECODER_Y - 7);
-    display.print("DECODER");
-    display.setFont(nullptr);
-
-    // Show decoded text (2 lines, size 3 for modern look)
-    display.setTextSize(3);
-    display.setTextColor(ST77XX_WHITE);
-    display.setTextWrap(false);  // Disable automatic text wrapping
-
-    // STRICT: 16 chars per line, 2 lines max = 32 chars total
-    const int CHARS_PER_LINE = 16;
-    const int MAX_LINES = 2;
-    const int MAX_TOTAL_CHARS = 32;  // Absolute maximum
-    const int LINE1_Y = DECODER_Y + 17;  // Adjusted for new decoder position
-    const int LINE2_Y = DECODER_Y + 43;  // Adjusted for new decoder position
-    const int TEXT_X = 15;
-
-    // Enforce absolute maximum - truncate if needed
-    String safeText = decodedText;
-    if (safeText.length() > MAX_TOTAL_CHARS) {
-      safeText = safeText.substring(safeText.length() - MAX_TOTAL_CHARS);
-    }
-
-    // Extract exactly the last 32 chars (or less if shorter)
-    int textLen = safeText.length();
-
-    // Line 1: Show last N characters that fit (up to 16)
-    if (textLen > 0) {
-      String line1;
-      if (textLen <= CHARS_PER_LINE) {
-        // All text fits on line 1
-        line1 = safeText;
-      } else {
-        // Text spans both lines - line 1 gets chars 0-15 of the last 32
-        line1 = safeText.substring(0, CHARS_PER_LINE);
-      }
-
-      Serial.print("Line 1 [");
-      Serial.print(TEXT_X);
-      Serial.print(",");
-      Serial.print(LINE1_Y);
-      Serial.print("]: '");
-      Serial.print(line1);
-      Serial.print("' (");
-      Serial.print(line1.length());
-      Serial.println(" chars)");
-
-      display.setCursor(TEXT_X, LINE1_Y);
-      display.print(line1);
-    }
-
-    // Line 2: Show overflow (chars 16-31)
-    if (textLen > CHARS_PER_LINE) {
-      String line2 = safeText.substring(CHARS_PER_LINE);  // Everything after char 16
-
-      Serial.print("Line 2: '");
-      Serial.print(line2);
-      Serial.print("' (");
-      Serial.print(line2.length());
-      Serial.println(" chars)");
-
-      // Clear the line 2 area specifically before rendering
-      // Line 2 is at y=138, text size 3 = ~24 pixels high
-      display.fillRect(6, LINE2_Y - 2, 308, 24, 0x1082);
-
-      // Render line 2 at fixed position - use multiple setCursor calls
-      display.setCursor(TEXT_X, LINE2_Y);
-      delay(1);  // Small delay to ensure cursor position takes
-      display.setCursor(TEXT_X, LINE2_Y);
-      display.print(line2);
-    }
-  } else {
-    // Decoding disabled message
-    const int DECODER_Y = 135;
-    display.setFont(&FreeSansBold12pt7b);
-    display.setTextSize(1);
-    display.setTextColor(0x7BEF);  // Gray
-    const char* disabledMsg = "Press D to enable decoding";
-    int16_t dx1, dy1;
-    uint16_t dw, dh;
-    getTextBounds_compat(display, disabledMsg, 0, 0, &dx1, &dy1, &dw, &dh);
-    display.setCursor((SCREEN_WIDTH - dw) / 2, DECODER_Y + 30);
-    display.print(disabledMsg);
-    display.setFont(nullptr);
-  }
-
-  // Draw footer instructions (updated with arrow key hints) - use smooth font
-  display.setFont(&FreeSansBold9pt7b);
-  display.setTextSize(1);
-  display.setTextColor(COLOR_WARNING);
-
-  // Split into two lines for better readability
-  if (showDecoding) {
-    String line1 = "UP/DN:Speed  L/R:Key";
-    String line2 = "C:Clear  D:Hide  ESC:Exit";
-
-    int16_t fx1, fy1;
-    uint16_t fw, fh;
-    getTextBounds_compat(display, line1.c_str(), 0, 0, &fx1, &fy1, &fw, &fh);
-    int fcenterX = (SCREEN_WIDTH - fw) / 2;
-    display.setCursor(fcenterX, SCREEN_HEIGHT - 32);
-    display.print(line1);
-
-    getTextBounds_compat(display, line2.c_str(), 0, 0, &fx1, &fy1, &fw, &fh);
-    fcenterX = (SCREEN_WIDTH - fw) / 2;
-    display.setCursor(fcenterX, SCREEN_HEIGHT - 16);
-    display.print(line2);
-  } else {
-    // When decoder is hidden, show single line
-    String footerText = "D:Show  ESC:Exit";
-    int16_t fx1, fy1;
-    uint16_t fw, fh;
-    getTextBounds_compat(display, footerText.c_str(), 0, 0, &fx1, &fy1, &fw, &fh);
-    int fcenterX = (SCREEN_WIDTH - fw) / 2;
-    display.setCursor(fcenterX, SCREEN_HEIGHT - 22);
-    display.print(footerText);
-  }
-  display.setFont(nullptr);
-}
-
-// Draw only the decoded text area (for real-time updates without full redraw)
-void drawDecodedTextOnly(LGFX &display) {
-  if (!showDecoding) return;
-
-  // Update the ACTUAL WPM card (Card 2)
-  const int CARD_Y = 75;  // Match updated position
-  const int CARD_HEIGHT = 50;
-  const int CARD_SPACING = 4;
-  const int CARD_WIDTH = (SCREEN_WIDTH - (4 * CARD_SPACING)) / 3;
-  int card2X = CARD_SPACING + CARD_WIDTH + CARD_SPACING;
-
-  float detectedWPM = decoder.getWPM();
-
-  // Clear just the number area of card 2
-  display.fillRect(card2X + 5, CARD_Y + 10, CARD_WIDTH - 10, 35, 0x2104);
-
-  // Use smooth font for WPM display
-  display.setFont(&FreeSansBold18pt7b);
-  display.setTextSize(1);
-  if (detectedWPM > 0) {
-    if (abs(detectedWPM - cwSpeed) > 2) {
-      display.setTextColor(ST77XX_YELLOW);  // Yellow if different
-    } else {
-      display.setTextColor(ST77XX_GREEN);  // Green if same
-    }
-    String detStr = String(detectedWPM, 1);
-    int16_t x1, y1;
-    uint16_t w, h;
-    getTextBounds_compat(display, detStr.c_str(), 0, 0, &x1, &y1, &w, &h);
-    display.setCursor(card2X + (CARD_WIDTH - w) / 2, CARD_Y + 15);
-    display.print(detStr);
-  } else {
-    display.setTextColor(0x7BEF);
-    display.setCursor(card2X + (CARD_WIDTH - 24) / 2, CARD_Y + 15);
-    display.print("--");
-  }
-  display.setFont(nullptr);
-
-  // Decoder box positioning (matches drawPracticeUI)
-  const int DECODER_Y = 135;  // Match updated position
-  const int DECODER_HEIGHT = 70;
-
-  // Clear the entire content area inside the decoder box
-  display.fillRect(6, DECODER_Y + 10, 308, 58, 0x1082);  // Clear entire text area
-
-  // Show decoded text (2 lines, size 3 for modern look)
-  display.setTextSize(3);
-  display.setTextColor(ST77XX_WHITE);
-  display.setTextWrap(false);  // Disable automatic text wrapping
-
-  // STRICT: 16 chars per line, 2 lines max = 32 chars total
-  const int CHARS_PER_LINE = 16;
-  const int MAX_TOTAL_CHARS = 32;  // Absolute maximum
-  const int LINE1_Y = DECODER_Y + 17;  // Match drawPracticeUI
-  const int LINE2_Y = DECODER_Y + 43;  // Match drawPracticeUI
-  const int TEXT_X = 15;
-
-  // Enforce absolute maximum - truncate if needed
-  String safeText = decodedText;
-  if (safeText.length() > MAX_TOTAL_CHARS) {
-    safeText = safeText.substring(safeText.length() - MAX_TOTAL_CHARS);
-  }
-
-  // Extract exactly the last 32 chars (or less if shorter)
-  int textLen = safeText.length();
-
-  // Line 1: Show last N characters that fit (up to 16)
-  if (textLen > 0) {
-    String line1;
-    if (textLen <= CHARS_PER_LINE) {
-      // All text fits on line 1
-      line1 = safeText;
-    } else {
-      // Text spans both lines - line 1 gets chars 0-15 of the last 32
-      line1 = safeText.substring(0, CHARS_PER_LINE);
-    }
-
-    display.setCursor(TEXT_X, LINE1_Y);
-    display.print(line1);
-
-    // CRITICAL: Reset text wrapping state after line 1
-    // The display library may have advanced the cursor, so we need to
-    // ensure a clean state before attempting line 2
-    display.setTextWrap(false);
-  }
-
-  // Line 2: Show overflow (chars 16-31)
-  if (textLen > CHARS_PER_LINE) {
-    String line2 = safeText.substring(CHARS_PER_LINE);  // Everything after char 16
-
-    // Clear the line 2 area specifically before rendering
-    // Line 2 is at y=138, text size 3 = ~24 pixels high
-    display.fillRect(6, LINE2_Y - 2, 308, 24, 0x1082);
-
-    // Render line 2 at fixed position - use multiple setCursor calls
-    display.setCursor(TEXT_X, LINE2_Y);
-    delay(1);  // Small delay to ensure cursor position takes
-    display.setCursor(TEXT_X, LINE2_Y);
-    display.print(line2);
-  }
-}
-
-// Draw practice statistics and visual feedback
-void drawPracticeStats(LGFX &display) {
-  // Clear indicator area
-  display.fillRect(0, 155, SCREEN_WIDTH, 35, COLOR_BACKGROUND);
-
-  // Draw visual indicator (large dot that lights up)
-  int centerX = SCREEN_WIDTH / 2;
-  int centerY = 170;
-
-  if (ditPressed || dahPressed) {
-    // Active - filled circle
-    display.fillCircle(centerX, centerY, 15, ST77XX_GREEN);
-    display.drawCircle(centerX, centerY, 15, ST77XX_WHITE);
-
-    // Show which paddle
-    display.setTextSize(1);
-    display.setTextColor(ST77XX_BLACK);
-    display.setCursor(centerX - 10, centerY - 4);
-    if (ditPressed && dahPressed) {
-      display.print("BOTH");
-    } else if (ditPressed) {
-      display.print("DIT");
-    } else {
-      display.print("DAH");
-    }
-  } else {
-    // Inactive - outline only
-    display.drawCircle(centerX, centerY, 15, 0x4208);
-  }
-}
-
-// Handle practice mode input (keyboard)
-int handlePracticeInput(char key, LGFX &display) {
-  if (key == KEY_ESC) {
-    practiceActive = false;
-    stopTone();
-    decoder.flush();  // Decode any remaining buffered timings
-    return -1;  // Exit practice mode
-  }
-  else if (key == 'd' || key == 'D') {
-    // Toggle decoding display
-    showDecoding = !showDecoding;
-    drawPracticeUI(display);
-    beep(TONE_MENU_NAV, BEEP_SHORT);
-    return 1;
-  }
-  else if (key == KEY_UP) {
-    // Increase speed
-    if (cwSpeed < WPM_MAX) {
-      cwSpeed++;
-      ditDuration = DIT_DURATION(cwSpeed);
-      decoder.setWPM(cwSpeed);
-      saveCWSettings();  // Save to preferences
-      drawPracticeUI(display);
-      beep(TONE_MENU_NAV, BEEP_SHORT);
-      return 1;
-    }
-  }
-  else if (key == KEY_DOWN) {
-    // Decrease speed
-    if (cwSpeed > WPM_MIN) {
-      cwSpeed--;
-      ditDuration = DIT_DURATION(cwSpeed);
-      decoder.setWPM(cwSpeed);
-      saveCWSettings();  // Save to preferences
-      drawPracticeUI(display);
-      beep(TONE_MENU_NAV, BEEP_SHORT);
-      return 1;
-    }
-  }
-  else if (key == KEY_LEFT) {
-    // Cycle key type backward: Iambic B -> Iambic A -> Straight -> Iambic B
-    if (cwKeyType == KEY_IAMBIC_B) {
-      cwKeyType = KEY_IAMBIC_A;
-    } else if (cwKeyType == KEY_IAMBIC_A) {
-      cwKeyType = KEY_STRAIGHT;
-    } else {
-      cwKeyType = KEY_IAMBIC_B;
-    }
-    saveCWSettings();  // Save to preferences
-    drawPracticeUI(display);
-    beep(TONE_MENU_NAV, BEEP_SHORT);
-    return 1;
-  }
-  else if (key == KEY_RIGHT) {
-    // Cycle key type forward: Straight -> Iambic A -> Iambic B -> Straight
-    if (cwKeyType == KEY_STRAIGHT) {
-      cwKeyType = KEY_IAMBIC_A;
-    } else if (cwKeyType == KEY_IAMBIC_A) {
-      cwKeyType = KEY_IAMBIC_B;
-    } else {
-      cwKeyType = KEY_STRAIGHT;
-    }
-    saveCWSettings();  // Save to preferences
-    drawPracticeUI(display);
-    beep(TONE_MENU_NAV, BEEP_SHORT);
-    return 1;
-  }
-  else if (key == 'c' || key == 'C') {
-    // Clear decoder text
-    decodedText = "";
-    decodedMorse = "";
-    decoder.reset();
-    decoder.flush();
-    drawDecodedTextOnly(display);
-    beep(TONE_MENU_NAV, BEEP_SHORT);
-    return 1;
-  }
-
-  return 0;
-}
 
 // Update practice oscillator (called in main loop)
 void updatePracticeOscillator() {
   if (!practiceActive) return;
+
+  // Check for deferred settings save
+  practiceCheckDeferredSave();
 
   // Ignore all input for first 1000ms to prevent startup glitches
   if (millis() - practiceStartupTime < 1000) {
@@ -739,7 +272,6 @@ void iambicKeyerHandler() {
       sendingDah = false;
       inSpacing = false;
       elementStartTime = currentTime;
-      ditCount++;
       startTone(cwTone);
 
       // Clear dit memory
@@ -765,7 +297,6 @@ void iambicKeyerHandler() {
       sendingDah = true;
       inSpacing = false;
       elementStartTime = currentTime;
-      dahCount++;
       startTone(cwTone);
 
       // Clear dah memory
@@ -841,6 +372,104 @@ void iambicKeyerHandler() {
       // Now ready to send next element if memory is set or paddle still pressed
     }
   }
+}
+
+// ============================================
+// LVGL-Callable Action Functions
+// ============================================
+
+// Handle ESC key - stop practice and prepare for exit
+void practiceHandleEsc() {
+  practiceActive = false;
+  stopTone();
+  decoder.flush();  // Decode any remaining buffered timings
+
+  // Save any pending settings before exit
+  if (settingSavePending) {
+    saveCWSettings();
+    settingSavePending = false;
+    Serial.println("[Practice] Saved pending settings on exit");
+  }
+
+  Serial.println("[Practice] ESC - exiting practice mode");
+}
+
+// Clear decoder text
+void practiceHandleClear() {
+  decodedText = "";
+  decodedMorse = "";
+  decoder.reset();
+  decoder.flush();
+  needsUIUpdate = true;  // Signal LVGL to update display
+  beep(TONE_MENU_NAV, BEEP_SHORT);
+  Serial.println("[Practice] Cleared decoder text");
+}
+
+// Adjust WPM speed (delta can be any value, e.g., 1, 2, 4 based on acceleration)
+void practiceAdjustSpeed(int delta) {
+  int newSpeed = cwSpeed + delta;
+  if (newSpeed >= WPM_MIN && newSpeed <= WPM_MAX) {
+    cwSpeed = newSpeed;
+    ditDuration = DIT_DURATION(cwSpeed);
+    decoder.setWPM(cwSpeed);
+
+    // Mark save as pending instead of immediate save (debounces rapid changes)
+    settingSavePending = true;
+    lastSettingSaveTime = millis();
+
+    beep(TONE_MENU_NAV, BEEP_SHORT);
+    Serial.printf("[Practice] Speed changed to %d WPM (save pending)\n", cwSpeed);
+  }
+}
+
+// Check and perform deferred save of CW settings
+// Call this from updatePracticeOscillator() to save after debounce period
+void practiceCheckDeferredSave() {
+  if (settingSavePending && (millis() - lastSettingSaveTime > SETTING_SAVE_DEBOUNCE_MS)) {
+    saveCWSettings();
+    settingSavePending = false;
+    Serial.println("[Practice] Deferred CW settings save completed");
+  }
+}
+
+// Cycle key type (+1 forward, -1 backward)
+void practiceCycleKeyType(int direction) {
+  if (direction > 0) {
+    // Cycle forward: Straight -> Iambic A -> Iambic B -> Straight
+    if (cwKeyType == KEY_STRAIGHT) {
+      cwKeyType = KEY_IAMBIC_A;
+    } else if (cwKeyType == KEY_IAMBIC_A) {
+      cwKeyType = KEY_IAMBIC_B;
+    } else {
+      cwKeyType = KEY_STRAIGHT;
+    }
+  } else {
+    // Cycle backward: Iambic B -> Iambic A -> Straight -> Iambic B
+    if (cwKeyType == KEY_IAMBIC_B) {
+      cwKeyType = KEY_IAMBIC_A;
+    } else if (cwKeyType == KEY_IAMBIC_A) {
+      cwKeyType = KEY_STRAIGHT;
+    } else {
+      cwKeyType = KEY_IAMBIC_B;
+    }
+  }
+
+  // Mark save as pending (use same debounce as speed changes)
+  settingSavePending = true;
+  lastSettingSaveTime = millis();
+
+  beep(TONE_MENU_NAV, BEEP_SHORT);
+
+  const char* keyTypeStr = (cwKeyType == KEY_STRAIGHT) ? "Straight" :
+                           (cwKeyType == KEY_IAMBIC_A) ? "Iambic A" : "Iambic B";
+  Serial.printf("[Practice] Key type changed to %s (save pending)\n", keyTypeStr);
+}
+
+// Toggle decoding display
+void practiceToggleDecoding() {
+  showDecoding = !showDecoding;
+  beep(TONE_MENU_NAV, BEEP_SHORT);
+  Serial.printf("[Practice] Decoding %s\n", showDecoding ? "enabled" : "disabled");
 }
 
 #endif // TRAINING_PRACTICE_H
