@@ -46,6 +46,9 @@ jobs:
           arduino-cli lib install "WebSockets"
           arduino-cli lib install "ArduinoJson"
 
+          # Bluetooth library (for BLE HID/MIDI)
+          arduino-cli lib install "NimBLE-Arduino"
+
           # Install ESPAsyncWebServer and AsyncTCP from GitHub (not in Library Manager)
           mkdir -p ~/Arduino/libraries
           cd ~/Arduino/libraries
