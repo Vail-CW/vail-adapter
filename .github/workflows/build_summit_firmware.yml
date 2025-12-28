@@ -36,7 +36,8 @@ jobs:
         run: |
           # Display and UI libraries
           arduino-cli lib install "LovyanGFX"
-          arduino-cli lib install "lvgl"
+          # IMPORTANT: Must use LVGL 8.3.x - code is not compatible with LVGL 9.x
+          arduino-cli lib install "lvgl@8.3.11"
 
           # Battery monitoring
           arduino-cli lib install "Adafruit MAX1704X"
