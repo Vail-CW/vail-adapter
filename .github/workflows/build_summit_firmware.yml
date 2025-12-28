@@ -34,10 +34,15 @@ jobs:
 
       - name: Install required libraries
         run: |
-          arduino-cli lib install "Adafruit GFX Library"
-          arduino-cli lib install "Adafruit ST7735 and ST7789 Library"
+          # Display and UI libraries
+          arduino-cli lib install "LovyanGFX"
+          arduino-cli lib install "lvgl"
+
+          # Battery monitoring
           arduino-cli lib install "Adafruit MAX1704X"
           arduino-cli lib install "Adafruit LC709203F"
+
+          # Network libraries
           arduino-cli lib install "WebSockets"
           arduino-cli lib install "ArduinoJson"
 
@@ -51,6 +56,15 @@ jobs:
           # Install ESPAsyncWebServer
           git clone https://github.com/me-no-dev/ESPAsyncWebServer.git
 
+      - name: Configure LVGL
+        run: |
+          # LVGL requires lv_conf.h to be in the libraries folder (next to lvgl folder)
+          # Copy our project's lv_conf.h to the Arduino libraries folder
+          cp lv_conf.h ~/Arduino/libraries/lv_conf.h
+
+          echo "LVGL configuration:"
+          head -50 ~/Arduino/libraries/lv_conf.h
+
       - name: Build firmware
         run: |
           # The .ino file is in the root directory on vail-summit branch
@@ -59,9 +73,14 @@ jobs:
           cp vail-summit.ino vail-summit/
           cp -r src vail-summit/
 
-          # Build for ESP32-S3 Feather
+          # Build for ESP32-S3 Feather with 4-inch display configuration
+          # FQBN options:
+          # - CDCOnBoot=cdc: Enable USB CDC for serial output
+          # - PartitionScheme=huge_app: 3MB app, no OTA, 1MB SPIFFS
+          # - PSRAM=opi: OPI PSRAM enabled (works for both OPI and QSPI in firmware)
+          # - FlashSize=4M: 4MB flash
           arduino-cli compile \
-            --fqbn esp32:esp32:adafruit_feather_esp32s3 \
+            --fqbn "esp32:esp32:adafruit_feather_esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,PSRAM=opi,FlashSize=4M" \
             --output-dir build \
             --export-binaries \
             vail-summit/vail-summit.ino

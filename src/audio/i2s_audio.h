@@ -16,6 +16,12 @@
 // I2S port number
 #define I2S_NUM I2S_NUM_0
 
+// Base amplitude for audio output (max 32767 for 16-bit)
+// Lower values = quieter output, less current draw from amp
+// 8000 = original (too loud with 9dB GAIN)
+// With GAIN pin floating (9dB), use 500-1000 for reasonable volume
+#define I2S_BASE_AMPLITUDE 500
+
 // Forward declarations
 void continueTone(int frequency);
 
@@ -57,6 +63,7 @@ void saveVolume() {
  */
 void setVolume(int vol) {
   audio_volume = constrain(vol, VOLUME_MIN, VOLUME_MAX);
+  Serial.printf("[Audio] Volume set to %d%%\n", audio_volume);
   saveVolume();
 }
 
@@ -180,7 +187,7 @@ void playTone(int frequency, int duration_ms) {
     for (int i = 0; i < I2S_BUFFER_SIZE / 2; i++) {
       // Apply volume scaling (0-100%)
       float volume_scale = audio_volume / 100.0;
-      int16_t sample = (int16_t)(sin(local_phase) * 8000.0 * volume_scale);
+      int16_t sample = (int16_t)(sin(local_phase) * I2S_BASE_AMPLITUDE * volume_scale);
 
       // Stereo output: send same signal to both channels
       sample_buffer[i * 2] = sample;       // Left
@@ -256,7 +263,7 @@ void continueTone(int frequency) {
   for (int i = 0; i < I2S_BUFFER_SIZE / 2; i++) {
     // Apply volume scaling (0-100%)
     float volume_scale = audio_volume / 100.0;
-    int16_t sample = (int16_t)(sin(phase) * 8000.0 * volume_scale);
+    int16_t sample = (int16_t)(sin(phase) * I2S_BASE_AMPLITUDE * volume_scale);
 
     sample_buffer[i * 2] = sample;       // Left
     sample_buffer[i * 2 + 1] = sample;   // Right
