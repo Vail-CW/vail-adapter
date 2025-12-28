@@ -6,11 +6,22 @@ This document covers build setup, compilation, upload, and firmware updates for 
 
 ### Board Configuration
 
-- **Board:** ESP32S3 Dev Module or Adafruit Feather ESP32-S3
-- **USB CDC On Boot:** Enabled
-- **Flash Size:** 4MB
-- **PSRAM:** OPI PSRAM
-- **Upload Speed:** 921600
+Select **Adafruit Feather ESP32-S3 2MB PSRAM** from the boards menu, then configure:
+
+| Setting | Value | Notes |
+|---------|-------|-------|
+| **Board** | Adafruit Feather ESP32-S3 2MB PSRAM | Not "No PSRAM" variant |
+| **USB CDC On Boot** | Enabled | Required for serial output |
+| **USB Mode** | Hardware CDC and JTAG | **NOT TinyUSB** - TinyUSB causes boot failures |
+| **Upload Mode** | UART0 / Hardware CDC | |
+| **Flash Size** | 4MB (32Mb) | |
+| **PSRAM** | QSPI PSRAM | **NOT OPI** - OPI causes PSRAM detection failures |
+| **Partition Scheme** | Huge APP (3MB No OTA/1MB SPIFFS) | Provides 3MB app space + 1MB storage |
+| **Upload Speed** | 921600 | |
+
+**⚠️ Critical Settings:**
+- **USB Mode must be "Hardware CDC and JTAG"** - Using "USB-OTG (TinyUSB)" will cause the device to crash before any serial output appears
+- **PSRAM must be "QSPI PSRAM"** - The Adafruit Feather ESP32-S3 2MB PSRAM uses QSPI, not OPI. Using OPI will cause PSRAM detection to fail with error: `E (360) opi psram: PSRAM ID read error`
 
 ### ESP32 Core Version
 
@@ -30,11 +41,18 @@ This document covers build setup, compilation, upload, and firmware updates for 
 Install via Arduino Library Manager:
 
 1. **LovyanGFX by lovyan03** - Advanced display graphics library for ST7796S 4.0" display
-2. **Adafruit MAX1704X** - Battery monitoring for MAX17048
-3. **Adafruit LC709203F** - Backup battery monitor support
-4. **WebSockets by Markus Sattler** - WebSocket client for Vail repeater
-5. **ArduinoJson by Benoit Blanchon** - JSON parsing/serialization
-6. **ESPAsyncWebServer** - Async web server (install from GitHub)
+2. **lvgl v8.3.x** - UI framework (**must be v8.3.x, NOT v9.x** - API incompatible)
+3. **Adafruit MAX1704X** - Battery monitoring for MAX17048
+4. **Adafruit LC709203F** - Backup battery monitor support
+5. **WebSockets by Markus Sattler** - WebSocket client for Vail repeater
+6. **ArduinoJson by Benoit Blanchon** - JSON parsing/serialization
+7. **NimBLE-Arduino** - Bluetooth Low Energy for BLE HID/MIDI
+
+**Install from GitHub** (not in Library Manager):
+- **ESPAsyncWebServer** - `https://github.com/me-no-dev/ESPAsyncWebServer`
+- **AsyncTCP** - `https://github.com/me-no-dev/AsyncTCP` (dependency for ESPAsyncWebServer)
+
+**⚠️ LVGL Version:** This project requires LVGL 8.3.x. LVGL 9.x has breaking API changes and will not compile. If using Arduino Library Manager, ensure you install version 8.3.11 or similar 8.3.x version.
 
 **Note:** This project uses a 4.0" ST7796S display (480×320) with LovyanGFX library instead of the older Adafruit ST7789 library.
 
@@ -48,12 +66,22 @@ arduino morse_trainer/morse_trainer_menu.ino
 
 **Arduino CLI:**
 ```bash
-# Compile
-arduino-cli compile --fqbn esp32:esp32:adafruit_feather_esp32s3 morse_trainer/
+# Compile with required board options
+arduino-cli compile \
+  --fqbn "esp32:esp32:adafruit_feather_esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,PSRAM=enabled,FlashSize=4M" \
+  vail-summit/
 
 # Upload (replace COM<X> with your port)
-arduino-cli upload -p COM<X> --fqbn esp32:esp32:adafruit_feather_esp32s3 morse_trainer/
+arduino-cli upload -p COM<X> \
+  --fqbn "esp32:esp32:adafruit_feather_esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,PSRAM=enabled,FlashSize=4M" \
+  vail-summit/
 ```
+
+**FQBN Options Explained:**
+- `CDCOnBoot=cdc` - Enable USB CDC for serial output
+- `PartitionScheme=huge_app` - 3MB app space, 1MB SPIFFS
+- `PSRAM=enabled` - Enable PSRAM (auto-detects QSPI/OPI)
+- `FlashSize=4M` - 4MB flash
 
 ### Serial Monitor
 
@@ -214,3 +242,45 @@ See `SUMMIT_INTEGRATION.md` in vail-adapter repo for complete technical details.
 - Deep sleep: ~20µA
 
 Device performs full restart from `setup()` after wake.
+
+## Troubleshooting
+
+### Device won't boot / No serial output
+
+**Symptom:** Device flashes successfully but crashes immediately with no serial output. COM port disappears until using physical boot/reset buttons.
+
+**Cause:** Wrong USB Mode setting.
+
+**Fix:** In Arduino IDE, change Tools → USB Mode to **"Hardware CDC and JTAG"** (not "USB-OTG (TinyUSB)").
+
+### PSRAM detection failure
+
+**Symptom:** Serial output shows `E (360) opi psram: PSRAM ID read error: 0x00000000` and device fails to boot properly.
+
+**Cause:** Wrong PSRAM type selected.
+
+**Fix:** In Arduino IDE, change Tools → PSRAM to **"QSPI PSRAM"** (not "OPI PSRAM"). The Adafruit Feather ESP32-S3 2MB PSRAM board uses QSPI PSRAM.
+
+### LVGL display buffer allocation failed
+
+**Symptom:** Serial output shows `[LVGL] ERROR: Failed to allocate display buffers!`
+
+**Cause:** PSRAM not properly initialized, usually due to wrong PSRAM setting in build options.
+
+**Fix:** Ensure firmware is compiled with correct PSRAM setting. For GitHub Actions builds, the workflow uses `PSRAM=enabled`. For Arduino IDE, use "QSPI PSRAM".
+
+### Build errors with LVGL 9.x
+
+**Symptom:** Compilation fails with errors like `'getLVGLInputGroup' was not declared`, `lv_msgbox_create` wrong number of arguments, or `LV_INDEV_STATE_PRESSED` not found.
+
+**Cause:** LVGL 9.x installed instead of 8.3.x.
+
+**Fix:** Uninstall LVGL 9.x and install LVGL 8.3.11 (or any 8.3.x version). The APIs changed significantly between v8 and v9.
+
+### Display shows wrong colors or garbled output
+
+**Symptom:** Display works but colors are inverted or image is corrupted.
+
+**Cause:** Wrong ESP32 core version or display configuration.
+
+**Fix:** Ensure Arduino ESP32 core version 2.0.14 is installed. Newer versions (2.0.15+, 3.x) have compatibility issues with the ST7796S display.

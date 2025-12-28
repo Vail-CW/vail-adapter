@@ -25,32 +25,37 @@ This project uses modular documentation. For detailed information on specific to
 
 ### Building and Development
 
-**Arduino IDE Setup:**
-- Board: **ESP32S3 Dev Module** or **Adafruit Feather ESP32-S3**
-- USB CDC On Boot: **Enabled**
-- Flash Size: **4MB**
-- PSRAM: **OPI PSRAM**
-- Upload Speed: **921600**
+**Arduino IDE Setup (Critical Settings):**
+
+| Setting | Value | ⚠️ Warning |
+|---------|-------|------------|
+| Board | Adafruit Feather ESP32-S3 2MB PSRAM | |
+| USB CDC On Boot | Enabled | |
+| **USB Mode** | **Hardware CDC and JTAG** | NOT TinyUSB (causes boot crash) |
+| Upload Mode | UART0 / Hardware CDC | |
+| Flash Size | 4MB (32Mb) | |
+| **PSRAM** | **QSPI PSRAM** | NOT OPI (causes PSRAM detection failure) |
+| Partition Scheme | Huge APP (3MB No OTA/1MB SPIFFS) | |
+| Upload Speed | 921600 | |
 
 **Required Libraries** (Install via Arduino Library Manager):
 1. LovyanGFX by lovyan03 (display driver for ST7796S)
-2. lvgl by LVGL (UI framework - v8.3.x)
+2. **lvgl v8.3.x** (UI framework - **NOT v9.x**, API incompatible)
 3. Adafruit MAX1704X (battery monitoring)
 4. Adafruit LC709203F (backup battery monitor support)
 5. WebSockets by Markus Sattler
 6. ArduinoJson by Benoit Blanchon
-7. ESPAsyncWebServer (install from GitHub)
+7. NimBLE-Arduino (Bluetooth BLE HID/MIDI)
+8. ESPAsyncWebServer (install from GitHub)
+9. AsyncTCP (install from GitHub, dependency for ESPAsyncWebServer)
 
 **Arduino ESP32 Core:** Version 2.0.14 (required for ST7796S display compatibility)
 
-**Compilation:**
+**Arduino CLI Compilation:**
 ```bash
-# Arduino IDE
-arduino morse_trainer/morse_trainer_menu.ino
-
-# Arduino CLI
-arduino-cli compile --fqbn esp32:esp32:adafruit_feather_esp32s3 morse_trainer/
-arduino-cli upload -p COM<X> --fqbn esp32:esp32:adafruit_feather_esp32s3 morse_trainer/
+arduino-cli compile \
+  --fqbn "esp32:esp32:adafruit_feather_esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,PSRAM=enabled,FlashSize=4M" \
+  vail-summit/
 ```
 
 For detailed build instructions, firmware updates, and GitHub Actions workflow, see **[docs/BUILDING.md](docs/BUILDING.md)**.
