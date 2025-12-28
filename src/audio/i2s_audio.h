@@ -17,10 +17,8 @@
 #define I2S_NUM I2S_NUM_0
 
 // Base amplitude for audio output (max 32767 for 16-bit)
-// Lower values = quieter output, less current draw from amp
-// 8000 = original (too loud with 9dB GAIN)
-// With GAIN pin floating (9dB), use 500-1000 for reasonable volume
-#define I2S_BASE_AMPLITUDE 500
+// 8000 provides good volume range with software volume control
+#define I2S_BASE_AMPLITUDE 8000
 
 // Forward declarations
 void continueTone(int frequency);
