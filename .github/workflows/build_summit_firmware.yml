@@ -81,10 +81,10 @@ jobs:
           # FQBN options:
           # - CDCOnBoot=cdc: Enable USB CDC for serial output
           # - PartitionScheme=huge_app: 3MB app, no OTA, 1MB SPIFFS
-          # - PSRAM=opi: OPI PSRAM enabled (works for both OPI and QSPI in firmware)
+          # - PSRAM=qspi: QSPI PSRAM (Adafruit Feather ESP32-S3 2MB PSRAM uses QSPI, not OPI)
           # - FlashSize=4M: 4MB flash
           arduino-cli compile \
-            --fqbn "esp32:esp32:adafruit_feather_esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,PSRAM=opi,FlashSize=4M" \
+            --fqbn "esp32:esp32:adafruit_feather_esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,PSRAM=qspi,FlashSize=4M" \
             --output-dir build \
             --export-binaries \
             vail-summit/vail-summit.ino
