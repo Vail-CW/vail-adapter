@@ -69,6 +69,11 @@ jobs:
           echo "LVGL configuration:"
           head -50 ~/Arduino/libraries/lv_conf.h
 
+      - name: Show board options
+        run: |
+          echo "Available board options for adafruit_feather_esp32s3:"
+          arduino-cli board details -b esp32:esp32:adafruit_feather_esp32s3
+
       - name: Build firmware
         run: |
           # The .ino file is in the root directory on vail-summit branch
@@ -81,10 +86,10 @@ jobs:
           # FQBN options:
           # - CDCOnBoot=cdc: Enable USB CDC for serial output
           # - PartitionScheme=huge_app: 3MB app, no OTA, 1MB SPIFFS
-          # - PSRAM=qspi: QSPI PSRAM (Adafruit Feather ESP32-S3 2MB PSRAM uses QSPI, not OPI)
+          # - PSRAM=enabled: Enable PSRAM (hardware auto-detects OPI vs QSPI)
           # - FlashSize=4M: 4MB flash
           arduino-cli compile \
-            --fqbn "esp32:esp32:adafruit_feather_esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,PSRAM=qspi,FlashSize=4M" \
+            --fqbn "esp32:esp32:adafruit_feather_esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,PSRAM=enabled,FlashSize=4M" \
             --output-dir build \
             --export-binaries \
             vail-summit/vail-summit.ino
