@@ -34,6 +34,9 @@ Preferences cwPrefs;
 int cwSettingSelection = 0;
 #define CW_SETTINGS_COUNT 3
 
+// LVGL mode flag - when true, skip legacy draw functions (LVGL handles display)
+bool cwSettingsUseLVGL = true;  // Default to LVGL mode
+
 // Forward declarations
 void startCWSettings(LGFX &display);
 void drawCWSettingsUI(LGFX &display);
@@ -82,6 +85,7 @@ void startCWSettings(LGFX &display) {
 
 // Draw CW settings UI
 void drawCWSettingsUI(LGFX &display) {
+  if (cwSettingsUseLVGL) return;  // LVGL handles display
   // Clear screen (preserve header)
   display.fillRect(0, HEADER_HEIGHT + 2, SCREEN_WIDTH, SCREEN_HEIGHT - HEADER_HEIGHT - 2, COLOR_BACKGROUND);
 

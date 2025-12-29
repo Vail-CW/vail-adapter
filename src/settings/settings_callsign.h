@@ -16,6 +16,9 @@ unsigned long lastBlink = 0;
 bool cursorVisible = true;
 Preferences callsignPrefs;
 
+// LVGL mode flag - when true, skip legacy draw functions (LVGL handles display)
+bool callsignUseLVGL = true;  // Default to LVGL mode
+
 // Forward declarations
 void startCallsignSettings(LGFX &display);
 void drawCallsignUI(LGFX &display);
@@ -39,6 +42,7 @@ void startCallsignSettings(LGFX &display) {
 
 // Draw callsign input UI
 void drawCallsignUI(LGFX &display) {
+  if (callsignUseLVGL) return;  // LVGL handles display
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 

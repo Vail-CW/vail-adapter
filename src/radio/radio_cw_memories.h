@@ -69,6 +69,9 @@ int editCursorPos = 0;
 bool isPreviewingMemory = false;
 int previewingSlot = -1;
 
+// LVGL mode flag - when true, skip legacy draw functions (LVGL handles display)
+bool cwMemoriesUseLVGL = true;  // Default to LVGL mode
+
 // ============================================
 // Storage Functions
 // ============================================
@@ -229,6 +232,7 @@ bool isValidMorseMessage(const char* message) {
 
 // Draw main CW Memories list screen
 void drawCWMemoriesUI(LGFX &display) {
+  if (cwMemoriesUseLVGL) return;  // LVGL handles display
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -297,6 +301,7 @@ void drawCWMemoriesUI(LGFX &display) {
 
 // Draw context menu (full screen)
 void drawContextMenu(LGFX &display) {
+  if (cwMemoriesUseLVGL) return;  // LVGL handles display
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -380,6 +385,7 @@ void drawContextMenu(LGFX &display) {
 
 // Draw edit screen (label or message input)
 void drawEditScreen(LGFX &display) {
+  if (cwMemoriesUseLVGL) return;  // LVGL handles display
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -475,6 +481,7 @@ void drawEditScreen(LGFX &display) {
 
 // Draw delete confirmation dialog (full screen)
 void drawDeleteConfirmation(LGFX &display, int slot) {
+  if (cwMemoriesUseLVGL) return;  // LVGL handles display
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 

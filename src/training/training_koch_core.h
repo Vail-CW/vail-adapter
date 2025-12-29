@@ -88,6 +88,9 @@ String kochPracticeChars = "";  // Selected characters for practice mode (1-5 ch
 int kochPracticeCorrect = 0;    // Practice mode stats (not saved)
 int kochPracticeTotal = 0;
 
+// LVGL mode flag - when true, skip legacy draw functions (LVGL handles display)
+bool kochUseLVGL = true;  // Default to LVGL mode
+
 // ============================================
 // Conversational Messaging System
 // ============================================

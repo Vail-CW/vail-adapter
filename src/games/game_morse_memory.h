@@ -98,6 +98,9 @@ bool memoryLastToneState = false;
 unsigned long memoryLastStateChangeTime = 0;
 bool memoryNeedsUIUpdate = false;  // Flag to request UI redraw
 
+// LVGL mode flag - when true, skip legacy draw functions (LVGL handles display)
+bool memoryUseLVGL = true;  // Default to LVGL mode
+
 // Iambic keyer state variables (same as practice mode)
 bool memoryKeyerActive = false;
 bool memorySendingDit = false;
@@ -348,6 +351,7 @@ void startNextRound() {
  * Draw the game header
  */
 void drawMemoryHeader(LGFX& tft) {
+  if (memoryUseLVGL) return;  // LVGL handles display
   tft.fillRect(0, 0, SCREEN_WIDTH, 40, COLOR_TITLE);
   tft.setFont(nullptr);  // Use default font
   tft.setTextColor(COLOR_BACKGROUND);
@@ -369,6 +373,7 @@ void drawMemoryHeader(LGFX& tft) {
  * Draw lives indicator (practice mode)
  */
 void drawMemoryLives(LGFX& tft, int y) {
+  if (memoryUseLVGL) return;  // LVGL handles display
   if (memorySettings.mode != MEMORY_MODE_PRACTICE) return;
 
   tft.setFont(nullptr);
@@ -393,6 +398,7 @@ void drawMemoryLives(LGFX& tft, int y) {
  * Draw the main game UI
  */
 void drawMemoryGameUI(LGFX& tft) {
+  if (memoryUseLVGL) return;  // LVGL handles display
   tft.fillScreen(COLOR_BACKGROUND);
   drawMemoryHeader(tft);
 
@@ -499,6 +505,7 @@ void drawMemoryGameUI(LGFX& tft) {
  * Draw game over screen
  */
 void drawMemoryGameOver(LGFX& tft) {
+  if (memoryUseLVGL) return;  // LVGL handles display
   tft.fillScreen(COLOR_BACKGROUND);
   drawMemoryHeader(tft);
 
@@ -560,6 +567,7 @@ void drawMemoryGameOver(LGFX& tft) {
  * Draw settings menu
  */
 void drawMemorySettings(LGFX& tft) {
+  if (memoryUseLVGL) return;  // LVGL handles display
   tft.fillScreen(COLOR_BACKGROUND);
 
   // Header
@@ -1177,6 +1185,7 @@ void handleMemoryPaddleInput(bool ditPressed, bool dahPressed) {
  * Draw the game UI (called from main loop)
  */
 void drawMemoryUI(LGFX& tft) {
+  if (memoryUseLVGL) return;  // LVGL handles display
   if (inMemorySettings) {
     drawMemorySettings(tft);
   } else if (memoryGame.state == MEMORY_STATE_GAME_OVER) {

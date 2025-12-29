@@ -42,6 +42,7 @@ extern void drawHeader();
 
 // Draw two balanced stat cards (Progress + Accuracy)
 void drawKochStatCards(LGFX& tft, int y) {
+  if (kochUseLVGL) return;  // LVGL handles display
   const int CARD_H = KOCH_CARD_MAIN_H;
   const int CARD_W = KOCH_CARD_MAIN_W;
   const int CARD_GAP = 20;
@@ -94,6 +95,7 @@ void drawKochStatCards(LGFX& tft, int y) {
 
 // Draw character set with word-wrapping (NO truncation)
 void drawKochCharacterSet(LGFX& tft, int startY) {
+  if (kochUseLVGL) return;  // LVGL handles display
   String charSet = getKochCharacterSet();
 
   int16_t x1, y1; uint16_t w, h;
@@ -135,6 +137,7 @@ void drawKochCharacterSet(LGFX& tft, int startY) {
 
 // Draw keyboard shortcut card
 void drawKochKeyCard(LGFX& tft, int x, int y, int w, int h, String key, String label) {
+  if (kochUseLVGL) return;  // LVGL handles display
   tft.fillRoundRect(x, y, w, h, 6, COLOR_CARD_TEAL);
   tft.drawRoundRect(x, y, w, h, 6, COLOR_BORDER_SUBTLE);
 
@@ -160,6 +163,7 @@ void drawKochKeyCard(LGFX& tft, int x, int y, int w, int h, String key, String l
 // ============================================
 
 void drawKochHelp(LGFX& tft) {
+  if (kochUseLVGL) return;  // LVGL handles display
   tft.fillScreen(COLOR_BACKGROUND);
   drawHeader();
 
@@ -310,6 +314,7 @@ void drawKochHelp(LGFX& tft) {
 // ============================================
 
 void drawKochTutorial(LGFX& tft) {
+  if (kochUseLVGL) return;  // LVGL handles display
   tft.fillScreen(COLOR_BACKGROUND);
   drawHeader();
 
@@ -485,6 +490,7 @@ void drawKochTutorial(LGFX& tft) {
 // ============================================
 
 void drawCharacterGrid(LGFX& tft, int currentLesson, bool isNewUnlock) {
+  if (kochUseLVGL) return;  // LVGL handles display
   tft.fillScreen(COLOR_BACKGROUND);
   drawHeader();
 
@@ -565,6 +571,7 @@ void drawCharacterGrid(LGFX& tft, int currentLesson, bool isNewUnlock) {
 // ============================================
 
 void drawNewCharacterIntro(LGFX& tft, char newChar) {
+  if (kochUseLVGL) return;  // LVGL handles display
   tft.fillScreen(COLOR_BACKGROUND);
   drawHeader();
 
@@ -654,6 +661,7 @@ void drawNewCharacterIntro(LGFX& tft, char newChar) {
 // ============================================
 
 void drawCharacterSelector(LGFX& tft) {
+  if (kochUseLVGL) return;  // LVGL handles display
   tft.fillScreen(COLOR_BACKGROUND);
   drawHeader();
 
@@ -746,6 +754,7 @@ void drawCharacterSelector(LGFX& tft) {
 // ============================================
 
 void drawKochSettings(LGFX& tft) {
+  if (kochUseLVGL) return;  // LVGL handles display
   tft.fillScreen(COLOR_BACKGROUND);
   drawHeader();
 
@@ -873,6 +882,7 @@ void drawKochSettings(LGFX& tft) {
 // ============================================
 
 void drawKochModeSelection(LGFX& tft) {
+  if (kochUseLVGL) return;  // LVGL handles display
   tft.fillScreen(COLOR_BACKGROUND);
   drawHeader();
 
@@ -961,6 +971,7 @@ void drawKochModeSelection(LGFX& tft) {
 // ============================================
 
 void drawKochUI(LGFX& tft) {
+  if (kochUseLVGL) return;  // LVGL handles display
   // If in tutorial mode, draw tutorial and return (mandatory on first launch)
   if (kochInTutorialMode) {
     drawKochTutorial(tft);

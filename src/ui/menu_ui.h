@@ -662,9 +662,35 @@ void drawComingSoon(const char* featureName) {
 }
 
 /*
+ * Check if LVGL is handling the current mode (skip legacy rendering)
+ * Returns true if legacy rendering should be skipped (LVGL is active)
+ *
+ * NOTE: LVGL handles ALL modes now. This function exists for safety
+ * to prevent legacy drawMenu() calls from overwriting LVGL screens.
+ */
+bool shouldSkipLegacyRendering() {
+  // LVGL handles all modes - always skip legacy rendering
+  // This prevents drawMenu() calls from overwriting LVGL screens
+  return true;
+}
+
+/*
  * Main menu draw dispatcher
+ *
+ * NOTE: This function is deprecated. LVGL handles all screen rendering.
+ * The guard at the top ensures this function returns early, preventing
+ * legacy TFT drawing from overwriting LVGL screens.
  */
 void drawMenu() {
+  // Skip legacy rendering - LVGL handles all modes
+  if (shouldSkipLegacyRendering()) {
+    return;
+  }
+
+  // ========== DEPRECATED LEGACY CODE BELOW ==========
+  // This code is kept for reference but will never execute
+  // because shouldSkipLegacyRendering() always returns true.
+
   tft.fillScreen(COLOR_BACKGROUND);
 
   drawHeader();

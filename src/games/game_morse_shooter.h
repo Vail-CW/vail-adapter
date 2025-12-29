@@ -77,6 +77,9 @@ unsigned long shooterLastElementTime = 0;  // Track last element for timeout flu
 bool inShooterSettings = false;
 int shooterSettingsSelection = 0;  // 0=Speed, 1=Tone, 2=Key Type, 3=Save & Return
 
+// LVGL mode flag - when true, skip legacy draw functions (LVGL handles display)
+bool shooterUseLVGL = true;  // Default to LVGL mode
+
 // Forward declarations for settings
 void drawShooterSettings(LGFX& tft);
 int handleShooterSettingsInput(char key, LGFX& tft);
@@ -158,6 +161,9 @@ void resetGame() {
  * Draw old-school ground scenery
  */
 void drawGroundScenery(LGFX& tft) {
+  // Skip legacy drawing when using LVGL
+  if (shooterUseLVGL) return;
+
   // Ground line
   tft.drawFastHLine(0, GROUND_Y, SCREEN_WIDTH, ST77XX_GREEN);
   tft.drawFastHLine(0, GROUND_Y + 1, SCREEN_WIDTH, 0x05E0);
@@ -214,6 +220,9 @@ void drawGroundScenery(LGFX& tft) {
  * Draw falling letters (with background clearing for current position)
  */
 void drawFallingLetters(LGFX& tft, bool clearOld = false) {
+  // Skip legacy drawing when using LVGL
+  if (shooterUseLVGL) return;
+
   static int lastY[MAX_FALLING_LETTERS] = {0};
 
   tft.setTextSize(3);
@@ -270,6 +279,9 @@ void drawExplosion(LGFX& tft, int x, int y) {
  * Draw HUD (score, lives, morse input)
  */
 void drawHUD(LGFX& tft) {
+  // Skip legacy drawing when using LVGL
+  if (shooterUseLVGL) return;
+
   // Score (top left corner)
   tft.setTextSize(1);
   tft.setTextColor(ST77XX_WHITE, COLOR_BACKGROUND);
@@ -587,6 +599,7 @@ void updateMorseInputFast(LGFX& tft) {
  * Draw shooter settings screen
  */
 void drawShooterSettings(LGFX& tft) {
+  if (shooterUseLVGL) return;  // LVGL handles display
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   // Title
@@ -766,6 +779,7 @@ int handleShooterSettingsInput(char key, LGFX& tft) {
  * Draw game over screen
  */
 void drawGameOver(LGFX& tft) {
+  if (shooterUseLVGL) return;  // LVGL handles display
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   // Game Over text
@@ -823,6 +837,9 @@ void startMorseShooter(LGFX& tft) {
  * Draw main game UI
  */
 void drawMorseShooterUI(LGFX& tft) {
+  // Skip legacy drawing when using LVGL
+  if (shooterUseLVGL) return;
+
   // Clear screen
   tft.fillScreen(COLOR_BACKGROUND);
 

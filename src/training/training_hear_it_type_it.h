@@ -100,7 +100,7 @@ int attemptsOnCurrentCallsign = 0;
 bool inSettingsMode = false;
 HearItSettings tempSettings;  // Temporary settings while in settings mode
 HearItState currentHearItState = HEAR_IT_STATE_SETTINGS;  // Start in settings state
-bool hearItUseLVGL = false;  // When true, skip legacy draw functions (LVGL handles display)
+bool hearItUseLVGL = true;  // When true, skip legacy draw functions (LVGL handles display)
 
 // Stats tracking
 struct HearItStats {
@@ -290,6 +290,7 @@ void drawHeader();
 
 // Draw just the input box (for fast updates while typing)
 void drawInputBox(LGFX& tft) {
+  if (hearItUseLVGL) return;  // LVGL handles display
   int boxX = 30;
   int boxY = 120;  // Updated from 125 to match new layout
   int boxW = SCREEN_WIDTH - 60;
@@ -541,6 +542,7 @@ void drawStatsCard(LGFX& tft) {
 
 // Helper text function for settings screens
 void drawSettingsHelperText(LGFX& tft, const char* text) {
+  if (hearItUseLVGL) return;  // LVGL handles display
   tft.setFont(&FreeSansBold9pt7b);
   tft.setTextColor(COLOR_WARNING);
   int16_t x1, y1;
@@ -553,6 +555,7 @@ void drawSettingsHelperText(LGFX& tft, const char* text) {
 
 // Settings Menu (choose which setting to configure)
 void drawSettingsMenuScreen(LGFX& tft) {
+  if (hearItUseLVGL) return;  // LVGL handles display
   const char* menuItems[] = {"Training Mode", "Speed (WPM)", "Characters", "Group Length"};
   const char* menuIcons[] = {"M", "S", "C", "L"};
 
@@ -606,6 +609,7 @@ void drawSettingsMenuScreen(LGFX& tft) {
 
 // Screen 1: Mode Selection (Card-based)
 void drawModeSelectionScreen(LGFX& tft) {
+  if (hearItUseLVGL) return;  // LVGL handles display
   const char* modeNames[] = {"Callsigns", "Letters", "Numbers", "Mixed", "Custom"};
   const char* modeIcons[] = {"C", "A", "1", "M", "*"};
 
@@ -647,6 +651,7 @@ void drawModeSelectionScreen(LGFX& tft) {
 
 // Screen 2: Speed Selection
 void drawSpeedSelectionScreen(LGFX& tft) {
+  if (hearItUseLVGL) return;  // LVGL handles display
   // Clear content area
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -689,6 +694,7 @@ void drawSpeedSelectionScreen(LGFX& tft) {
 
 // Screen 3: Character Grid (for custom mode)
 void drawCharacterGrid(LGFX& tft) {
+  if (hearItUseLVGL) return;  // LVGL handles display
   // Clear content area
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -751,6 +757,7 @@ void drawCharacterGrid(LGFX& tft) {
 
 // Screen 4: Group Length Selection
 void drawGroupLengthScreen(LGFX& tft) {
+  if (hearItUseLVGL) return;  // LVGL handles display
   // Clear content area
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -794,6 +801,7 @@ void drawGroupLengthScreen(LGFX& tft) {
 
 // Main configuration UI dispatcher
 void drawHearItConfigureUI(LGFX& tft) {
+  if (hearItUseLVGL) return;  // LVGL handles display
   // Draw header
   drawHeader();
 

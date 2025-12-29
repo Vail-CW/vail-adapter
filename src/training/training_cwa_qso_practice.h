@@ -262,6 +262,7 @@ QSOState qsoState = QSO_READY;
  * Draw QSO Practice UI (Modern, preserving header)
  */
 void drawCWAQSOPracticeUI(LGFX& tft) {
+  if (cwaUseLVGL) return;  // LVGL handles display
   // Get session index (11-13 maps to 0-2)
   int sessionIndex = cwaSelectedSession - 11;
   if (sessionIndex < 0 || sessionIndex > 2) {

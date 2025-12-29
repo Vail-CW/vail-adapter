@@ -17,6 +17,9 @@ bool brightnessChanged = false;
 // Preferences for persistent storage
 Preferences brightnessPrefs;
 
+// LVGL mode flag - when true, skip legacy draw functions (LVGL handles display)
+bool brightnessUseLVGL = true;  // Default to LVGL mode
+
 // Forward declaration
 void drawBrightnessDisplay(LGFX &display);
 
@@ -105,6 +108,7 @@ void initBrightnessSettings(LGFX &display) {
  * Draw brightness level display
  */
 void drawBrightnessDisplay(LGFX &display) {
+  if (brightnessUseLVGL) return;  // LVGL handles display
   // Clear display area
   display.fillRect(0, 50, SCREEN_WIDTH, 140, COLOR_BACKGROUND);
 

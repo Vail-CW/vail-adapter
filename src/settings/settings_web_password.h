@@ -27,6 +27,9 @@ PasswordState passwordState = PASSWORD_STATE_NORMAL;
 String webPassword = "";
 bool webAuthEnabled = false;
 
+// LVGL mode flag - when true, skip legacy draw functions (LVGL handles display)
+bool webPasswordUseLVGL = true;  // Default to LVGL mode
+
 // Forward declarations
 void startWebPasswordSettings(LGFX &display);
 void drawWebPasswordUI(LGFX &display);
@@ -49,6 +52,7 @@ void startWebPasswordSettings(LGFX &display) {
 
 // Draw password input UI
 void drawWebPasswordUI(LGFX &display) {
+  if (webPasswordUseLVGL) return;  // LVGL handles display
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 

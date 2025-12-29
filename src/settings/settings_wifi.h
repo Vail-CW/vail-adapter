@@ -47,6 +47,9 @@ bool connectedFromAPMode = false;  // Track if connection was made from AP mode
 unsigned long connectionSuccessTime = 0;  // Time when connection succeeded
 String failedSSID = "";  // Track SSID that failed to connect (for password retry)
 
+// LVGL mode flag - when true, skip legacy draw functions (LVGL handles display)
+bool wifiSettingsUseLVGL = true;  // Default to LVGL mode
+
 // Forward declarations
 void startWiFiSettings(LGFX &display);
 void drawWiFiUI(LGFX &display);
@@ -140,6 +143,7 @@ void scanNetworks() {
 
 // Draw current connection status
 void drawCurrentConnection(LGFX &display) {
+  if (wifiSettingsUseLVGL) return;  // LVGL handles display
   display.setTextSize(2);
   display.setTextColor(ST77XX_GREEN);
 
@@ -207,6 +211,7 @@ void drawCurrentConnection(LGFX &display) {
 
 // Draw WiFi UI based on current state
 void drawWiFiUI(LGFX &display) {
+  if (wifiSettingsUseLVGL) return;  // LVGL handles display
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -297,6 +302,7 @@ void drawWiFiUI(LGFX &display) {
 
 // Draw network list
 void drawNetworkList(LGFX &display) {
+  if (wifiSettingsUseLVGL) return;  // LVGL handles display
   // Clear the network list area (preserve header and footer)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 60, COLOR_BACKGROUND);
 
@@ -397,6 +403,7 @@ void drawNetworkList(LGFX &display) {
 
 // Draw reset confirmation screen
 void drawResetConfirmation(LGFX &display) {
+  if (wifiSettingsUseLVGL) return;  // LVGL handles display
   display.setTextSize(2);
   display.setTextColor(ST77XX_RED);
 
@@ -425,6 +432,7 @@ void drawResetConfirmation(LGFX &display) {
 
 // Draw AP mode screen
 void drawAPModeScreen(LGFX &display) {
+  if (wifiSettingsUseLVGL) return;  // LVGL handles display
   display.setTextSize(2);
   display.setTextColor(ST77XX_GREEN);
 
@@ -469,6 +477,7 @@ void drawAPModeScreen(LGFX &display) {
 
 // Draw password input screen
 void drawPasswordInput(LGFX &display) {
+  if (wifiSettingsUseLVGL) return;  // LVGL handles display
   display.setTextSize(1);
   display.setTextColor(ST77XX_CYAN);
   display.setCursor(10, 55);

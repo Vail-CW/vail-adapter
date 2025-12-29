@@ -131,6 +131,7 @@ String generateCWAContent() {
  * Draw copy practice UI
  */
 void drawCWACopyPracticeUI(LGFX& tft) {
+  if (cwaUseLVGL) return;  // LVGL handles display
   tft.fillScreen(COLOR_BACKGROUND);
   drawHeader();
 

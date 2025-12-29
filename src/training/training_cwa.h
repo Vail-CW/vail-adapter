@@ -40,6 +40,7 @@ extern void drawHeader();
  * Draw track selection screen
  */
 void drawCWATrackSelectUI(LGFX& tft) {
+  if (cwaUseLVGL) return;  // LVGL handles display
   // Clear screen (preserve header)
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -146,6 +147,7 @@ int handleCWATrackSelectInput(char key, LGFX& tft) {
  * Draw session selection screen
  */
 void drawCWASessionSelectUI(LGFX& tft) {
+  if (cwaUseLVGL) return;  // LVGL handles display
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   int cardX = 20;
@@ -244,6 +246,7 @@ int handleCWASessionSelectInput(char key, LGFX& tft) {
  * Draw practice type selection screen
  */
 void drawCWAPracticeTypeSelectUI(LGFX& tft) {
+  if (cwaUseLVGL) return;  // LVGL handles display
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   bool advancedLocked = (cwaSelectedSession <= 10);
@@ -378,6 +381,7 @@ int handleCWAPracticeTypeSelectInput(char key, LGFX& tft) {
  * Draw message type selection screen
  */
 void drawCWAMessageTypeSelectUI(LGFX& tft) {
+  if (cwaUseLVGL) return;  // LVGL handles display
   tft.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
   int cardX = 20;

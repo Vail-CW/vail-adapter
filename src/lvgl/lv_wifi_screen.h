@@ -782,6 +782,9 @@ void createPasswordInputView(lv_obj_t* parent) {
     lv_obj_add_event_cb(wifi_password_textarea, password_textarea_key_handler, LV_EVENT_KEY, NULL);
     addNavigableWidget(wifi_password_textarea);
 
+    // Auto-focus the password textarea for immediate input
+    focusWidget(wifi_password_textarea);
+
     // Visibility toggle hint (store reference for partial updates)
     wifi_password_hint = lv_label_create(parent);
     lv_label_set_text(wifi_password_hint, wifi_password_visible ? "TAB: Hide password" : "TAB: Show password");

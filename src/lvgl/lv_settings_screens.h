@@ -151,7 +151,7 @@ lv_obj_t* createVolumeSettingsScreen() {
     lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* help = lv_label_create(footer);
-    lv_label_set_text(help, "LEFT/RIGHT Adjust   ESC Back (auto-saves)");
+    lv_label_set_text(help, FOOTER_ADJUST_ESC);  // Use standardized footer
     lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);
@@ -265,7 +265,7 @@ lv_obj_t* createBrightnessSettingsScreen() {
     lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* help = lv_label_create(footer);
-    lv_label_set_text(help, "LEFT/RIGHT Adjust   ESC Back (auto-saves)");
+    lv_label_set_text(help, FOOTER_ADJUST_ESC);  // Use standardized footer
     lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);
@@ -497,7 +497,7 @@ lv_obj_t* createCWSettingsScreen() {
     lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* help = lv_label_create(footer);
-    lv_label_set_text(help, "UP/DN Select   LEFT/RIGHT Adjust   ESC Back");
+    lv_label_set_text(help, FOOTER_NAV_ADJUST_ESC);  // Use standardized footer
     lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);
@@ -601,10 +601,13 @@ lv_obj_t* createCallsignSettingsScreen() {
     lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* help = lv_label_create(footer);
-    lv_label_set_text(help, "Type callsign   ENTER Save   ESC Cancel");
+    lv_label_set_text(help, FOOTER_TYPE_ENTER_ESC);  // Use standardized footer
     lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);
+
+    // Auto-focus the callsign textarea for immediate input
+    focusWidget(callsign_textarea);
 
     callsign_screen = screen;
     return screen;

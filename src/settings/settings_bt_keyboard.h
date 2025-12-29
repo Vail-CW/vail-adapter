@@ -24,6 +24,9 @@ int btkbSelectedDevice = 0;
 unsigned long btkbLastUIUpdate = 0;
 bool btkbForgetConfirm = false;
 
+// LVGL mode flag - when true, skip legacy draw functions (LVGL handles display)
+bool btKeyboardUseLVGL = true;  // Default to LVGL mode
+
 // Forward declarations
 void startBTKeyboardSettings(LGFX &display);
 void drawBTKeyboardSettingsUI(LGFX &display);
@@ -78,6 +81,7 @@ void startBTKeyboardSettings(LGFX &display) {
 
 // Main UI draw function
 void drawBTKeyboardSettingsUI(LGFX &display) {
+  if (btKeyboardUseLVGL) return;  // LVGL handles display
   // Clear content area (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -102,6 +106,7 @@ void drawBTKeyboardSettingsUI(LGFX &display) {
 
 // Draw status screen (main screen)
 void drawBTKBStatusScreen(LGFX &display) {
+  if (btKeyboardUseLVGL) return;  // LVGL handles display
   // Status card
   int cardX = 20;
   int cardY = 55;
@@ -204,6 +209,7 @@ void drawBTKBStatusScreen(LGFX &display) {
 
 // Draw scanning screen
 void drawBTKBScanningScreen(LGFX &display) {
+  if (btKeyboardUseLVGL) return;  // LVGL handles display
   // Scanning card
   int cardX = 40;
   int cardY = 90;
@@ -254,6 +260,7 @@ void drawBTKBScanningScreen(LGFX &display) {
 
 // Draw device list
 void drawBTKBDeviceList(LGFX &display) {
+  if (btKeyboardUseLVGL) return;  // LVGL handles display
   if (bleKBHost.foundCount == 0) {
     // No devices found
     display.setFont(&FreeSansBold12pt7b);
@@ -373,6 +380,7 @@ void drawBTKBDeviceList(LGFX &display) {
 
 // Draw connecting screen
 void drawBTKBConnectingScreen(LGFX &display) {
+  if (btKeyboardUseLVGL) return;  // LVGL handles display
   int cardX = 40;
   int cardY = 80;
   int cardW = SCREEN_WIDTH - 80;
@@ -422,6 +430,7 @@ void drawBTKBConnectingScreen(LGFX &display) {
 
 // Draw forget confirmation
 void drawBTKBForgetConfirm(LGFX &display) {
+  if (btKeyboardUseLVGL) return;  // LVGL handles display
   int cardX = 30;
   int cardY = 80;
   int cardW = SCREEN_WIDTH - 60;

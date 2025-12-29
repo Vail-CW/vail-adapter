@@ -340,9 +340,9 @@ void updateHearItFooter() {
     if (hear_it_footer_help == NULL) return;
 
     if (currentHearItState == HEAR_IT_STATE_SETTINGS) {
-        lv_label_set_text(hear_it_footer_help, "UP/DOWN:Navigate  ENTER:Select  ESC:Exit");
+        lv_label_set_text(hear_it_footer_help, FOOTER_NAV_ENTER_ESC);
     } else {
-        lv_label_set_text(hear_it_footer_help, "ENTER:Submit  LEFT:Replay  TAB:Skip  ESC:Settings");
+        lv_label_set_text(hear_it_footer_help, FOOTER_TRAINING_ACTIVE);
     }
 }
 
@@ -724,7 +724,7 @@ lv_obj_t* createHearItTypeItScreen() {
     lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
 
     hear_it_footer_help = lv_label_create(footer);
-    lv_label_set_text(hear_it_footer_help, "UP/DOWN:Navigate  ENTER:Select  ESC:Exit");
+    lv_label_set_text(hear_it_footer_help, FOOTER_NAV_ENTER_ESC);  // Use standardized footer
     lv_obj_set_style_text_color(hear_it_footer_help, LV_COLOR_WARNING, 0);
     lv_obj_set_style_text_font(hear_it_footer_help, getThemeFonts()->font_small, 0);
     lv_obj_center(hear_it_footer_help);
@@ -778,6 +778,30 @@ static lv_obj_t* koch_screen = NULL;
 static lv_obj_t* koch_level_label = NULL;
 static lv_obj_t* koch_chars_label = NULL;
 static lv_obj_t* koch_progress_bar = NULL;
+
+// Key event callback for Koch Method keyboard input
+static void koch_key_event_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+    Serial.printf("[Koch LVGL] Key event: %lu (0x%02lX)\n", key, key);
+
+    switch(key) {
+        case LV_KEY_ESC:
+            onLVGLBackNavigation();
+            break;
+        case LV_KEY_ENTER:
+            // TODO: Start Koch practice (future feature)
+            beep(TONE_SELECT, BEEP_MEDIUM);
+            break;
+        case 's':
+        case 'S':
+            // TODO: Open Koch settings (future feature)
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+            break;
+    }
+}
 
 lv_obj_t* createKochMethodScreen() {
     lv_obj_t* screen = createScreen();
@@ -868,6 +892,33 @@ lv_obj_t* createKochMethodScreen() {
     lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);
+
+    // Invisible focus container for keyboard input
+    // This widget receives all keyboard input and routes it through koch_key_event_cb
+    lv_obj_t* focus_container = lv_obj_create(screen);
+    lv_obj_set_size(focus_container, 1, 1);  // Minimal size (invisible but can receive focus)
+    lv_obj_set_pos(focus_container, -10, -10);  // Position off-screen
+    lv_obj_set_style_bg_opa(focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, 0);  // No focus outline
+    lv_obj_set_style_outline_width(focus_container, 0, LV_STATE_FOCUSED);  // No focus outline when focused
+    lv_obj_clear_flag(focus_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);  // Must be clickable to receive focus
+
+    // Add keyboard event handler
+    lv_obj_add_event_cb(focus_container, koch_key_event_cb, LV_EVENT_KEY, NULL);
+
+    // Add to navigation group (enables keyboard input + ESC handling)
+    addNavigableWidget(focus_container);
+
+    // Put group in edit mode - this makes keys go to the widget instead of navigation
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_set_editing(group, true);
+    }
+
+    // Ensure focus is on our container
+    lv_group_focus_obj(focus_container);
 
     koch_screen = screen;
     return screen;

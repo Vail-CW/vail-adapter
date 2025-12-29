@@ -175,6 +175,9 @@ CWAMessageType cwaSelectedMessageType = MESSAGE_CHARACTERS;  // Currently select
 // Preferences for saving progress
 Preferences cwaPrefs;
 
+// LVGL mode flag - when true, skip legacy draw functions (LVGL handles display)
+bool cwaUseLVGL = true;  // Default to LVGL mode
+
 // Settings (declared extern from settings_cw.h)
 extern int cwSpeed;
 extern int cwTone;

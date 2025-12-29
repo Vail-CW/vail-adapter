@@ -12,9 +12,25 @@
 #include "lv_screen_manager.h"
 #include "../core/config.h"
 
+// Forward declaration for back navigation
+extern void onLVGLBackNavigation();
+
 // ============================================
 // Morse Shooter Game Screen
 // ============================================
+
+// Key event callback for Morse Shooter keyboard input
+static void shooter_key_event_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+    Serial.printf("[Shooter LVGL] Key event: %lu (0x%02lX)\n", key, key);
+
+    if (key == LV_KEY_ESC) {
+        onLVGLBackNavigation();
+    }
+}
 
 static lv_obj_t* shooter_screen = NULL;
 static lv_obj_t* shooter_canvas = NULL;
@@ -129,6 +145,24 @@ lv_obj_t* createMorseShooterScreen() {
     lv_obj_set_style_text_color(shooter_decoded_label, LV_COLOR_ACCENT_GREEN, 0);
     lv_obj_set_style_text_font(shooter_decoded_label, getThemeFonts()->font_subtitle, 0);
 
+    // Invisible focus container for keyboard input (ESC to exit)
+    lv_obj_t* focus_container = lv_obj_create(screen);
+    lv_obj_set_size(focus_container, 1, 1);
+    lv_obj_set_pos(focus_container, -10, -10);
+    lv_obj_set_style_bg_opa(focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, LV_STATE_FOCUSED);
+    lv_obj_clear_flag(focus_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(focus_container, shooter_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(focus_container);
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_set_editing(group, true);
+    }
+    lv_group_focus_obj(focus_container);
+
     shooter_screen = screen;
     return screen;
 }
@@ -210,6 +244,31 @@ void drawShooterScenery() {
 // ============================================
 // Memory Chain Game Screen
 // ============================================
+
+// Forward declarations for memory game integration
+extern bool inMemorySettings;
+extern int memorySettingsSelection;
+extern void drawMemorySettings(LGFX& tft);
+
+// Key event callback for Memory Chain keyboard input
+static void memory_key_event_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+    Serial.printf("[Memory LVGL] Key event: %lu (0x%02lX)\n", key, key);
+
+    switch(key) {
+        case LV_KEY_ESC:
+            onLVGLBackNavigation();
+            break;
+        case 's':
+        case 'S':
+            // Settings handled by game loop, just provide feedback
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+            break;
+    }
+}
 
 static lv_obj_t* memory_screen = NULL;
 static lv_obj_t* memory_level_label = NULL;
@@ -326,6 +385,24 @@ lv_obj_t* createMemoryChainScreen() {
     lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);
+
+    // Invisible focus container for keyboard input (S for settings, ESC to exit)
+    lv_obj_t* focus_container = lv_obj_create(screen);
+    lv_obj_set_size(focus_container, 1, 1);
+    lv_obj_set_pos(focus_container, -10, -10);
+    lv_obj_set_style_bg_opa(focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, LV_STATE_FOCUSED);
+    lv_obj_clear_flag(focus_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(focus_container, memory_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(focus_container);
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_set_editing(group, true);
+    }
+    lv_group_focus_obj(focus_container);
 
     memory_screen = screen;
     return screen;

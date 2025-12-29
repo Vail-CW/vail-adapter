@@ -402,11 +402,11 @@ lv_obj_t* createMenuScreen(const char* title, const LVMenuItem* items, int item_
     // Ensure content scroll starts at top (fixes items appearing above screen)
     lv_obj_scroll_to_y(content, 0, LV_ANIM_OFF);
 
-    // Footer hint
+    // Footer hint - use standardized footer text
     lv_obj_t* footer = lv_label_create(screen);
-    lv_label_set_text(footer, "Arrow keys to navigate, ENTER to select");
+    lv_label_set_text(footer, FOOTER_NAV_ENTER_ESC);
     lv_obj_set_style_text_font(footer, getThemeFonts()->font_body, 0);  // Theme font
-    lv_obj_set_style_text_color(footer, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_style_text_color(footer, LV_COLOR_WARNING, 0);  // Orange for visibility
     lv_obj_align(footer, LV_ALIGN_BOTTOM_MID, 0, -5);
 
     current_menu_item_count = item_count;

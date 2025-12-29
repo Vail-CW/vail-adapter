@@ -76,6 +76,7 @@ void startCWASendRound() {
  * Draw sending practice UI updates
  */
 void drawCWASendingPracticeUI(LGFX& tft) {
+  if (cwaUseLVGL) return;  // LVGL handles display
   // Clear main area
   tft.fillRect(0, 35, SCREEN_WIDTH, 130, COLOR_BACKGROUND);
 
@@ -157,6 +158,7 @@ void drawCWASendingPracticeUI(LGFX& tft) {
  * Draw only the decoded text area (for real-time updates without full redraw)
  */
 void drawCWASendDecodedOnly(LGFX& tft) {
+  if (cwaUseLVGL) return;  // LVGL handles display
   // Only update if we're in the sending state (not showing feedback)
   if (cwaSendShowingFeedback) return;
 

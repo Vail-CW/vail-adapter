@@ -61,6 +61,9 @@ int radioDitDuration = 0;
 // Preferences for radio mode
 Preferences radioPrefs;
 
+// LVGL mode flag - when true, skip legacy draw functions (LVGL handles display)
+bool radioOutputUseLVGL = true;  // Default to LVGL mode
+
 // Forward declarations
 void startRadioOutput(LGFX &display);
 void drawRadioOutputUI(LGFX &display);
@@ -119,6 +122,7 @@ void startRadioOutput(LGFX &display) {
 
 // Draw radio output UI
 void drawRadioOutputUI(LGFX &display) {
+  if (radioOutputUseLVGL) return;  // LVGL handles display
   // Clear screen (preserve header)
   display.fillRect(0, 42, SCREEN_WIDTH, SCREEN_HEIGHT - 42, COLOR_BACKGROUND);
 
@@ -212,6 +216,7 @@ void drawRadioOutputUI(LGFX &display) {
 
 // Draw memory selector overlay
 void drawMemorySelector(LGFX &display) {
+  if (radioOutputUseLVGL) return;  // LVGL handles display
   // Semi-transparent overlay effect (just draw over existing content)
   display.fillRoundRect(30, 50, SCREEN_WIDTH - 60, 160, 12, 0x0841);  // Very dark blue
   display.drawRoundRect(30, 50, SCREEN_WIDTH - 60, 160, 12, 0x34BF);  // Light blue outline

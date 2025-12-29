@@ -16,6 +16,35 @@
 extern int batteryPercent;
 
 // ============================================
+// Standard Footer Text Constants
+// Using text labels since LVGL fonts don't include arrow symbols
+// ============================================
+
+// Menu navigation (up/down to move, enter to select)
+#define FOOTER_NAV_ENTER_ESC        "UP/DN Navigate   ENTER Select   ESC Back"
+
+// Slider/value adjustment (left/right to change)
+#define FOOTER_ADJUST_ESC           "L/R Adjust   ESC Back (auto-saves)"
+
+// Combined navigation + adjustment
+#define FOOTER_NAV_ADJUST_ESC       "UP/DN Navigate   L/R Adjust   ESC Back"
+
+// Text input screens
+#define FOOTER_TYPE_ENTER_ESC       "Type text   ENTER Save   ESC Cancel"
+
+// Game screens
+#define FOOTER_GAME_ESC             "SPACE Pause   ESC Exit"
+#define FOOTER_GAME_SETTINGS        "UP/DN Navigate   L/R Adjust   ENTER Save   ESC Cancel"
+
+// Context menu/confirmation
+#define FOOTER_CONTEXT_MENU         "UP/DN Select   ENTER Confirm   ESC Cancel"
+#define FOOTER_CONFIRM_DIALOG       "L/R Select   ENTER Confirm   ESC Cancel"
+
+// Training modes
+#define FOOTER_TRAINING_ACTIVE      "ENTER Submit   LEFT Replay   TAB Skip   ESC Exit"
+#define FOOTER_TRAINING_WAIT        "Keying in progress...   ESC Exit"
+
+// ============================================
 // Forward Declarations
 // ============================================
 

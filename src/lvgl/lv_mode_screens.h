@@ -12,9 +12,32 @@
 #include "lv_screen_manager.h"
 #include "../core/config.h"
 
+// Forward declaration for back navigation
+extern void onLVGLBackNavigation();
+
 // ============================================
 // Radio Output Screen
 // ============================================
+
+// Key event callback for Radio Output keyboard input
+static void radio_key_event_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+    Serial.printf("[Radio LVGL] Key event: %lu (0x%02lX)\n", key, key);
+
+    switch(key) {
+        case LV_KEY_ESC:
+            onLVGLBackNavigation();
+            break;
+        case 'm':
+        case 'M':
+            // M key opens memory selector - handled by mode update loop
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+            break;
+    }
+}
 
 static lv_obj_t* radio_screen = NULL;
 static lv_obj_t* radio_mode_label = NULL;
@@ -106,6 +129,24 @@ lv_obj_t* createRadioOutputScreen() {
     lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);
+
+    // Invisible focus container for keyboard input (M for memory, ESC to exit)
+    lv_obj_t* focus_container = lv_obj_create(screen);
+    lv_obj_set_size(focus_container, 1, 1);
+    lv_obj_set_pos(focus_container, -10, -10);
+    lv_obj_set_style_bg_opa(focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, LV_STATE_FOCUSED);
+    lv_obj_clear_flag(focus_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(focus_container, radio_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(focus_container);
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_set_editing(group, true);
+    }
+    lv_group_focus_obj(focus_container);
 
     radio_screen = screen;
     return screen;
@@ -218,6 +259,29 @@ static lv_obj_t* vail_chat_textarea = NULL;
 static lv_obj_t* vail_status_label = NULL;
 static lv_obj_t* vail_callsign_label = NULL;
 
+// Key event callback for Vail Repeater keyboard input
+static void vail_key_event_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+    Serial.printf("[Vail LVGL] Key event: %lu (0x%02lX)\n", key, key);
+
+    switch(key) {
+        case LV_KEY_ESC:
+            onLVGLBackNavigation();
+            break;
+        case 'c':
+        case 'C':
+            // Clear chat - just beep for now, functionality can be added later
+            if (vail_chat_textarea != NULL) {
+                lv_textarea_set_text(vail_chat_textarea, "");
+            }
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+            break;
+    }
+}
+
 lv_obj_t* createVailRepeaterScreen() {
     lv_obj_t* screen = createScreen();
     applyScreenStyle(screen);
@@ -288,6 +352,24 @@ lv_obj_t* createVailRepeaterScreen() {
     lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);
+
+    // Invisible focus container for keyboard input (C to clear, ESC to exit)
+    lv_obj_t* focus_container = lv_obj_create(screen);
+    lv_obj_set_size(focus_container, 1, 1);
+    lv_obj_set_pos(focus_container, -10, -10);
+    lv_obj_set_style_bg_opa(focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, LV_STATE_FOCUSED);
+    lv_obj_clear_flag(focus_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(focus_container, vail_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(focus_container);
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_set_editing(group, true);
+    }
+    lv_group_focus_obj(focus_container);
 
     vail_screen = screen;
     return screen;

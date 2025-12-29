@@ -13,6 +13,9 @@ bool volumeSettingsActive = false;
 int volumeValue = DEFAULT_VOLUME;
 bool volumeChanged = false;
 
+// LVGL mode flag - when true, skip legacy draw functions (LVGL handles display)
+bool volumeUseLVGL = true;  // Default to LVGL mode
+
 // Forward declaration
 void drawVolumeDisplay(LGFX &display);
 
@@ -47,6 +50,7 @@ void initVolumeSettings(LGFX &display) {
  * Draw volume level display
  */
 void drawVolumeDisplay(LGFX &display) {
+  if (volumeUseLVGL) return;  // LVGL handles display
   // Clear display area
   display.fillRect(0, 50, SCREEN_WIDTH, 140, COLOR_BACKGROUND);
 
