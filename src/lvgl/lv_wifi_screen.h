@@ -70,6 +70,7 @@ void createResetConfirmView(lv_obj_t* parent);
 void createSignalBars(lv_obj_t* parent, int rssi, int x_offset);
 void performWiFiScan();
 void attemptWiFiConnection(const String& ssid, const String& password);
+void updateWiFiScreen();  // Called from main loop for non-blocking connection
 void startWiFiSetupLVGL();
 void triggerWiFiScan();  // Deferred scan trigger
 void cleanupWiFiScreen();  // Cleanup when leaving screen
@@ -977,25 +978,37 @@ void performWiFiScan() {
 }
 
 void attemptWiFiConnection(const String& ssid, const String& password) {
-    // Force UI update before blocking connection
-    lv_timer_handler();
+    // Non-blocking: just request the connection
+    // UI is already set to LVGL_WIFI_CONNECTING by caller
+    requestWiFiConnection(ssid, password);
+    // Main loop will poll updateWiFiConnection() and call updateWiFiScreen()
+}
 
-    // Call existing connect function from settings_wifi.h
-    connectToWiFi(ssid, password);
-
-    // Check result
-    if (WiFi.status() == WL_CONNECTED) {
-        wifi_lvgl_state = LVGL_WIFI_CONNECTED;
-        wifi_failed_ssid = "";
-        beep(TONE_SUCCESS, BEEP_LONG);
-    } else {
-        wifi_lvgl_state = LVGL_WIFI_ERROR;
-        wifi_error_message = "Connection failed.\nCheck password and try again.";
-        wifi_failed_ssid = ssid;
-        beep(TONE_ERROR, BEEP_LONG);
+// Called from main loop to check connection progress and update UI
+void updateWiFiScreen() {
+    // Only process if we're in connecting state
+    if (wifi_lvgl_state != LVGL_WIFI_CONNECTING) {
+        return;
     }
 
-    updateWiFiContent();
+    // Check for connection state changes
+    WiFiConnectionState connState = getWiFiConnectionState();
+
+    if (connState == WIFI_CONN_SUCCESS) {
+        wifi_lvgl_state = LVGL_WIFI_CONNECTED;
+        wifi_failed_ssid = "";
+        clearWiFiConnectionState();
+        beep(TONE_SUCCESS, BEEP_LONG);
+        updateWiFiContent();
+    } else if (connState == WIFI_CONN_FAILED) {
+        wifi_lvgl_state = LVGL_WIFI_ERROR;
+        wifi_error_message = "Connection failed.\nCheck password and try again.";
+        wifi_failed_ssid = wifiConnRequest.ssid;  // Get SSID before clearing
+        clearWiFiConnectionState();
+        beep(TONE_ERROR, BEEP_LONG);
+        updateWiFiContent();
+    }
+    // If still WIFI_CONN_STARTING or WIFI_CONN_REQUESTED, spinner continues
 }
 
 // ============================================

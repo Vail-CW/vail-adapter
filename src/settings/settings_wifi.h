@@ -50,6 +50,36 @@ String failedSSID = "";  // Track SSID that failed to connect (for password retr
 // LVGL mode flag - when true, skip legacy draw functions (LVGL handles display)
 bool wifiSettingsUseLVGL = true;  // Default to LVGL mode
 
+// ============================================
+// Non-Blocking WiFi Connection State Machine
+// ============================================
+
+enum WiFiConnectionState {
+    WIFI_CONN_IDLE,       // No connection in progress
+    WIFI_CONN_REQUESTED,  // Connection requested, not started yet
+    WIFI_CONN_STARTING,   // WiFi.begin() called, waiting for result
+    WIFI_CONN_SUCCESS,    // Connection succeeded (transient state)
+    WIFI_CONN_FAILED      // Connection failed (transient state)
+};
+
+struct WiFiConnectionRequest {
+    WiFiConnectionState state = WIFI_CONN_IDLE;
+    String ssid;
+    String password;
+    unsigned long startTime = 0;
+    unsigned long timeout = 10000;  // 10 second timeout
+    bool wasInAPMode = false;
+};
+
+static WiFiConnectionRequest wifiConnRequest;
+
+// Forward declarations for non-blocking connection
+void requestWiFiConnection(const String& ssid, const String& password);
+bool updateWiFiConnection();
+void clearWiFiConnectionState();
+WiFiConnectionState getWiFiConnectionState();
+bool isWiFiConnectionInProgress();
+
 // Forward declarations
 void startWiFiSettings(LGFX &display);
 void drawWiFiUI(LGFX &display);
@@ -1139,6 +1169,144 @@ void updateAPModeWebServer() {
     Serial.println("Starting web server for AP mode...");
     setupWebServer();
   }
+}
+
+// ============================================
+// Non-Blocking WiFi Connection Functions
+// ============================================
+
+// Request a WiFi connection (non-blocking, called from LVGL event handlers)
+void requestWiFiConnection(const String& ssid, const String& password) {
+    if (wifiConnRequest.state != WIFI_CONN_IDLE) {
+        Serial.println("[WiFi] Connection already in progress, ignoring request");
+        return;
+    }
+
+    wifiConnRequest.ssid = ssid;
+    wifiConnRequest.password = password;
+    wifiConnRequest.state = WIFI_CONN_REQUESTED;
+    wifiConnRequest.timeout = 10000;  // 10 second timeout
+    wifiConnRequest.wasInAPMode = isAPMode;
+
+    Serial.printf("[WiFi] Non-blocking connection requested to: %s\n", ssid.c_str());
+}
+
+// Internal: Start the actual WiFi connection
+static void startWiFiConnectionInternal() {
+    // Stop AP mode if active
+    if (wifiConnRequest.wasInAPMode) {
+        Serial.println("[WiFi] Stopping AP mode before connecting...");
+        extern bool webServerRunning;
+        extern void stopWebServer();
+        if (webServerRunning) {
+            stopWebServer();
+        }
+        WiFi.softAPdisconnect(true);
+        isAPMode = false;
+        delay(50);  // Brief delay for mode switch (non-blocking alternative would be complex)
+    }
+
+    // Start connection
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(wifiConnRequest.ssid.c_str(), wifiConnRequest.password.c_str());
+
+    wifiConnRequest.startTime = millis();
+    wifiConnRequest.state = WIFI_CONN_STARTING;
+
+    Serial.printf("[WiFi] WiFi.begin() called for: %s\n", wifiConnRequest.ssid.c_str());
+}
+
+// Poll the connection state (called from main loop)
+// Returns: true if state changed to SUCCESS or FAILED
+bool updateWiFiConnection() {
+    switch (wifiConnRequest.state) {
+        case WIFI_CONN_IDLE:
+            return false;
+
+        case WIFI_CONN_REQUESTED:
+            // Start the connection on next loop iteration
+            startWiFiConnectionInternal();
+            return false;  // Not done yet, just starting
+
+        case WIFI_CONN_STARTING:
+            // Check if connected
+            if (WiFi.status() == WL_CONNECTED) {
+                Serial.println("[WiFi] Connected successfully!");
+                Serial.printf("[WiFi] IP: %s\n", WiFi.localIP().toString().c_str());
+
+                // Save credentials
+                saveWiFiCredentials(wifiConnRequest.ssid, wifiConnRequest.password);
+
+                // Track if connected from AP mode
+                if (wifiConnRequest.wasInAPMode) {
+                    connectedFromAPMode = true;
+                    connectionSuccessTime = millis();
+                }
+
+                wifiConnRequest.state = WIFI_CONN_SUCCESS;
+                return true;  // State changed - caller should update UI
+            }
+
+            // Check for timeout
+            if (millis() - wifiConnRequest.startTime > wifiConnRequest.timeout) {
+                Serial.println("[WiFi] Connection timeout!");
+
+                // Track failed SSID
+                failedSSID = wifiConnRequest.ssid;
+
+                // Restore AP mode if we were in it
+                if (wifiConnRequest.wasInAPMode) {
+                    Serial.println("[WiFi] Restoring AP mode...");
+                    startAPMode();
+                }
+
+                wifiConnRequest.state = WIFI_CONN_FAILED;
+                return true;  // State changed - caller should update UI
+            }
+
+            // Still waiting - check for intermediate failures
+            if (WiFi.status() == WL_CONNECT_FAILED || WiFi.status() == WL_NO_SSID_AVAIL) {
+                Serial.printf("[WiFi] Connection failed early (status: %d)\n", WiFi.status());
+
+                failedSSID = wifiConnRequest.ssid;
+
+                if (wifiConnRequest.wasInAPMode) {
+                    Serial.println("[WiFi] Restoring AP mode...");
+                    startAPMode();
+                }
+
+                wifiConnRequest.state = WIFI_CONN_FAILED;
+                return true;
+            }
+
+            return false;  // Still connecting
+
+        case WIFI_CONN_SUCCESS:
+        case WIFI_CONN_FAILED:
+            // Transient states - UI should read and then clear
+            return false;
+    }
+    return false;
+}
+
+// Clear connection state (call after handling success/failure in UI)
+void clearWiFiConnectionState() {
+    wifiConnRequest.state = WIFI_CONN_IDLE;
+    wifiConnRequest.ssid = "";
+    wifiConnRequest.password = "";
+    wifiConnRequest.startTime = 0;
+    wifiConnRequest.wasInAPMode = false;
+}
+
+// Check if connection is in progress
+bool isWiFiConnectionInProgress() {
+    return wifiConnRequest.state == WIFI_CONN_REQUESTED ||
+           wifiConnRequest.state == WIFI_CONN_STARTING;
+}
+
+// Get current connection state
+WiFiConnectionState getWiFiConnectionState() {
+    return wifiConnRequest.state;
 }
 
 #endif // SETTINGS_WIFI_H

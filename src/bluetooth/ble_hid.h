@@ -69,6 +69,9 @@ struct BLEHIDState {
 
 BLEHIDState btHID;
 
+// Track previous connection state for UI updates
+static BLEConnectionState lastBTHIDState = BLE_STATE_OFF;
+
 // Forward declarations
 void startBTHID(LGFX& display);
 void drawBTHIDUI(LGFX& display);
@@ -76,6 +79,12 @@ int handleBTHIDInput(char key, LGFX& display);
 void updateBTHID();
 void sendHIDReport(uint8_t modifiers);
 void stopBTHID();
+
+// Forward declarations for LVGL UI updates (defined in lv_mode_screens.h)
+extern void updateBTHIDStatus(const char* status, bool connected);
+extern void updateBTHIDDeviceName(const char* name);
+extern void updateBTHIDPaddleIndicators(bool ditPressed, bool dahPressed);
+extern void cleanupBTHIDScreen();
 
 // Send HID keyboard report with modifiers
 void sendHIDReport(uint8_t modifiers) {
@@ -102,6 +111,7 @@ void startBTHID(LGFX& display) {
   btHID.lastDitPressed = false;
   btHID.lastDahPressed = false;
   btHID.lastUpdateTime = millis();
+  lastBTHIDState = BLE_STATE_OFF;  // Reset state tracking
 
   // Initialize BLE core if not already done
   initBLECore();
@@ -145,9 +155,14 @@ void startBTHID(LGFX& display) {
     NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
   );
 
-  // Add Report Reference descriptor (required for HID)
-  NimBLE2904* reportRefDesc = (NimBLE2904*)btHID.inputReport->createDescriptor("2908");
-  uint8_t reportRef[] = {0x01, 0x01};  // Report ID 1, Input
+  // Add Report Reference descriptor (UUID 0x2908, required for HID)
+  // Note: Use generic descriptor, not NimBLE2904 (which is for Characteristic Presentation Format 0x2904)
+  NimBLEDescriptor* reportRefDesc = btHID.inputReport->createDescriptor(
+    NimBLEUUID((uint16_t)0x2908),
+    NIMBLE_PROPERTY::READ,
+    2  // 2 bytes for Report Reference
+  );
+  uint8_t reportRef[] = {0x01, 0x01};  // Report ID 1, Input Report type
   reportRefDesc->setValue(reportRef, sizeof(reportRef));
 
   // Start HID service
@@ -164,7 +179,10 @@ void startBTHID(LGFX& display) {
   // Start advertising
   startBLEAdvertising("HID Keyboard");
 
-  // UI is now handled by LVGL - see lv_mode_screens.h
+  // Initialize LVGL UI with device name and status
+  updateBTHIDDeviceName(getBLEDeviceName().c_str());
+  updateBTHIDStatus("Advertising...", false);
+  updateBTHIDPaddleIndicators(false, false);
 }
 
 // Stop BT HID mode
@@ -176,10 +194,16 @@ void stopBTHID() {
     sendHIDReport(0x00);  // Release all keys
   }
 
+  // Stop any sidetone that might be playing
+  stopTone();
+
   btHID.active = false;
   btHID.hidService = nullptr;
   btHID.inputReport = nullptr;
   btHID.reportMap = nullptr;
+
+  // Clean up LVGL widget pointers
+  cleanupBTHIDScreen();
 
   // Deinit BLE
   deinitBLECore();
@@ -269,6 +293,31 @@ int handleBTHIDInput(char key, LGFX& display) {
 void updateBTHID() {
   if (!btHID.active) return;
 
+  // Check for connection state changes and update LVGL UI
+  BLEConnectionState currentBLEState = bleCore.connectionState;
+  if (currentBLEState != lastBTHIDState) {
+    lastBTHIDState = currentBLEState;
+
+    switch (currentBLEState) {
+      case BLE_STATE_CONNECTED:
+        updateBTHIDStatus("Connected", true);
+        Serial.println("[BT HID] Connection state: Connected");
+        break;
+      case BLE_STATE_ADVERTISING:
+        updateBTHIDStatus("Advertising...", false);
+        Serial.println("[BT HID] Connection state: Advertising");
+        break;
+      case BLE_STATE_OFF:
+        updateBTHIDStatus("Off", false);
+        Serial.println("[BT HID] Connection state: Off");
+        break;
+      case BLE_STATE_ERROR:
+        updateBTHIDStatus("Error", false);
+        Serial.println("[BT HID] Connection state: Error");
+        break;
+    }
+  }
+
   // Read paddle inputs
   bool ditPressed = (digitalRead(DIT_PIN) == PADDLE_ACTIVE) ||
                     (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
@@ -276,9 +325,8 @@ void updateBTHID() {
                     (touchRead(TOUCH_DAH_PIN) > TOUCH_THRESHOLD);
 
   bool anyPressed = ditPressed || dahPressed;
-  bool wasPressed = btHID.lastDitPressed || btHID.lastDahPressed;
 
-  // Check if state changed
+  // Check if paddle state changed
   if (ditPressed != btHID.lastDitPressed || dahPressed != btHID.lastDahPressed) {
     // Build modifier byte
     uint8_t modifiers = 0;
@@ -294,6 +342,9 @@ void updateBTHID() {
     } else {
       stopTone();
     }
+
+    // Update visual paddle indicators on LVGL screen
+    updateBTHIDPaddleIndicators(ditPressed, dahPressed);
 
     // Update state
     btHID.lastDitPressed = ditPressed;

@@ -1169,6 +1169,8 @@ int handleHearItTypeItInput(char key, LGFX& tft) {
         // LVGL mode - update feedback via LVGL widgets
         showHearItFeedback(true, currentCallsign);
         updateHearItScore();
+        userInput = "";       // Clear input state
+        clearHearItInput();   // Clear the LVGL textarea
         lv_timer_handler();  // Force immediate render so feedback shows now
         scheduleHearItNextCallsign(true);  // Non-blocking timer for next callsign
         return 2;  // Return immediately, timer handles the rest

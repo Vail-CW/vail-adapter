@@ -658,6 +658,13 @@ void onLVGLBackNavigation() {
     if (currentModeInt == LVGL_MODE_WIFI_SETTINGS) {
         cleanupWiFiScreen();
     }
+    if (currentModeInt == LVGL_MODE_BT_HID) {
+        cleanupBTHIDScreen();
+    }
+    if (currentModeInt == LVGL_MODE_HEAR_IT_TYPE_IT ||
+        currentModeInt == LVGL_MODE_HEAR_IT_MENU) {
+        cleanupHearItTypeItScreen();
+    }
 
     // Get parent mode
     int parentMode = getParentModeInt(currentModeInt);

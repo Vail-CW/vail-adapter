@@ -401,6 +401,15 @@ void loop() {
   // LVGL reads CardKB directly via its input driver
   lv_timer_handler();
 
+  // Poll non-blocking WiFi connection state machine
+  // This must be called every loop to check connection progress
+  if (updateWiFiConnection()) {
+    // State changed - if we're in WiFi settings, update the UI
+    if (currentMode == MODE_WIFI_SETTINGS) {
+      updateWiFiScreen();
+    }
+  }
+
   // Check for pending web server restart (after file upload)
   if (isWebServerRestartPending()) {
     restartWebServer();

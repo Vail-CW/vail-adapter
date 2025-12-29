@@ -539,6 +539,15 @@ lv_obj_t* createComingSoonScreen(const char* feature_name) {
     lv_obj_set_style_text_color(esc, LV_COLOR_TEXT_PRIMARY, 0);
     lv_obj_set_style_text_font(esc, getThemeFonts()->font_body, 0);  // Theme font
 
+    // Invisible focusable container for ESC key handling
+    // Without a navigable widget, ESC events are never processed
+    lv_obj_t* focus_target = lv_obj_create(screen);
+    lv_obj_set_size(focus_target, 1, 1);
+    lv_obj_set_style_bg_opa(focus_target, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(focus_target, 0, 0);
+    lv_obj_add_flag(focus_target, LV_OBJ_FLAG_CLICKABLE);
+    addNavigableWidget(focus_target);
+
     return screen;
 }
 

@@ -562,6 +562,21 @@ lv_obj_t* createQSOLogEntryScreen() {
 
 static lv_obj_t* bt_hid_screen = NULL;
 static lv_obj_t* bt_hid_status_label = NULL;
+static lv_obj_t* bt_hid_device_name_label = NULL;
+static lv_obj_t* bt_hid_dit_indicator = NULL;
+static lv_obj_t* bt_hid_dah_indicator = NULL;
+
+// Key event callback for BT HID keyboard input (ESC to exit)
+static void bt_hid_key_event_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+    if (key == LV_KEY_ESC) {
+        onLVGLBackNavigation();
+        lv_event_stop_processing(e);
+    }
+}
 
 lv_obj_t* createBTHIDScreen() {
     lv_obj_t* screen = createScreen();
@@ -582,29 +597,100 @@ lv_obj_t* createBTHIDScreen() {
     // Status bar (WiFi + battery) on the right side
     createCompactStatusBar(screen);
 
-    // Status card
+    // Device name card
+    lv_obj_t* name_card = lv_obj_create(screen);
+    lv_obj_set_size(name_card, SCREEN_WIDTH - 40, 55);
+    lv_obj_set_pos(name_card, 20, HEADER_HEIGHT + 10);
+    applyCardStyle(name_card);
+    lv_obj_clear_flag(name_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* name_title = lv_label_create(name_card);
+    lv_label_set_text(name_title, "Device Name:");
+    lv_obj_set_style_text_color(name_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_style_text_font(name_title, getThemeFonts()->font_small, 0);
+    lv_obj_align(name_title, LV_ALIGN_LEFT_MID, 10, -10);
+
+    bt_hid_device_name_label = lv_label_create(name_card);
+    lv_label_set_text(bt_hid_device_name_label, "VAIL-SUMMIT-XXXXXX");
+    lv_obj_set_style_text_color(bt_hid_device_name_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_text_font(bt_hid_device_name_label, getThemeFonts()->font_input, 0);
+    lv_obj_align(bt_hid_device_name_label, LV_ALIGN_LEFT_MID, 10, 10);
+
+    // Connection status card
     lv_obj_t* status_card = lv_obj_create(screen);
-    lv_obj_set_size(status_card, SCREEN_WIDTH - 40, 120);
-    lv_obj_center(status_card);
-    lv_obj_set_layout(status_card, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(status_card, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(status_card, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(status_card, 15, 0);
+    lv_obj_set_size(status_card, SCREEN_WIDTH - 40, 50);
+    lv_obj_set_pos(status_card, 20, HEADER_HEIGHT + 75);
     applyCardStyle(status_card);
+    lv_obj_clear_flag(status_card, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* bt_icon = lv_label_create(status_card);
     lv_label_set_text(bt_icon, LV_SYMBOL_BLUETOOTH);
-    lv_obj_set_style_text_font(bt_icon, getThemeFonts()->font_large, 0);
+    lv_obj_set_style_text_font(bt_icon, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(bt_icon, LV_COLOR_ACCENT_BLUE, 0);
+    lv_obj_align(bt_icon, LV_ALIGN_LEFT_MID, 10, 0);
 
     bt_hid_status_label = lv_label_create(status_card);
-    lv_label_set_text(bt_hid_status_label, "Waiting for connection...");
+    lv_label_set_text(bt_hid_status_label, "Advertising...");
     lv_obj_add_style(bt_hid_status_label, getStyleLabelSubtitle(), 0);
+    lv_obj_align(bt_hid_status_label, LV_ALIGN_LEFT_MID, 50, 0);
 
-    lv_obj_t* hint = lv_label_create(status_card);
-    lv_label_set_text(hint, "Paddle input will send keystrokes to connected device");
-    lv_obj_add_style(hint, getStyleLabelBody(), 0);
-    lv_obj_set_style_text_align(hint, LV_TEXT_ALIGN_CENTER, 0);
+    // Key mapping card
+    lv_obj_t* mapping_card = lv_obj_create(screen);
+    lv_obj_set_size(mapping_card, SCREEN_WIDTH - 40, 55);
+    lv_obj_set_pos(mapping_card, 20, HEADER_HEIGHT + 135);
+    applyCardStyle(mapping_card);
+    lv_obj_clear_flag(mapping_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* mapping_title = lv_label_create(mapping_card);
+    lv_label_set_text(mapping_title, "Key Mapping:");
+    lv_obj_set_style_text_color(mapping_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_style_text_font(mapping_title, getThemeFonts()->font_small, 0);
+    lv_obj_align(mapping_title, LV_ALIGN_TOP_LEFT, 10, 5);
+
+    lv_obj_t* dit_mapping = lv_label_create(mapping_card);
+    lv_label_set_text(dit_mapping, "DIT -> Left Ctrl");
+    lv_obj_set_style_text_color(dit_mapping, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align(dit_mapping, LV_ALIGN_LEFT_MID, 10, 8);
+
+    lv_obj_t* dah_mapping = lv_label_create(mapping_card);
+    lv_label_set_text(dah_mapping, "DAH -> Right Ctrl");
+    lv_obj_set_style_text_color(dah_mapping, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align(dah_mapping, LV_ALIGN_LEFT_MID, 200, 8);
+
+    // Paddle indicators section
+    lv_obj_t* indicator_container = lv_obj_create(screen);
+    lv_obj_set_size(indicator_container, SCREEN_WIDTH - 40, 60);
+    lv_obj_set_pos(indicator_container, 20, HEADER_HEIGHT + 200);
+    lv_obj_set_style_bg_opa(indicator_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(indicator_container, 0, 0);
+    lv_obj_set_style_pad_all(indicator_container, 0, 0);
+    lv_obj_clear_flag(indicator_container, LV_OBJ_FLAG_SCROLLABLE);
+
+    // DIT indicator
+    bt_hid_dit_indicator = lv_led_create(indicator_container);
+    lv_led_set_color(bt_hid_dit_indicator, lv_color_hex(0x00FF00));
+    lv_obj_set_size(bt_hid_dit_indicator, 35, 35);
+    lv_obj_align(bt_hid_dit_indicator, LV_ALIGN_LEFT_MID, 60, 0);
+    lv_led_off(bt_hid_dit_indicator);
+
+    lv_obj_t* dit_label = lv_label_create(indicator_container);
+    lv_label_set_text(dit_label, "DIT");
+    lv_obj_set_style_text_color(dit_label, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_style_text_font(dit_label, getThemeFonts()->font_body, 0);
+    lv_obj_align(dit_label, LV_ALIGN_LEFT_MID, 105, 0);
+
+    // DAH indicator
+    bt_hid_dah_indicator = lv_led_create(indicator_container);
+    lv_led_set_color(bt_hid_dah_indicator, lv_color_hex(0x00FF00));
+    lv_obj_set_size(bt_hid_dah_indicator, 35, 35);
+    lv_obj_align(bt_hid_dah_indicator, LV_ALIGN_RIGHT_MID, -105, 0);
+    lv_led_off(bt_hid_dah_indicator);
+
+    lv_obj_t* dah_label = lv_label_create(indicator_container);
+    lv_label_set_text(dah_label, "DAH");
+    lv_obj_set_style_text_color(dah_label, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_style_text_font(dah_label, getThemeFonts()->font_body, 0);
+    lv_obj_align(dah_label, LV_ALIGN_RIGHT_MID, -60, 0);
 
     // Footer
     lv_obj_t* footer = lv_obj_create(screen);
@@ -615,10 +701,28 @@ lv_obj_t* createBTHIDScreen() {
     lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* help = lv_label_create(footer);
-    lv_label_set_text(help, "Use paddle to send keystrokes   ESC Exit");
+    lv_label_set_text(help, "Pair in system Bluetooth settings   ESC Exit");
     lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);
+
+    // Invisible focus container for ESC key handling
+    lv_obj_t* focus_container = lv_obj_create(screen);
+    lv_obj_set_size(focus_container, 1, 1);
+    lv_obj_set_pos(focus_container, -10, -10);
+    lv_obj_set_style_bg_opa(focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, LV_STATE_FOCUSED);
+    lv_obj_clear_flag(focus_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(focus_container, bt_hid_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(focus_container);
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_set_editing(group, true);
+    }
+    lv_group_focus_obj(focus_container);
 
     bt_hid_screen = screen;
     return screen;
@@ -630,9 +734,40 @@ void updateBTHIDStatus(const char* status, bool connected) {
         if (connected) {
             lv_obj_set_style_text_color(bt_hid_status_label, LV_COLOR_SUCCESS, 0);
         } else {
-            lv_obj_set_style_text_color(bt_hid_status_label, LV_COLOR_TEXT_PRIMARY, 0);
+            lv_obj_set_style_text_color(bt_hid_status_label, LV_COLOR_WARNING, 0);
         }
     }
+}
+
+void updateBTHIDDeviceName(const char* name) {
+    if (bt_hid_device_name_label != NULL) {
+        lv_label_set_text(bt_hid_device_name_label, name);
+    }
+}
+
+void updateBTHIDPaddleIndicators(bool ditPressed, bool dahPressed) {
+    if (bt_hid_dit_indicator != NULL) {
+        if (ditPressed) {
+            lv_led_on(bt_hid_dit_indicator);
+        } else {
+            lv_led_off(bt_hid_dit_indicator);
+        }
+    }
+    if (bt_hid_dah_indicator != NULL) {
+        if (dahPressed) {
+            lv_led_on(bt_hid_dah_indicator);
+        } else {
+            lv_led_off(bt_hid_dah_indicator);
+        }
+    }
+}
+
+void cleanupBTHIDScreen() {
+    bt_hid_screen = NULL;
+    bt_hid_status_label = NULL;
+    bt_hid_device_name_label = NULL;
+    bt_hid_dit_indicator = NULL;
+    bt_hid_dah_indicator = NULL;
 }
 
 // ============================================
