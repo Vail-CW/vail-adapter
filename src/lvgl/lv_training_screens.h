@@ -326,7 +326,9 @@ static lv_obj_t* hear_it_footer_help = NULL;
 // Settings form widgets
 static lv_obj_t* hear_it_settings_container = NULL;
 static lv_obj_t* hear_it_training_container = NULL;
-static lv_obj_t* hear_it_mode_value = NULL;  // Mode display label (replaces dropdown)
+static lv_obj_t* hear_it_mode_row = NULL;     // Mode row container for focus styling
+static lv_obj_t* hear_it_mode_value = NULL;   // Mode display label (replaces dropdown)
+static lv_obj_t* hear_it_length_row = NULL;   // Length row container for focus styling
 static lv_obj_t* hear_it_length_slider = NULL;
 static lv_obj_t* hear_it_length_value = NULL;
 static lv_obj_t* hear_it_start_btn = NULL;
@@ -517,6 +519,27 @@ void cancelHearItTimers() {
     stopTone();  // Also stop any playing tone
 }
 
+// Cleanup Hear It Type It screen - reset all static pointers
+// Called when leaving the screen to prevent use-after-free on re-entry
+void cleanupHearItTypeItScreen() {
+    Serial.println("[HearIt LVGL] Cleaning up Hear It Type It screen");
+    cancelHearItTimers();  // Cancel timers and set to NULL
+
+    // Reset all widget pointers to prevent dangling references
+    hear_it_screen = NULL;
+    hear_it_prompt = NULL;
+    hear_it_input = NULL;
+    hear_it_result = NULL;
+    hear_it_score_label = NULL;
+    hear_it_footer_help = NULL;
+    hear_it_settings_container = NULL;
+    hear_it_training_container = NULL;
+    hear_it_mode_value = NULL;
+    hear_it_length_slider = NULL;
+    hear_it_length_value = NULL;
+    hear_it_start_btn = NULL;
+}
+
 // Timer callback for correct answer - play next callsign after feedback delay
 static void hear_it_correct_timer_cb(lv_timer_t* timer) {
     Serial.println("[HearIt] Correct timer fired - next callsign");
@@ -568,10 +591,34 @@ static void hear_it_update_mode_display() {
 
 // Update visual focus indicator
 static void hear_it_update_focus() {
-    // Update colors based on focus
+    // Mode row styling (focus == 0)
+    if (hear_it_mode_row) {
+        if (hear_it_settings_focus == 0) {
+            lv_obj_set_style_bg_color(hear_it_mode_row, LV_COLOR_CARD_TEAL, 0);
+            lv_obj_set_style_bg_opa(hear_it_mode_row, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_color(hear_it_mode_row, LV_COLOR_ACCENT_CYAN, 0);
+            lv_obj_set_style_border_width(hear_it_mode_row, 2, 0);
+        } else {
+            lv_obj_set_style_bg_opa(hear_it_mode_row, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(hear_it_mode_row, 0, 0);
+        }
+    }
     if (hear_it_mode_value) {
         lv_obj_set_style_text_color(hear_it_mode_value,
             hear_it_settings_focus == 0 ? LV_COLOR_ACCENT_CYAN : LV_COLOR_TEXT_SECONDARY, 0);
+    }
+
+    // Length row styling (focus == 1)
+    if (hear_it_length_row) {
+        if (hear_it_settings_focus == 1) {
+            lv_obj_set_style_bg_color(hear_it_length_row, LV_COLOR_CARD_TEAL, 0);
+            lv_obj_set_style_bg_opa(hear_it_length_row, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_color(hear_it_length_row, LV_COLOR_ACCENT_CYAN, 0);
+            lv_obj_set_style_border_width(hear_it_length_row, 2, 0);
+        } else {
+            lv_obj_set_style_bg_opa(hear_it_length_row, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(hear_it_length_row, 0, 0);
+        }
     }
     if (hear_it_length_slider) {
         if (hear_it_settings_focus == 1) {
@@ -580,6 +627,8 @@ static void hear_it_update_focus() {
             lv_obj_clear_state(hear_it_length_slider, LV_STATE_FOCUSED);
         }
     }
+
+    // Button styling (focus == 2)
     if (hear_it_start_btn) {
         if (hear_it_settings_focus == 2) {
             lv_obj_add_state(hear_it_start_btn, LV_STATE_FOCUSED);
@@ -698,6 +747,12 @@ static void hear_it_start_btn_cb(lv_event_t* e) {
         lv_textarea_set_text(hear_it_input, "");
     }
 
+    // Put the input group in editing mode so TAB key reaches our handler
+    lv_group_t* group = getLVGLInputGroup();
+    if (group) {
+        lv_group_set_editing(group, true);
+    }
+
     // Show "Get Ready..." message
     if (hear_it_prompt != NULL) {
         lv_label_set_text(hear_it_prompt, "Get Ready...");
@@ -765,31 +820,54 @@ lv_obj_t* createHearItTypeItScreen() {
     lv_obj_add_event_cb(focus_container, hear_it_settings_key_handler, LV_EVENT_KEY, NULL);
     addNavigableWidget(focus_container);
 
+    // Put group in edit mode - this makes UP/DOWN keys go to the widget instead of being consumed by LVGL
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_set_editing(group, true);
+    }
+
+    // Ensure focus is on our container
+    lv_group_focus_obj(focus_container);
+
     // Reset focus state and set initial focus
     hear_it_settings_focus = 0;
 
     // Mode row (label + value selector)
-    lv_obj_t* mode_row = lv_obj_create(hear_it_settings_container);
-    lv_obj_set_size(mode_row, lv_pct(100), LV_SIZE_CONTENT);
-    lv_obj_set_layout(mode_row, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(mode_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(mode_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_bg_opa(mode_row, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(mode_row, 0, 0);
-    lv_obj_set_style_pad_all(mode_row, 0, 0);
+    hear_it_mode_row = lv_obj_create(hear_it_settings_container);
+    lv_obj_set_size(hear_it_mode_row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(hear_it_mode_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(hear_it_mode_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(hear_it_mode_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_opa(hear_it_mode_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(hear_it_mode_row, 0, 0);
+    lv_obj_set_style_pad_all(hear_it_mode_row, 8, 0);
+    lv_obj_set_style_radius(hear_it_mode_row, 6, 0);
+    lv_obj_clear_flag(hear_it_mode_row, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* mode_label = lv_label_create(mode_row);
+    lv_obj_t* mode_label = lv_label_create(hear_it_mode_row);
     lv_label_set_text(mode_label, "Mode");
     lv_obj_add_style(mode_label, getStyleLabelSubtitle(), 0);
 
     // Mode value - shows "< Callsigns >" style selector
-    hear_it_mode_value = lv_label_create(mode_row);
+    hear_it_mode_value = lv_label_create(hear_it_mode_row);
     lv_label_set_text_fmt(hear_it_mode_value, "< %s >", hear_it_mode_names[tempSettings.mode]);
     lv_obj_set_style_text_color(hear_it_mode_value, LV_COLOR_ACCENT_CYAN, 0);
     lv_obj_set_style_text_font(hear_it_mode_value, getThemeFonts()->font_subtitle, 0);
 
-    // Group Length label row (label + value on same line)
-    lv_obj_t* length_header = lv_obj_create(hear_it_settings_container);
+    // Group Length container (wraps header and slider for focus styling)
+    hear_it_length_row = lv_obj_create(hear_it_settings_container);
+    lv_obj_set_size(hear_it_length_row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(hear_it_length_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(hear_it_length_row, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(hear_it_length_row, 8, 0);
+    lv_obj_set_style_bg_opa(hear_it_length_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(hear_it_length_row, 0, 0);
+    lv_obj_set_style_pad_all(hear_it_length_row, 8, 0);
+    lv_obj_set_style_radius(hear_it_length_row, 6, 0);
+    lv_obj_clear_flag(hear_it_length_row, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Length header row (label + value on same line)
+    lv_obj_t* length_header = lv_obj_create(hear_it_length_row);
     lv_obj_set_size(length_header, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_layout(length_header, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(length_header, LV_FLEX_FLOW_ROW);
@@ -806,8 +884,8 @@ lv_obj_t* createHearItTypeItScreen() {
     lv_label_set_text_fmt(hear_it_length_value, "%d", tempSettings.groupLength);
     lv_obj_set_style_text_color(hear_it_length_value, LV_COLOR_ACCENT_CYAN, 0);
 
-    // Group Length slider - directly in settings container
-    hear_it_length_slider = lv_slider_create(hear_it_settings_container);
+    // Group Length slider - inside length container
+    hear_it_length_slider = lv_slider_create(hear_it_length_row);
     lv_obj_set_width(hear_it_length_slider, lv_pct(100));
     lv_obj_set_style_min_height(hear_it_length_slider, 20, 0);
     lv_slider_set_range(hear_it_length_slider, 1, 10);
@@ -820,10 +898,12 @@ lv_obj_t* createHearItTypeItScreen() {
     hear_it_start_btn = lv_btn_create(hear_it_settings_container);
     lv_obj_set_size(hear_it_start_btn, lv_pct(100), 50);
     lv_obj_set_style_bg_color(hear_it_start_btn, LV_COLOR_CARD_TEAL, 0);
-    lv_obj_set_style_bg_color(hear_it_start_btn, LV_COLOR_ACCENT_CYAN, LV_STATE_FOCUSED);
+    lv_obj_set_style_bg_color(hear_it_start_btn, LV_COLOR_CARD_TEAL, LV_STATE_FOCUSED);
     lv_obj_set_style_radius(hear_it_start_btn, 8, 0);
     lv_obj_set_style_border_width(hear_it_start_btn, 1, 0);
     lv_obj_set_style_border_color(hear_it_start_btn, LV_COLOR_BORDER_SUBTLE, 0);
+    lv_obj_set_style_border_width(hear_it_start_btn, 2, LV_STATE_FOCUSED);
+    lv_obj_set_style_border_color(hear_it_start_btn, LV_COLOR_ACCENT_CYAN, LV_STATE_FOCUSED);
 
     lv_obj_t* btn_label = lv_label_create(hear_it_start_btn);
     lv_label_set_text(btn_label, "Start Training");
@@ -1374,18 +1454,21 @@ lv_obj_t* createLicenseSelectScreen() {
     // Status bar (WiFi + battery) on the right side
     createCompactStatusBar(screen);
 
-    // Content area
+    // Content area - scrollable container for license options
     lv_obj_t* content = lv_obj_create(screen);
-    lv_obj_set_size(content, SCREEN_WIDTH - 40, SCREEN_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - 20);
-    lv_obj_set_pos(content, 20, HEADER_HEIGHT + 10);
+    lv_obj_set_size(content, SCREEN_WIDTH - 20, SCREEN_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - 10);
+    lv_obj_set_pos(content, 10, HEADER_HEIGHT + 5);
     lv_obj_set_layout(content, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(content, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(content, 8, 0);  // Reduced row padding for 4 cards
-    lv_obj_set_style_pad_all(content, 8, 0);
+    lv_obj_set_style_pad_row(content, 10, 0);
+    lv_obj_set_style_pad_all(content, 10, 0);
     lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(content, 0, 0);
-    lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+    // Enable scrolling for when content doesn't fit
+    lv_obj_add_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(content, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(content, LV_SCROLLBAR_MODE_AUTO);
 
     // Card index counter (0 = stats, 1-3 = license types)
     int cardIdx = 0;
@@ -1393,7 +1476,7 @@ lv_obj_t* createLicenseSelectScreen() {
     // View Statistics card (first card)
     {
         lv_obj_t* stats_card = lv_btn_create(content);
-        lv_obj_set_size(stats_card, lv_pct(100), 50);  // Smaller height for stats card
+        lv_obj_set_size(stats_card, lv_pct(100), 55);  // Stats card height
         lv_obj_set_style_bg_color(stats_card, lv_color_hex(0x1A3A3A), 0);  // Slightly different teal
         lv_obj_set_style_bg_opa(stats_card, LV_OPA_COVER, 0);
         lv_obj_set_style_border_color(stats_card, LV_COLOR_ACCENT_CYAN, 0);
@@ -1431,7 +1514,7 @@ lv_obj_t* createLicenseSelectScreen() {
     // License type cards (3 cards)
     for (int i = 0; i < 3; i++) {
         lv_obj_t* card = lv_btn_create(content);
-        lv_obj_set_size(card, lv_pct(100), 56);  // Slightly smaller to fit 4 cards
+        lv_obj_set_size(card, lv_pct(100), 60);  // License type card height
         lv_obj_set_style_bg_color(card, LV_COLOR_CARD_TEAL, 0);
         lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
         lv_obj_set_style_border_color(card, LV_COLOR_BORDER_SUBTLE, 0);
@@ -1536,15 +1619,19 @@ void updateLicenseQuizDisplay() {
             lv_obj_remove_style(license_answer_btns[i], NULL, LV_STATE_USER_2);
 
             if (licenseSession.showingFeedback) {
-                // Show correct answer in green
+                // Show correct answer in green (always highlight the correct answer)
                 if (i == q->correctAnswer) {
                     lv_obj_set_style_bg_color(license_answer_btns[i], LV_COLOR_SUCCESS, 0);
-                    lv_obj_set_style_bg_opa(license_answer_btns[i], LV_OPA_30, 0);
+                    lv_obj_set_style_bg_opa(license_answer_btns[i], LV_OPA_70, 0);  // More visible
+                    lv_obj_set_style_border_color(license_answer_btns[i], LV_COLOR_SUCCESS, 0);
+                    lv_obj_set_style_border_width(license_answer_btns[i], 3, 0);
                 }
                 // Show wrong selection in red
                 else if (i == licenseSession.selectedAnswerIndex && !licenseSession.correctAnswer) {
                     lv_obj_set_style_bg_color(license_answer_btns[i], LV_COLOR_ERROR, 0);
-                    lv_obj_set_style_bg_opa(license_answer_btns[i], LV_OPA_30, 0);
+                    lv_obj_set_style_bg_opa(license_answer_btns[i], LV_OPA_70, 0);  // More visible
+                    lv_obj_set_style_border_color(license_answer_btns[i], LV_COLOR_ERROR, 0);
+                    lv_obj_set_style_border_width(license_answer_btns[i], 3, 0);
                 }
             } else {
                 // Normal state - use card style
