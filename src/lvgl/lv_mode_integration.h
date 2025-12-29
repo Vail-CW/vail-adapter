@@ -655,6 +655,9 @@ void onLVGLBackNavigation() {
     if (currentModeInt == LVGL_MODE_PROPAGATION) {
         cleanupBandConditions();
     }
+    if (currentModeInt == LVGL_MODE_WIFI_SETTINGS) {
+        cleanupWiFiScreen();
+    }
 
     // Get parent mode
     int parentMode = getParentModeInt(currentModeInt);

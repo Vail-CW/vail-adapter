@@ -30,6 +30,7 @@ static void radio_key_event_cb(lv_event_t* e) {
     switch(key) {
         case LV_KEY_ESC:
             onLVGLBackNavigation();
+            lv_event_stop_processing(e);  // Prevent global ESC handler from also firing
             break;
         case 'm':
         case 'M':
@@ -270,6 +271,7 @@ static void vail_key_event_cb(lv_event_t* e) {
     switch(key) {
         case LV_KEY_ESC:
             onLVGLBackNavigation();
+            lv_event_stop_processing(e);  // Prevent global ESC handler from also firing
             break;
         case 'c':
         case 'C':

@@ -29,6 +29,7 @@ static void shooter_key_event_cb(lv_event_t* e) {
 
     if (key == LV_KEY_ESC) {
         onLVGLBackNavigation();
+        lv_event_stop_processing(e);  // Prevent global ESC handler from also firing
     }
 }
 
@@ -261,6 +262,7 @@ static void memory_key_event_cb(lv_event_t* e) {
     switch(key) {
         case LV_KEY_ESC:
             onLVGLBackNavigation();
+            lv_event_stop_processing(e);  // Prevent global ESC handler from also firing
             break;
         case 's':
         case 'S':

@@ -72,6 +72,7 @@ void performWiFiScan();
 void attemptWiFiConnection(const String& ssid, const String& password);
 void startWiFiSetupLVGL();
 void triggerWiFiScan();  // Deferred scan trigger
+void cleanupWiFiScreen();  // Cleanup when leaving screen
 
 // External back navigation (only used when we actually want to exit)
 extern void onLVGLBackNavigation();
@@ -181,6 +182,7 @@ static void network_item_key_handler(lv_event_t* e) {
     } else if (key == LV_KEY_ESC) {
         // Exit WiFi setup
         onLVGLBackNavigation();
+        lv_event_stop_processing(e);  // Prevent global ESC handler from also firing
     } else if (key == 'a' || key == 'A') {
         // Start AP mode
         startAPMode();
@@ -933,6 +935,12 @@ void createResetConfirmView(lv_obj_t* parent) {
 static void wifi_scan_timer_cb(lv_timer_t* timer) {
     lv_timer_del(timer);  // One-shot timer
 
+    // Check if screen was destroyed (navigated away)
+    if (!wifi_content) {
+        Serial.println("[WiFi LVGL] Timer fired but screen destroyed, aborting");
+        return;
+    }
+
     if (wifi_lvgl_state != LVGL_WIFI_SCANNING) return;  // State changed, abort
 
     Serial.println("[WiFi LVGL] Starting network scan...");
@@ -1169,6 +1177,22 @@ void startWiFiSetupLVGL() {
     wifi_scan_pending = false;
 
     // Screen will be created by the mode integration system
+}
+
+/*
+ * Cleanup WiFi screen when navigating away
+ * Clears all static pointers to prevent dangling pointer crashes
+ */
+void cleanupWiFiScreen() {
+    Serial.println("[WiFi LVGL] Cleaning up WiFi screen");
+    wifi_setup_screen = NULL;
+    wifi_content = NULL;
+    wifi_footer_label = NULL;
+    wifi_password_textarea = NULL;
+    wifi_loading_spinner = NULL;
+    wifi_loading_label = NULL;
+    wifi_network_list = NULL;
+    wifi_password_hint = NULL;
 }
 
 #endif // LV_WIFI_SCREEN_H

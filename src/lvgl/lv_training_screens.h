@@ -326,10 +326,24 @@ static lv_obj_t* hear_it_footer_help = NULL;
 // Settings form widgets
 static lv_obj_t* hear_it_settings_container = NULL;
 static lv_obj_t* hear_it_training_container = NULL;
-static lv_obj_t* hear_it_mode_dropdown = NULL;
+static lv_obj_t* hear_it_mode_value = NULL;  // Mode display label (replaces dropdown)
 static lv_obj_t* hear_it_length_slider = NULL;
 static lv_obj_t* hear_it_length_value = NULL;
 static lv_obj_t* hear_it_start_btn = NULL;
+
+// Mode names for display
+static const char* hear_it_mode_names[] = {"Callsigns", "Letters", "Numbers", "Mixed", "Custom"};
+static const int hear_it_mode_count = 5;
+
+// Timers that need to be cancelled when leaving the screen
+static lv_timer_t* hear_it_pending_timer = NULL;
+static lv_timer_t* hear_it_start_timer = NULL;
+
+// Track which settings widget is currently focused (0=mode, 1=slider, 2=button)
+static int hear_it_settings_focus = 0;
+
+// Forward declaration for focus update function
+static void hear_it_update_focus();
 
 // External function to get current settings display string
 // Defined in training_hear_it_type_it.h
@@ -340,7 +354,7 @@ void updateHearItFooter() {
     if (hear_it_footer_help == NULL) return;
 
     if (currentHearItState == HEAR_IT_STATE_SETTINGS) {
-        lv_label_set_text(hear_it_footer_help, FOOTER_NAV_ENTER_ESC);
+        lv_label_set_text(hear_it_footer_help, "UP/DN Navigate   L/R Adjust   ENTER Start   ESC Back");
     } else {
         lv_label_set_text(hear_it_footer_help, FOOTER_TRAINING_ACTIVE);
     }
@@ -352,10 +366,6 @@ void updateHearItSettingsDisplay() {
         // SETTINGS MODE: Show settings form, hide training UI
         if (hear_it_settings_container != NULL) {
             lv_obj_clear_flag(hear_it_settings_container, LV_OBJ_FLAG_HIDDEN);
-            // Focus the first widget (mode dropdown)
-            if (hear_it_mode_dropdown != NULL) {
-                lv_group_focus_obj(hear_it_mode_dropdown);
-            }
         }
         if (hear_it_training_container != NULL) {
             lv_obj_add_flag(hear_it_training_container, LV_OBJ_FLAG_HIDDEN);
@@ -401,11 +411,15 @@ static void hear_it_key_event_cb(lv_event_t* e) {
     if (key == LV_KEY_ENTER) {
         legacy_key = KEY_ENTER;
     } else if (key == LV_KEY_ESC) {
-        // ESC goes back to settings
+        // ESC goes back to settings - stop morse playback
+        cancelHearItTimers();
         currentHearItState = HEAR_IT_STATE_SETTINGS;
         inSettingsMode = true;
+        hear_it_settings_focus = 0;  // Reset focus to first item
         updateHearItSettingsDisplay();
+        hear_it_update_focus();
         beep(TONE_MENU_NAV, BEEP_SHORT);
+        lv_event_stop_processing(e);  // Prevent global ESC handler from also firing
         return;
     } else if (key == LV_KEY_LEFT) {
         legacy_key = KEY_LEFT;  // Replay
@@ -471,15 +485,68 @@ void updateHearItScore() {
     }
 }
 
+// Clear the input textarea
+void clearHearItInput() {
+    if (hear_it_input != NULL) {
+        lv_textarea_set_text(hear_it_input, "");
+    }
+}
+
 // Timer callback for delayed start
 static void hear_it_start_timer_cb(lv_timer_t* timer) {
     Serial.println("[HearIt] Timer fired - starting training");
+    hear_it_start_timer = NULL;  // Clear reference before delete
     startNewCallsign();
     playCurrentCallsign();
     if (hear_it_prompt != NULL) {
         lv_label_set_text(hear_it_prompt, "Type what you hear:");
     }
     lv_timer_del(timer);
+}
+
+// Cancel all pending Hear It timers
+void cancelHearItTimers() {
+    if (hear_it_pending_timer != NULL) {
+        lv_timer_del(hear_it_pending_timer);
+        hear_it_pending_timer = NULL;
+    }
+    if (hear_it_start_timer != NULL) {
+        lv_timer_del(hear_it_start_timer);
+        hear_it_start_timer = NULL;
+    }
+    stopTone();  // Also stop any playing tone
+}
+
+// Timer callback for correct answer - play next callsign after feedback delay
+static void hear_it_correct_timer_cb(lv_timer_t* timer) {
+    Serial.println("[HearIt] Correct timer fired - next callsign");
+    hear_it_pending_timer = NULL;  // Clear reference before delete
+    startNewCallsign();
+    delay(500);  // Brief pause before playback
+    playCurrentCallsign();
+    lv_timer_del(timer);
+}
+
+// Timer callback for incorrect answer - replay same callsign after feedback delay
+static void hear_it_incorrect_timer_cb(lv_timer_t* timer) {
+    Serial.println("[HearIt] Incorrect timer fired - replaying");
+    hear_it_pending_timer = NULL;  // Clear reference before delete
+    delay(500);  // Brief pause before replay
+    playCurrentCallsign();
+    lv_timer_del(timer);
+}
+
+// Schedule next callsign after feedback delay (called from legacy handler)
+void scheduleHearItNextCallsign(bool wasCorrect) {
+    // Cancel any existing pending timer
+    if (hear_it_pending_timer != NULL) {
+        lv_timer_del(hear_it_pending_timer);
+    }
+    if (wasCorrect) {
+        hear_it_pending_timer = lv_timer_create(hear_it_correct_timer_cb, 1500, NULL);
+    } else {
+        hear_it_pending_timer = lv_timer_create(hear_it_incorrect_timer_cb, 1500, NULL);
+    }
 }
 
 // Slider value changed callback
@@ -492,20 +559,114 @@ static void hear_it_length_slider_cb(lv_event_t* e) {
     }
 }
 
-// Dropdown value changed callback
-static void hear_it_mode_dropdown_cb(lv_event_t* e) {
-    lv_obj_t* dropdown = lv_event_get_target(e);
-    tempSettings.mode = (HearItMode)lv_dropdown_get_selected(dropdown);
+// Update mode display
+static void hear_it_update_mode_display() {
+    if (hear_it_mode_value != NULL) {
+        lv_label_set_text_fmt(hear_it_mode_value, "< %s >", hear_it_mode_names[tempSettings.mode]);
+    }
+}
+
+// Update visual focus indicator
+static void hear_it_update_focus() {
+    // Update colors based on focus
+    if (hear_it_mode_value) {
+        lv_obj_set_style_text_color(hear_it_mode_value,
+            hear_it_settings_focus == 0 ? LV_COLOR_ACCENT_CYAN : LV_COLOR_TEXT_SECONDARY, 0);
+    }
+    if (hear_it_length_slider) {
+        if (hear_it_settings_focus == 1) {
+            lv_obj_add_state(hear_it_length_slider, LV_STATE_FOCUSED);
+        } else {
+            lv_obj_clear_state(hear_it_length_slider, LV_STATE_FOCUSED);
+        }
+    }
+    if (hear_it_start_btn) {
+        if (hear_it_settings_focus == 2) {
+            lv_obj_add_state(hear_it_start_btn, LV_STATE_FOCUSED);
+        } else {
+            lv_obj_clear_state(hear_it_start_btn, LV_STATE_FOCUSED);
+        }
+    }
+}
+
+// Unified settings key handler - handles all navigation for settings widgets
+// Attached to a focus container, not the widgets themselves
+static void hear_it_settings_key_handler(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+
+    // Handle ESC for back navigation (check first)
+    if (key == LV_KEY_ESC) {
+        // Stop all playing morse code and pending timers
+        cancelHearItTimers();
+        onLVGLBackNavigation();
+        return;
+    }
+
+    // Handle UP/DOWN for navigation between settings
+    if (key == LV_KEY_UP) {
+        if (hear_it_settings_focus > 0) {
+            hear_it_settings_focus--;
+            hear_it_update_focus();
+        }
+        return;
+    }
+    if (key == LV_KEY_DOWN) {
+        if (hear_it_settings_focus < 2) {
+            hear_it_settings_focus++;
+            hear_it_update_focus();
+        }
+        return;
+    }
+
+    // Handle LEFT/RIGHT for value adjustment based on current focus
+    if (key == LV_KEY_LEFT || key == LV_KEY_RIGHT) {
+        if (hear_it_settings_focus == 0) {
+            // Mode - cycle through options
+            int mode = (int)tempSettings.mode;
+            if (key == LV_KEY_RIGHT) {
+                mode = (mode + 1) % hear_it_mode_count;
+            } else {
+                mode = (mode - 1 + hear_it_mode_count) % hear_it_mode_count;
+            }
+            tempSettings.mode = (HearItMode)mode;
+            hear_it_update_mode_display();
+        }
+        else if (hear_it_settings_focus == 1 && hear_it_length_slider) {
+            // Group length slider - adjust value
+            int step = getKeyAccelerationStep();
+            int delta = (key == LV_KEY_RIGHT) ? step : -step;
+            int current = lv_slider_get_value(hear_it_length_slider);
+            int new_val = current + delta;
+
+            if (new_val < 1) new_val = 1;
+            if (new_val > 10) new_val = 10;
+
+            lv_slider_set_value(hear_it_length_slider, new_val, LV_ANIM_OFF);
+            lv_event_send(hear_it_length_slider, LV_EVENT_VALUE_CHANGED, NULL);
+        }
+        // Button (focus == 2) doesn't respond to LEFT/RIGHT
+        return;
+    }
+
+    // Handle ENTER
+    if (key == LV_KEY_ENTER) {
+        if (hear_it_settings_focus == 2 && hear_it_start_btn) {
+            // Trigger start button
+            lv_event_send(hear_it_start_btn, LV_EVENT_CLICKED, NULL);
+        }
+        // Mode and slider don't need ENTER - they use LEFT/RIGHT
+        return;
+    }
 }
 
 // Start button clicked callback
 static void hear_it_start_btn_cb(lv_event_t* e) {
     Serial.println("[HearIt] Start button clicked");
 
-    // Save settings from form widgets
-    if (hear_it_mode_dropdown != NULL) {
-        tempSettings.mode = (HearItMode)lv_dropdown_get_selected(hear_it_mode_dropdown);
-    }
+    // Save settings from form widgets (tempSettings already updated by key handler)
     if (hear_it_length_slider != NULL) {
         tempSettings.groupLength = lv_slider_get_value(hear_it_length_slider);
     }
@@ -547,20 +708,14 @@ static void hear_it_start_btn_cb(lv_event_t* e) {
     beep(TONE_SELECT, BEEP_LONG);
 
     // Create timer to start after 3 seconds
-    lv_timer_create(hear_it_start_timer_cb, 3000, NULL);
+    hear_it_start_timer = lv_timer_create(hear_it_start_timer_cb, 3000, NULL);
 }
 
-// ESC key handler for settings form widgets
-static void hear_it_settings_esc_cb(lv_event_t* e) {
-    uint32_t key = lv_event_get_key(e);
-    if (key == LV_KEY_ESC) {
-        // Exit mode
-        hearItUseLVGL = false;
-        onLVGLBackNavigation();
-    }
-}
 
 lv_obj_t* createHearItTypeItScreen() {
+    // Copy current settings to temp for editing
+    tempSettings = hearItSettings;
+
     lv_obj_t* screen = createScreen();
     applyScreenStyle(screen);
 
@@ -591,20 +746,34 @@ lv_obj_t* createHearItTypeItScreen() {
     // SETTINGS CONTAINER (shown in settings mode)
     // ========================================
     hear_it_settings_container = lv_obj_create(screen);
-    lv_obj_set_size(hear_it_settings_container, SCREEN_WIDTH - 40, SCREEN_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - 20);
-    lv_obj_set_pos(hear_it_settings_container, 20, HEADER_HEIGHT + 10);
+    lv_obj_set_size(hear_it_settings_container, SCREEN_WIDTH - 40, SCREEN_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - 10);
+    lv_obj_set_pos(hear_it_settings_container, 20, HEADER_HEIGHT + 5);
     lv_obj_set_layout(hear_it_settings_container, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(hear_it_settings_container, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(hear_it_settings_container, 12, 0);
-    lv_obj_set_style_pad_all(hear_it_settings_container, 15, 0);
+    lv_obj_set_style_pad_row(hear_it_settings_container, 10, 0);
+    lv_obj_set_style_pad_all(hear_it_settings_container, 12, 0);
     applyCardStyle(hear_it_settings_container);
 
-    // Mode dropdown row
+    // Create an invisible focus container to receive all key events
+    // This bypasses LVGL's widget-level key handling
+    lv_obj_t* focus_container = lv_obj_create(hear_it_settings_container);
+    lv_obj_set_size(focus_container, 0, 0);
+    lv_obj_set_style_bg_opa(focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(focus_container, 0, 0);
+    lv_obj_clear_flag(focus_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(focus_container, hear_it_settings_key_handler, LV_EVENT_KEY, NULL);
+    addNavigableWidget(focus_container);
+
+    // Reset focus state and set initial focus
+    hear_it_settings_focus = 0;
+
+    // Mode row (label + value selector)
     lv_obj_t* mode_row = lv_obj_create(hear_it_settings_container);
     lv_obj_set_size(mode_row, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_layout(mode_row, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(mode_row, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(mode_row, 5, 0);
+    lv_obj_set_flex_flow(mode_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(mode_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_bg_opa(mode_row, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(mode_row, 0, 0);
     lv_obj_set_style_pad_all(mode_row, 0, 0);
@@ -613,26 +782,14 @@ lv_obj_t* createHearItTypeItScreen() {
     lv_label_set_text(mode_label, "Mode");
     lv_obj_add_style(mode_label, getStyleLabelSubtitle(), 0);
 
-    hear_it_mode_dropdown = lv_dropdown_create(mode_row);
-    lv_dropdown_set_options(hear_it_mode_dropdown, "Callsigns\nLetters\nNumbers\nMixed\nCustom");
-    lv_dropdown_set_selected(hear_it_mode_dropdown, tempSettings.mode);
-    lv_obj_set_width(hear_it_mode_dropdown, lv_pct(100));
-    lv_obj_add_style(hear_it_mode_dropdown, getStyleDropdown(), 0);
-    lv_obj_add_event_cb(hear_it_mode_dropdown, hear_it_mode_dropdown_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(hear_it_mode_dropdown, hear_it_settings_esc_cb, LV_EVENT_KEY, NULL);
-    addNavigableWidget(hear_it_mode_dropdown);
+    // Mode value - shows "< Callsigns >" style selector
+    hear_it_mode_value = lv_label_create(mode_row);
+    lv_label_set_text_fmt(hear_it_mode_value, "< %s >", hear_it_mode_names[tempSettings.mode]);
+    lv_obj_set_style_text_color(hear_it_mode_value, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_text_font(hear_it_mode_value, getThemeFonts()->font_subtitle, 0);
 
-    // Group Length slider row
-    lv_obj_t* length_row = lv_obj_create(hear_it_settings_container);
-    lv_obj_set_size(length_row, lv_pct(100), LV_SIZE_CONTENT);
-    lv_obj_set_layout(length_row, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(length_row, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(length_row, 5, 0);
-    lv_obj_set_style_bg_opa(length_row, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(length_row, 0, 0);
-    lv_obj_set_style_pad_all(length_row, 0, 0);
-
-    lv_obj_t* length_header = lv_obj_create(length_row);
+    // Group Length label row (label + value on same line)
+    lv_obj_t* length_header = lv_obj_create(hear_it_settings_container);
     lv_obj_set_size(length_header, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_layout(length_header, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(length_header, LV_FLEX_FLOW_ROW);
@@ -649,14 +806,15 @@ lv_obj_t* createHearItTypeItScreen() {
     lv_label_set_text_fmt(hear_it_length_value, "%d", tempSettings.groupLength);
     lv_obj_set_style_text_color(hear_it_length_value, LV_COLOR_ACCENT_CYAN, 0);
 
-    hear_it_length_slider = lv_slider_create(length_row);
+    // Group Length slider - directly in settings container
+    hear_it_length_slider = lv_slider_create(hear_it_settings_container);
     lv_obj_set_width(hear_it_length_slider, lv_pct(100));
+    lv_obj_set_style_min_height(hear_it_length_slider, 20, 0);
     lv_slider_set_range(hear_it_length_slider, 1, 10);
     lv_slider_set_value(hear_it_length_slider, tempSettings.groupLength, LV_ANIM_OFF);
     applySliderStyle(hear_it_length_slider);
     lv_obj_add_event_cb(hear_it_length_slider, hear_it_length_slider_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(hear_it_length_slider, hear_it_settings_esc_cb, LV_EVENT_KEY, NULL);
-    addNavigableWidget(hear_it_length_slider);
+    // Don't add to nav group - focus container handles all keys
 
     // Start Training button
     hear_it_start_btn = lv_btn_create(hear_it_settings_container);
@@ -674,8 +832,10 @@ lv_obj_t* createHearItTypeItScreen() {
     lv_obj_set_style_text_font(btn_label, getThemeFonts()->font_subtitle, 0);
 
     lv_obj_add_event_cb(hear_it_start_btn, hear_it_start_btn_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_add_event_cb(hear_it_start_btn, hear_it_settings_esc_cb, LV_EVENT_KEY, NULL);
-    addNavigableWidget(hear_it_start_btn);
+    // Don't add to nav group - focus container handles all keys
+
+    // Set initial focus visual
+    hear_it_update_focus();
 
     // ========================================
     // TRAINING CONTAINER (hidden initially, shown during training)

@@ -12,6 +12,9 @@
 // Forward declarations for LVGL feedback functions (defined in lv_training_screens.h)
 void showHearItFeedback(bool correct, const String& answer);
 void updateHearItScore();
+void clearHearItInput();
+void scheduleHearItNextCallsign(bool wasCorrect);
+void cancelHearItTimers();
 
 // Training mode types
 enum HearItMode {
@@ -1166,7 +1169,9 @@ int handleHearItTypeItInput(char key, LGFX& tft) {
         // LVGL mode - update feedback via LVGL widgets
         showHearItFeedback(true, currentCallsign);
         updateHearItScore();
-        delay(1500);  // Shorter delay for LVGL mode
+        lv_timer_handler();  // Force immediate render so feedback shows now
+        scheduleHearItNextCallsign(true);  // Non-blocking timer for next callsign
+        return 2;  // Return immediately, timer handles the rest
       } else {
         // Legacy rendering
         int16_t x1, y1;
@@ -1192,15 +1197,15 @@ int handleHearItTypeItInput(char key, LGFX& tft) {
         tft.setFont(nullptr);
 
         delay(2000);
-      }
 
-      // Move to next callsign
-      startNewCallsign();
-      drawHearItTypeItUI(tft);
-      delay(500);
-      playCurrentCallsign();
-      drawHearItTypeItUI(tft);
-      return 2;
+        // Move to next callsign (legacy mode only)
+        startNewCallsign();
+        drawHearItTypeItUI(tft);
+        delay(500);
+        playCurrentCallsign();
+        drawHearItTypeItUI(tft);
+        return 2;
+      }
 
     } else {
       // Wrong!
@@ -1210,7 +1215,11 @@ int handleHearItTypeItInput(char key, LGFX& tft) {
         // LVGL mode - update feedback via LVGL widgets
         showHearItFeedback(false, currentCallsign);
         updateHearItScore();
-        delay(1500);  // Shorter delay for LVGL mode
+        userInput = "";  // Clear input now
+        clearHearItInput();  // Clear the LVGL textarea
+        lv_timer_handler();  // Force immediate render so feedback shows now
+        scheduleHearItNextCallsign(false);  // Non-blocking timer for replay
+        return 2;  // Return immediately, timer handles the rest
       } else {
         // Legacy rendering
         int16_t x1, y1;
@@ -1236,15 +1245,15 @@ int handleHearItTypeItInput(char key, LGFX& tft) {
         tft.setFont(nullptr);
 
         delay(2000);
-      }
 
-      // Clear user input and replay
-      userInput = "";
-      drawHearItTypeItUI(tft);
-      delay(500);
-      playCurrentCallsign();
-      drawHearItTypeItUI(tft);
-      return 2;
+        // Clear user input and replay (legacy mode only)
+        userInput = "";
+        drawHearItTypeItUI(tft);
+        delay(500);
+        playCurrentCallsign();
+        drawHearItTypeItUI(tft);
+        return 2;
+      }
     }
 
   } else if (key == KEY_BACKSPACE) {
