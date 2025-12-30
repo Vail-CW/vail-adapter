@@ -505,6 +505,7 @@ void sendVailMessage(std::vector<uint16_t> durations, int64_t timestamp) {
 }
 
 // Update Vail repeater (call in main loop)
+// Note: Legacy UI rendering removed - LVGL handles all UI updates via updateVailScreenLVGL()
 void updateVailRepeater(LGFX &display) {
   webSocket.loop();
 
@@ -521,21 +522,8 @@ void updateVailRepeater(LGFX &display) {
   // Playback received messages
   playbackMessages();
 
-  // Redraw UI if status changed
-  if (needsUIRedraw) {
-    if (vailUserListMode) {
-      drawUserListUI(display);
-    } else if (roomCustomInput) {
-      drawRoomInputUI(display);
-    } else if (vailRoomSelectionMode) {
-      drawRoomSelectionUI(display);
-    } else if (vailChatMode) {
-      drawChatUI(display);
-    } else {
-      drawVailUI(display);
-    }
-    needsUIRedraw = false;
-  }
+  // Note: UI updates are now handled by LVGL via updateVailScreenLVGL()
+  // The needsUIRedraw flag is no longer used for drawing but can still signal state changes
 }
 
 // Straight key handler for Vail

@@ -1078,6 +1078,8 @@ lv_obj_t* createThemeSettingsScreen() {
 // ============================================
 
 static lv_obj_t* system_info_screen = NULL;
+static lv_obj_t* system_info_scroll_container = NULL;
+static lv_obj_t* system_info_focus_container = NULL;
 
 // Helper to format uptime as HH:MM:SS
 static void formatUptime(unsigned long ms, char* buf, size_t bufSize) {
@@ -1111,6 +1113,36 @@ static void createInfoRow(lv_obj_t* parent, const char* label, const char* value
     lv_obj_set_style_text_font(val, getThemeFonts()->font_body, 0);
 }
 
+// Key callback for System Info screen scrolling
+static void system_info_key_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+
+    if (key == LV_KEY_ESC) {
+        onLVGLBackNavigation();
+        lv_event_stop_bubbling(e);
+        return;
+    }
+
+    // Scroll with UP/DOWN
+    if (system_info_scroll_container != NULL) {
+        if (key == LV_KEY_UP || key == LV_KEY_PREV) {
+            lv_obj_scroll_by(system_info_scroll_container, 0, 30, LV_ANIM_ON);
+            lv_event_stop_bubbling(e);
+            return;
+        }
+        if (key == LV_KEY_DOWN || key == LV_KEY_NEXT) {
+            lv_obj_scroll_by(system_info_scroll_container, 0, -30, LV_ANIM_ON);
+            lv_event_stop_bubbling(e);
+            return;
+        }
+    }
+
+    lv_event_stop_bubbling(e);
+}
+
 lv_obj_t* createSystemInfoScreen() {
     lv_obj_t* screen = createScreen();
     applyScreenStyle(screen);
@@ -1130,7 +1162,7 @@ lv_obj_t* createSystemInfoScreen() {
     // Status bar (WiFi + battery) on the right side
     createCompactStatusBar(screen);
 
-    // Content card
+    // Content card (scrollable)
     lv_obj_t* content = lv_obj_create(screen);
     lv_obj_set_size(content, SCREEN_WIDTH - 40, SCREEN_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - 20);
     lv_obj_align(content, LV_ALIGN_TOP_MID, 0, HEADER_HEIGHT + 10);
@@ -1139,6 +1171,9 @@ lv_obj_t* createSystemInfoScreen() {
     lv_obj_set_style_pad_row(content, 8, 0);
     lv_obj_set_style_pad_all(content, 20, 0);
     applyCardStyle(content);
+    lv_obj_add_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollbar_mode(content, LV_SCROLLBAR_MODE_AUTO);
+    system_info_scroll_container = content;
 
     // Firmware version (prominent)
     lv_obj_t* version_label = lv_label_create(content);
@@ -1185,13 +1220,20 @@ lv_obj_t* createSystemInfoScreen() {
     formatUptime(millis(), uptimeBuf, sizeof(uptimeBuf));
     createInfoRow(content, "Uptime:", uptimeBuf);
 
-    // Invisible focusable object for ESC key handling
-    lv_obj_t* focus_target = lv_obj_create(screen);
-    lv_obj_set_size(focus_target, 1, 1);
-    lv_obj_set_style_bg_opa(focus_target, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(focus_target, 0, 0);
-    lv_obj_add_flag(focus_target, LV_OBJ_FLAG_CLICKABLE);
-    addNavigableWidget(focus_target);
+    // Invisible focus container for key handling
+    system_info_focus_container = lv_obj_create(screen);
+    lv_obj_set_size(system_info_focus_container, 0, 0);
+    lv_obj_set_style_bg_opa(system_info_focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(system_info_focus_container, 0, 0);
+    lv_obj_add_flag(system_info_focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(system_info_focus_container, system_info_key_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(system_info_focus_container);
+
+    // Enable edit mode to receive key events
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_set_editing(group, true);
+    }
 
     // Footer
     lv_obj_t* footer = lv_obj_create(screen);
@@ -1202,7 +1244,7 @@ lv_obj_t* createSystemInfoScreen() {
     lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* help = lv_label_create(footer);
-    lv_label_set_text(help, "ESC Back");
+    lv_label_set_text(help, "UP/DN Scroll   ESC Back");
     lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);

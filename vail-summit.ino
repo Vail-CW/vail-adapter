@@ -460,6 +460,7 @@ void loop() {
   // Update Vail repeater if in Vail mode
   if (currentMode == MODE_VAIL_REPEATER) {
     updateVailRepeater(tft);
+    updateVailScreenLVGL();  // Update LVGL UI elements
   }
 
   // Update Morse Shooter game if in game mode

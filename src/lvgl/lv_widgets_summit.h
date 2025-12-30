@@ -105,11 +105,11 @@ lv_obj_t* createMenuCard(lv_obj_t* parent, const char* icon, const char* title, 
     lv_obj_add_style(title_label, getStyleLabelSubtitle(), 0);
     lv_obj_set_flex_grow(title_label, 1);
 
-    // Right arrow indicator
+    // Right arrow indicator - uses theme font (Special Elite now includes LVGL symbols)
     lv_obj_t* arrow = lv_label_create(card);
     lv_label_set_text(arrow, LV_SYMBOL_RIGHT);
     lv_obj_set_style_text_color(arrow, LV_COLOR_TEXT_TERTIARY, 0);
-    lv_obj_set_style_text_font(arrow, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_font(arrow, getThemeFonts()->font_subtitle, 0);
 
     // Make card focusable and add to navigation group
     lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
@@ -364,9 +364,9 @@ lv_obj_t* createStatusBar(lv_obj_t* parent) {
     lv_label_set_text(title, "VAIL SUMMIT");
     lv_obj_add_style(title, getStyleLabelTitle(), 0);
 
-    // Right section - battery icon only
+    // Right section - battery icon only (theme font includes symbols)
     lv_obj_t* battery_icon = lv_label_create(bar);
-    lv_obj_set_style_text_font(battery_icon, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(battery_icon, getThemeFonts()->font_title, 0);
 
     if (batteryPercent > 80) {
         lv_label_set_text(battery_icon, LV_SYMBOL_BATTERY_FULL);
@@ -396,10 +396,10 @@ lv_obj_t* createStatusBar(lv_obj_t* parent) {
  *   parent - Parent screen or header object
  */
 lv_obj_t* createCompactStatusBar(lv_obj_t* parent) {
-    // WiFi icon - same pattern as createHeader()
+    // WiFi icon - same pattern as createHeader() (theme font includes symbols)
     lv_obj_t* wifi_icon = lv_label_create(parent);
     lv_label_set_text(wifi_icon, LV_SYMBOL_WIFI);
-    lv_obj_set_style_text_font(wifi_icon, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(wifi_icon, getThemeFonts()->font_title, 0);
     if (WiFi.status() == WL_CONNECTED) {
         lv_obj_set_style_text_color(wifi_icon, LV_COLOR_SUCCESS, 0);
     } else {
@@ -407,9 +407,9 @@ lv_obj_t* createCompactStatusBar(lv_obj_t* parent) {
     }
     lv_obj_align(wifi_icon, LV_ALIGN_TOP_RIGHT, -50, 8);
 
-    // Battery icon - same pattern as createHeader()
+    // Battery icon - same pattern as createHeader() (theme font includes symbols)
     lv_obj_t* batt_icon = lv_label_create(parent);
-    lv_obj_set_style_text_font(batt_icon, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_font(batt_icon, getThemeFonts()->font_title, 0);
     lv_obj_align(batt_icon, LV_ALIGN_TOP_RIGHT, -10, 8);
 
     if (batteryPercent > 80) {
@@ -609,13 +609,13 @@ lv_obj_t* createLivesDisplay(lv_obj_t* parent, int lives, int max_lives) {
     for (int i = 0; i < max_lives; i++) {
         lv_obj_t* heart = lv_label_create(container);
         if (i < lives) {
-            lv_label_set_text(heart, LV_SYMBOL_OK);  // Filled heart substitute - keep Montserrat for symbols
+            lv_label_set_text(heart, LV_SYMBOL_OK);  // Filled heart substitute
             lv_obj_set_style_text_color(heart, LV_COLOR_ERROR, 0);
         } else {
             lv_label_set_text(heart, LV_SYMBOL_CLOSE);  // Empty heart substitute
             lv_obj_set_style_text_color(heart, LV_COLOR_TEXT_DISABLED, 0);
         }
-        lv_obj_set_style_text_font(heart, &lv_font_montserrat_18, 0);  // Keep Montserrat for symbols
+        lv_obj_set_style_text_font(heart, getThemeFonts()->font_subtitle, 0);  // Theme font includes symbols
     }
 
     return container;

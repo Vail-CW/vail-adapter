@@ -174,6 +174,10 @@ void initFallingLetter(int index) {
   bool positionOk = false;
   int newX;
 
+  // Letters spawn at top of play area (just below HUD at y=40 in LVGL coords)
+  // Using game coords: y=5 + offset 40 = 45 on screen (just below HUD)
+  const int SPAWN_Y = 5;
+
   while (!positionOk && attempts < 20) {
     newX = random(20, SCREEN_WIDTH - 40);
     positionOk = true;
@@ -183,7 +187,7 @@ void initFallingLetter(int index) {
       if (i != index && fallingLetters[i].active) {
         // Letters are about 20 pixels wide, so check for 30 pixel spacing
         if (abs(newX - (int)fallingLetters[i].x) < 30 &&
-            abs(75 - (int)fallingLetters[i].y) < 40) {
+            abs(SPAWN_Y - (int)fallingLetters[i].y) < 40) {
           positionOk = false;
           break;
         }
@@ -193,7 +197,7 @@ void initFallingLetter(int index) {
   }
 
   fallingLetters[index].x = newX;
-  fallingLetters[index].y = 75;  // Start well below header (header is 0-42)
+  fallingLetters[index].y = SPAWN_Y;  // Start at top of play area
   fallingLetters[index].active = true;
 
   // Update LVGL display (y+40 for header offset)
@@ -349,6 +353,9 @@ void drawFallingLetters(LGFX& tft, bool clearOld = false) {
  * Draw turret laser when shooting
  */
 void drawLaserShot(LGFX& tft, int targetX, int targetY) {
+  // Skip legacy drawing when using LVGL
+  if (shooterUseLVGL) return;
+
   // Draw laser from turret to target
   tft.drawLine(160, GROUND_Y - 26, targetX + 10, targetY + 10, ST77XX_CYAN);
   tft.drawLine(159, GROUND_Y - 26, targetX + 10, targetY + 10, ST77XX_WHITE);
@@ -359,6 +366,9 @@ void drawLaserShot(LGFX& tft, int targetX, int targetY) {
  * Draw explosion effect
  */
 void drawExplosion(LGFX& tft, int x, int y) {
+  // Skip legacy drawing when using LVGL
+  if (shooterUseLVGL) return;
+
   // Simple star burst explosion
   tft.drawCircle(x + 10, y + 10, 8, ST77XX_YELLOW);
   tft.drawCircle(x + 10, y + 10, 6, ST77XX_RED);

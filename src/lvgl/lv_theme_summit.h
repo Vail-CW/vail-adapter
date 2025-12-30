@@ -285,9 +285,8 @@ void initStyleDropdown() {
     lv_style_set_radius(&style_dropdown, 6);
     lv_style_set_pad_all(&style_dropdown, 10);
     lv_style_set_text_color(&style_dropdown, c->text_primary);
-    // Always use Montserrat for dropdown - ensures arrow symbol (LV_SYMBOL_DOWN) displays correctly
-    // This is necessary because custom theme fonts (e.g., Special Elite) may not include LVGL symbols
-    lv_style_set_text_font(&style_dropdown, &lv_font_montserrat_14);
+    // Use theme font - Special Elite fonts now include LVGL symbols
+    lv_style_set_text_font(&style_dropdown, getThemeFonts()->font_body);
 }
 
 /*

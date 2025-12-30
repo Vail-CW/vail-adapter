@@ -341,11 +341,16 @@ static const int hear_it_mode_count = 5;
 static lv_timer_t* hear_it_pending_timer = NULL;
 static lv_timer_t* hear_it_start_timer = NULL;
 
-// Track which settings widget is currently focused (0=mode, 1=slider, 2=button)
+// Track which settings widget is currently focused (0=mode, 1=speed, 2=length, 3=button)
 static int hear_it_settings_focus = 0;
 
 // Focus container for settings navigation (invisible widget that receives key events)
 static lv_obj_t* hear_it_focus_container = NULL;
+
+// Speed row widgets
+static lv_obj_t* hear_it_speed_row = NULL;
+static lv_obj_t* hear_it_speed_slider = NULL;
+static lv_obj_t* hear_it_speed_value = NULL;
 
 // Forward declaration for focus update function
 static void hear_it_update_focus();
@@ -424,13 +429,18 @@ static void hear_it_key_event_cb(lv_event_t* e) {
         updateHearItSettingsDisplay();
         hear_it_update_focus();
 
+        // Re-add focus container to nav group (was removed when entering training mode)
+        lv_group_t* group = getLVGLInputGroup();
+        if (group != NULL && hear_it_focus_container != NULL) {
+            lv_group_add_obj(group, hear_it_focus_container);
+        }
+
         // Re-focus the settings focus container so arrow keys work
         if (hear_it_focus_container != NULL) {
             lv_group_focus_obj(hear_it_focus_container);
         }
 
         // Ensure group is in edit mode for arrow key navigation
-        lv_group_t* group = getLVGLInputGroup();
         if (group != NULL) {
             lv_group_set_editing(group, true);
         }
@@ -554,6 +564,9 @@ void cleanupHearItTypeItScreen() {
     hear_it_length_row = NULL;
     hear_it_length_slider = NULL;
     hear_it_length_value = NULL;
+    hear_it_speed_row = NULL;
+    hear_it_speed_slider = NULL;
+    hear_it_speed_value = NULL;
     hear_it_start_btn = NULL;
     hear_it_focus_container = NULL;
 }
@@ -626,9 +639,29 @@ static void hear_it_update_focus() {
             hear_it_settings_focus == 0 ? LV_COLOR_ACCENT_CYAN : LV_COLOR_TEXT_SECONDARY, 0);
     }
 
-    // Length row styling (focus == 1)
-    if (hear_it_length_row) {
+    // Speed row styling (focus == 1)
+    if (hear_it_speed_row) {
         if (hear_it_settings_focus == 1) {
+            lv_obj_set_style_bg_color(hear_it_speed_row, LV_COLOR_CARD_TEAL, 0);
+            lv_obj_set_style_bg_opa(hear_it_speed_row, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_color(hear_it_speed_row, LV_COLOR_ACCENT_CYAN, 0);
+            lv_obj_set_style_border_width(hear_it_speed_row, 2, 0);
+        } else {
+            lv_obj_set_style_bg_opa(hear_it_speed_row, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(hear_it_speed_row, 0, 0);
+        }
+    }
+    if (hear_it_speed_slider) {
+        if (hear_it_settings_focus == 1) {
+            lv_obj_add_state(hear_it_speed_slider, LV_STATE_FOCUSED);
+        } else {
+            lv_obj_clear_state(hear_it_speed_slider, LV_STATE_FOCUSED);
+        }
+    }
+
+    // Length row styling (focus == 2)
+    if (hear_it_length_row) {
+        if (hear_it_settings_focus == 2) {
             lv_obj_set_style_bg_color(hear_it_length_row, LV_COLOR_CARD_TEAL, 0);
             lv_obj_set_style_bg_opa(hear_it_length_row, LV_OPA_COVER, 0);
             lv_obj_set_style_border_color(hear_it_length_row, LV_COLOR_ACCENT_CYAN, 0);
@@ -639,16 +672,16 @@ static void hear_it_update_focus() {
         }
     }
     if (hear_it_length_slider) {
-        if (hear_it_settings_focus == 1) {
+        if (hear_it_settings_focus == 2) {
             lv_obj_add_state(hear_it_length_slider, LV_STATE_FOCUSED);
         } else {
             lv_obj_clear_state(hear_it_length_slider, LV_STATE_FOCUSED);
         }
     }
 
-    // Button styling (focus == 2)
+    // Button styling (focus == 3)
     if (hear_it_start_btn) {
-        if (hear_it_settings_focus == 2) {
+        if (hear_it_settings_focus == 3) {
             lv_obj_add_state(hear_it_start_btn, LV_STATE_FOCUSED);
         } else {
             lv_obj_clear_state(hear_it_start_btn, LV_STATE_FOCUSED);
@@ -681,7 +714,7 @@ static void hear_it_settings_key_handler(lv_event_t* e) {
         return;
     }
     if (key == LV_KEY_DOWN) {
-        if (hear_it_settings_focus < 2) {
+        if (hear_it_settings_focus < 3) {
             hear_it_settings_focus++;
             hear_it_update_focus();
         }
@@ -701,7 +734,23 @@ static void hear_it_settings_key_handler(lv_event_t* e) {
             tempSettings.mode = (HearItMode)mode;
             hear_it_update_mode_display();
         }
-        else if (hear_it_settings_focus == 1 && hear_it_length_slider) {
+        else if (hear_it_settings_focus == 1 && hear_it_speed_slider) {
+            // Speed slider - adjust WPM value
+            int step = getKeyAccelerationStep();
+            int delta = (key == LV_KEY_RIGHT) ? step : -step;
+            int current = lv_slider_get_value(hear_it_speed_slider);
+            int new_val = current + delta;
+
+            if (new_val < 10) new_val = 10;
+            if (new_val > 40) new_val = 40;
+
+            lv_slider_set_value(hear_it_speed_slider, new_val, LV_ANIM_OFF);
+            tempSettings.wpm = new_val;
+            if (hear_it_speed_value != NULL) {
+                lv_label_set_text_fmt(hear_it_speed_value, "%d", new_val);
+            }
+        }
+        else if (hear_it_settings_focus == 2 && hear_it_length_slider) {
             // Group length slider - adjust value
             int step = getKeyAccelerationStep();
             int delta = (key == LV_KEY_RIGHT) ? step : -step;
@@ -714,13 +763,13 @@ static void hear_it_settings_key_handler(lv_event_t* e) {
             lv_slider_set_value(hear_it_length_slider, new_val, LV_ANIM_OFF);
             lv_event_send(hear_it_length_slider, LV_EVENT_VALUE_CHANGED, NULL);
         }
-        // Button (focus == 2) doesn't respond to LEFT/RIGHT
+        // Button (focus == 3) doesn't respond to LEFT/RIGHT
         return;
     }
 
     // Handle ENTER
     if (key == LV_KEY_ENTER) {
-        if (hear_it_settings_focus == 2 && hear_it_start_btn) {
+        if (hear_it_settings_focus == 3 && hear_it_start_btn) {
             // Trigger start button
             lv_event_send(hear_it_start_btn, LV_EVENT_CLICKED, NULL);
         }
@@ -734,6 +783,9 @@ static void hear_it_start_btn_cb(lv_event_t* e) {
     Serial.println("[HearIt] Start button clicked");
 
     // Save settings from form widgets (tempSettings already updated by key handler)
+    if (hear_it_speed_slider != NULL) {
+        tempSettings.wpm = lv_slider_get_value(hear_it_speed_slider);
+    }
     if (hear_it_length_slider != NULL) {
         tempSettings.groupLength = lv_slider_get_value(hear_it_length_slider);
     }
@@ -769,6 +821,11 @@ static void hear_it_start_btn_cb(lv_event_t* e) {
     lv_group_t* group = getLVGLInputGroup();
     if (group) {
         lv_group_set_editing(group, true);
+        // Remove focus container from nav group so TAB doesn't navigate away
+        // This ensures TAB reaches the textarea's key handler for skip functionality
+        if (hear_it_focus_container != NULL) {
+            lv_group_remove_obj(hear_it_focus_container);
+        }
     }
 
     // Show "Get Ready..." message
@@ -872,6 +929,45 @@ lv_obj_t* createHearItTypeItScreen() {
     lv_label_set_text_fmt(hear_it_mode_value, "< %s >", hear_it_mode_names[tempSettings.mode]);
     lv_obj_set_style_text_color(hear_it_mode_value, LV_COLOR_ACCENT_CYAN, 0);
     lv_obj_set_style_text_font(hear_it_mode_value, getThemeFonts()->font_subtitle, 0);
+
+    // Speed row (WPM setting) - container wraps header and slider for focus styling
+    hear_it_speed_row = lv_obj_create(hear_it_settings_container);
+    lv_obj_set_size(hear_it_speed_row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(hear_it_speed_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(hear_it_speed_row, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(hear_it_speed_row, 8, 0);
+    lv_obj_set_style_bg_opa(hear_it_speed_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(hear_it_speed_row, 0, 0);
+    lv_obj_set_style_pad_all(hear_it_speed_row, 8, 0);
+    lv_obj_set_style_radius(hear_it_speed_row, 6, 0);
+    lv_obj_clear_flag(hear_it_speed_row, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Speed header row (label + value on same line)
+    lv_obj_t* speed_header = lv_obj_create(hear_it_speed_row);
+    lv_obj_set_size(speed_header, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(speed_header, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(speed_header, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(speed_header, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_opa(speed_header, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(speed_header, 0, 0);
+    lv_obj_set_style_pad_all(speed_header, 0, 0);
+
+    lv_obj_t* speed_label = lv_label_create(speed_header);
+    lv_label_set_text(speed_label, "Speed (WPM)");
+    lv_obj_add_style(speed_label, getStyleLabelSubtitle(), 0);
+
+    hear_it_speed_value = lv_label_create(speed_header);
+    lv_label_set_text_fmt(hear_it_speed_value, "%d", tempSettings.wpm);
+    lv_obj_set_style_text_color(hear_it_speed_value, LV_COLOR_ACCENT_CYAN, 0);
+
+    // Speed slider - inside speed container
+    hear_it_speed_slider = lv_slider_create(hear_it_speed_row);
+    lv_obj_set_width(hear_it_speed_slider, lv_pct(100));
+    lv_obj_set_style_min_height(hear_it_speed_slider, 20, 0);
+    lv_slider_set_range(hear_it_speed_slider, 10, 40);
+    lv_slider_set_value(hear_it_speed_slider, tempSettings.wpm, LV_ANIM_OFF);
+    applySliderStyle(hear_it_speed_slider);
+    // Don't add to nav group - focus container handles all keys
 
     // Group Length container (wraps header and slider for focus styling)
     hear_it_length_row = lv_obj_create(hear_it_settings_container);
@@ -1496,7 +1592,7 @@ lv_obj_t* createLicenseSelectScreen() {
     {
         lv_obj_t* stats_card = lv_btn_create(content);
         lv_obj_set_size(stats_card, lv_pct(100), 55);  // Stats card height
-        lv_obj_set_style_bg_color(stats_card, lv_color_hex(0x1A3A3A), 0);  // Slightly different teal
+        lv_obj_set_style_bg_color(stats_card, getThemeColors()->card_secondary, 0);  // Theme card
         lv_obj_set_style_bg_opa(stats_card, LV_OPA_COVER, 0);
         lv_obj_set_style_border_color(stats_card, LV_COLOR_ACCENT_CYAN, 0);
         lv_obj_set_style_border_width(stats_card, 2, 0);
@@ -1513,14 +1609,14 @@ lv_obj_t* createLicenseSelectScreen() {
         lv_label_set_text(stats_title, "View Statistics");
         lv_obj_set_style_text_font(stats_title, getThemeFonts()->font_input, 0);
         lv_obj_set_style_text_color(stats_title, LV_COLOR_ACCENT_CYAN, 0);
-        lv_obj_set_style_text_color(stats_title, lv_color_hex(0x1A1A2E), LV_STATE_FOCUSED);
+        lv_obj_set_style_text_color(stats_title, getThemeColors()->text_on_accent, LV_STATE_FOCUSED);
         lv_obj_align(stats_title, LV_ALIGN_TOP_LEFT, 0, 0);
 
         lv_obj_t* stats_desc = lv_label_create(stats_card);
         lv_label_set_text(stats_desc, "See progress for all license types");
         lv_obj_set_style_text_font(stats_desc, getThemeFonts()->font_small, 0);
         lv_obj_set_style_text_color(stats_desc, LV_COLOR_TEXT_SECONDARY, 0);
-        lv_obj_set_style_text_color(stats_desc, lv_color_hex(0x1A1A2E), LV_STATE_FOCUSED);
+        lv_obj_set_style_text_color(stats_desc, getThemeColors()->text_on_accent, LV_STATE_FOCUSED);
         lv_obj_align(stats_desc, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 
         lv_obj_add_event_cb(stats_card, license_view_stats_handler, LV_EVENT_CLICKED, NULL);
@@ -1551,14 +1647,14 @@ lv_obj_t* createLicenseSelectScreen() {
         lv_label_set_text(card_title, licenseNames[i]);
         lv_obj_set_style_text_font(card_title, getThemeFonts()->font_input, 0);
         lv_obj_set_style_text_color(card_title, LV_COLOR_TEXT_PRIMARY, 0);
-        lv_obj_set_style_text_color(card_title, lv_color_hex(0x1A1A2E), LV_STATE_FOCUSED);
+        lv_obj_set_style_text_color(card_title, getThemeColors()->text_on_accent, LV_STATE_FOCUSED);
         lv_obj_align(card_title, LV_ALIGN_TOP_LEFT, 0, 0);
 
         lv_obj_t* card_desc = lv_label_create(card);
         lv_label_set_text(card_desc, licenseDescriptions[i]);
         lv_obj_set_style_text_font(card_desc, getThemeFonts()->font_small, 0);
         lv_obj_set_style_text_color(card_desc, LV_COLOR_TEXT_SECONDARY, 0);
-        lv_obj_set_style_text_color(card_desc, lv_color_hex(0x1A1A2E), LV_STATE_FOCUSED);
+        lv_obj_set_style_text_color(card_desc, getThemeColors()->text_on_accent, LV_STATE_FOCUSED);
         lv_obj_align(card_desc, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 
         // Store license type and add handlers
@@ -1945,7 +2041,7 @@ lv_obj_t* createLicenseQuizScreen() {
     license_stats_overlay = lv_obj_create(screen);
     lv_obj_set_size(license_stats_overlay, 180, 80);
     lv_obj_set_pos(license_stats_overlay, 10, 180);  // Bottom-left area
-    lv_obj_set_style_bg_color(license_stats_overlay, lv_color_hex(0x1A1A2E), 0);
+    lv_obj_set_style_bg_color(license_stats_overlay, getThemeColors()->bg_deep, 0);
     lv_obj_set_style_bg_opa(license_stats_overlay, LV_OPA_90, 0);
     lv_obj_set_style_border_color(license_stats_overlay, LV_COLOR_ACCENT_CYAN, 0);
     lv_obj_set_style_border_width(license_stats_overlay, 2, 0);
@@ -2543,7 +2639,7 @@ void updateLicenseAllStatsContent() {
     lv_obj_set_size(bar, 280, 20);
     lv_obj_align(bar, LV_ALIGN_TOP_LEFT, 10, 55);
     lv_bar_set_value(bar, masteryPct, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(bar, lv_color_hex(0x1A2A2A), 0);
+    lv_obj_set_style_bg_color(bar, getThemeColors()->bg_layer2, 0);
     lv_obj_set_style_bg_color(bar, masteryPct >= 70 ? LV_COLOR_SUCCESS : LV_COLOR_ACCENT_CYAN, LV_PART_INDICATOR);
 
     lv_obj_t* mastery_lbl = lv_label_create(license_stats_content);
@@ -2592,10 +2688,10 @@ void updateLicenseTabStyles() {
             // Selected tab
             lv_obj_set_style_bg_color(license_stats_tab_btns[i], LV_COLOR_ACCENT_CYAN, 0);
             lv_obj_set_style_text_color(lv_obj_get_child(license_stats_tab_btns[i], 0),
-                lv_color_hex(0x1A1A2E), 0);
+                getThemeColors()->text_on_accent, 0);
         } else {
             // Unselected tab
-            lv_obj_set_style_bg_color(license_stats_tab_btns[i], lv_color_hex(0x1A2A2A), 0);
+            lv_obj_set_style_bg_color(license_stats_tab_btns[i], getThemeColors()->bg_layer2, 0);
             lv_obj_set_style_text_color(lv_obj_get_child(license_stats_tab_btns[i], 0),
                 LV_COLOR_TEXT_SECONDARY, 0);
         }

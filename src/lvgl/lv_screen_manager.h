@@ -8,6 +8,7 @@
 
 #include <lvgl.h>
 #include "lv_init.h"
+#include "lv_theme_manager.h"
 
 // ============================================
 // Screen Stack for Back Navigation
@@ -144,8 +145,8 @@ void focusWidget(lv_obj_t* widget) {
 lv_obj_t* createScreen() {
     lv_obj_t* screen = lv_obj_create(NULL);
 
-    // Apply default background color
-    lv_obj_set_style_bg_color(screen, lv_color_hex(0x0841), 0);  // COLOR_BG_DEEP
+    // Apply default background color from active theme
+    lv_obj_set_style_bg_color(screen, getThemeColors()->bg_deep, 0);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, 0);
 
     return screen;

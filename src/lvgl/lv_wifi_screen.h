@@ -182,8 +182,8 @@ static void network_item_key_handler(lv_event_t* e) {
         }
     } else if (key == LV_KEY_ESC) {
         // Exit WiFi setup
+        lv_event_stop_processing(e);  // Prevent global ESC handler from also firing - MUST be before navigation
         onLVGLBackNavigation();
-        lv_event_stop_processing(e);  // Prevent global ESC handler from also firing
     } else if (key == 'a' || key == 'A') {
         // Start AP mode
         startAPMode();
@@ -229,8 +229,8 @@ lv_obj_t* createNetworkListItem(lv_obj_t* parent, int index, bool isSaved) {
         lv_obj_t* lock = lv_label_create(item);
         lv_label_set_text(lock, LV_SYMBOL_EYE_CLOSE);
         lv_obj_set_style_text_color(lock, LV_COLOR_WARNING, 0);
-        lv_obj_set_style_text_color(lock, lv_color_hex(0x1A1A2E), LV_STATE_FOCUSED);
-        lv_obj_set_style_text_font(lock, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(lock, getThemeColors()->text_on_accent, LV_STATE_FOCUSED);
+        lv_obj_set_style_text_font(lock, getThemeFonts()->font_body, 0);  // Theme font includes symbols
         lv_obj_set_pos(lock, 35, 10);
         textStartX = 55;
     }
@@ -240,8 +240,8 @@ lv_obj_t* createNetworkListItem(lv_obj_t* parent, int index, bool isSaved) {
         lv_obj_t* star = lv_label_create(item);
         lv_label_set_text(star, "*");
         lv_obj_set_style_text_color(star, LV_COLOR_WARNING, 0);
-        lv_obj_set_style_text_color(star, lv_color_hex(0x1A1A2E), LV_STATE_FOCUSED);
-        lv_obj_set_style_text_font(star, &lv_font_montserrat_18, 0);
+        lv_obj_set_style_text_color(star, getThemeColors()->text_on_accent, LV_STATE_FOCUSED);
+        lv_obj_set_style_text_font(star, getThemeFonts()->font_subtitle, 0);  // Theme font
         lv_obj_set_pos(star, textStartX, 8);
         textStartX += 15;
     }
@@ -254,7 +254,7 @@ lv_obj_t* createNetworkListItem(lv_obj_t* parent, int index, bool isSaved) {
     }
     lv_label_set_text(ssid_label, ssid.c_str());
     lv_obj_set_style_text_color(ssid_label, LV_COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_color(ssid_label, lv_color_hex(0x1A1A2E), LV_STATE_FOCUSED);
+    lv_obj_set_style_text_color(ssid_label, getThemeColors()->text_on_accent, LV_STATE_FOCUSED);
     lv_obj_set_style_text_font(ssid_label, getThemeFonts()->font_body, 0);
     lv_obj_set_pos(ssid_label, textStartX, 10);
 
@@ -274,7 +274,8 @@ static void wifi_global_key_handler(lv_event_t* e) {
     if (lv_event_get_code(e) != LV_EVENT_KEY) return;
     uint32_t key = lv_event_get_key(e);
 
-    // Handle ESC key for internal navigation
+    // Handle ESC key for internal navigation (fallback for states without key receivers)
+    // Most states have dedicated key receivers now that handle ESC with lv_event_stop_processing()
     if (key == LV_KEY_ESC) {
         switch (wifi_lvgl_state) {
             case LVGL_WIFI_PASSWORD_INPUT:
@@ -475,6 +476,7 @@ static void wifi_view_key_handler(lv_event_t* e) {
                 updateWiFiContent();
                 beep(TONE_SELECT, BEEP_MEDIUM);
             } else if (key == LV_KEY_ESC) {
+                lv_event_stop_processing(e);  // Prevent double ESC handling
                 onLVGLBackNavigation();
             }
             break;
@@ -488,6 +490,7 @@ static void wifi_view_key_handler(lv_event_t* e) {
                 beep(TONE_MENU_NAV, BEEP_SHORT);
                 triggerWiFiScan();
             } else if (key == LV_KEY_ESC) {
+                lv_event_stop_processing(e);  // Prevent double ESC handling
                 // ESC from AP mode goes back to network list (AP stays active)
                 wifi_lvgl_state = LVGL_WIFI_NETWORK_LIST;
                 updateWiFiContent();
@@ -497,6 +500,7 @@ static void wifi_view_key_handler(lv_event_t* e) {
 
         case LVGL_WIFI_CONNECTED:
             if (key == LV_KEY_ENTER || key == LV_KEY_ESC) {
+                lv_event_stop_processing(e);  // Prevent double ESC handling
                 wifi_lvgl_state = LVGL_WIFI_CURRENT_CONNECTION;
                 updateWiFiContent();
                 beep(TONE_MENU_NAV, BEEP_SHORT);
@@ -525,6 +529,7 @@ static void wifi_view_key_handler(lv_event_t* e) {
                 beep(TONE_SELECT, BEEP_MEDIUM);
                 triggerWiFiScan();
             } else if (key == LV_KEY_ESC) {
+                lv_event_stop_processing(e);  // Prevent double ESC handling
                 wifi_lvgl_state = LVGL_WIFI_NETWORK_LIST;
                 wifi_failed_ssid = "";
                 updateWiFiContent();
@@ -540,6 +545,7 @@ static void wifi_view_key_handler(lv_event_t* e) {
                 wifi_lvgl_state = LVGL_WIFI_ERROR;
                 updateWiFiContent();
             } else if (key == 'n' || key == 'N' || key == LV_KEY_ESC) {
+                lv_event_stop_processing(e);  // Prevent double ESC handling
                 wifi_lvgl_state = LVGL_WIFI_NETWORK_LIST;
                 updateWiFiContent();
                 beep(TONE_MENU_NAV, BEEP_SHORT);
@@ -758,7 +764,7 @@ static void password_textarea_key_handler(lv_event_t* e) {
         wifi_lvgl_state = LVGL_WIFI_NETWORK_LIST;
         updateWiFiContent();
         beep(TONE_MENU_NAV, BEEP_SHORT);
-        lv_event_stop_bubbling(e);  // Prevent default handling
+        lv_event_stop_processing(e);  // Prevent global handler from also handling ESC
     }
 }
 
@@ -825,7 +831,7 @@ void createConnectedView(lv_obj_t* parent) {
     lv_obj_t* icon = lv_label_create(parent);
     lv_label_set_text(icon, LV_SYMBOL_OK);
     lv_obj_set_style_text_color(icon, LV_COLOR_SUCCESS, 0);
-    lv_obj_set_style_text_font(icon, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(icon, getThemeFonts()->font_large, 0);  // Theme font includes symbols
     lv_obj_align(icon, LV_ALIGN_CENTER, 0, -30);
 
     lv_obj_t* label = lv_label_create(parent);
@@ -850,7 +856,7 @@ void createErrorView(lv_obj_t* parent) {
     lv_obj_t* icon = lv_label_create(parent);
     lv_label_set_text(icon, LV_SYMBOL_CLOSE);
     lv_obj_set_style_text_color(icon, LV_COLOR_ERROR, 0);
-    lv_obj_set_style_text_font(icon, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(icon, getThemeFonts()->font_large, 0);  // Theme font includes symbols
     lv_obj_align(icon, LV_ALIGN_CENTER, 0, -40);
 
     lv_obj_t* label = lv_label_create(parent);
@@ -921,7 +927,7 @@ void createResetConfirmView(lv_obj_t* parent) {
     lv_obj_t* icon = lv_label_create(parent);
     lv_label_set_text(icon, LV_SYMBOL_WARNING);
     lv_obj_set_style_text_color(icon, LV_COLOR_WARNING, 0);
-    lv_obj_set_style_text_font(icon, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(icon, getThemeFonts()->font_large, 0);  // Theme font includes symbols
     lv_obj_align(icon, LV_ALIGN_CENTER, 0, -50);
 
     lv_obj_t* title = lv_label_create(parent);

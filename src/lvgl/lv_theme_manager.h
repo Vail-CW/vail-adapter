@@ -12,11 +12,12 @@
 
 #include <lvgl.h>
 
-// Include custom fonts for Enigma theme
-#include "../fonts/font_special_elite_14.c"
-#include "../fonts/font_special_elite_18.c"
-#include "../fonts/font_special_elite_24.c"
-#include "../fonts/font_special_elite_28.c"
+// Forward declarations for custom fonts (defined in src/fonts/*.c)
+// These are compiled separately - do NOT #include the .c files
+LV_FONT_DECLARE(font_special_elite_14);
+LV_FONT_DECLARE(font_special_elite_18);
+LV_FONT_DECLARE(font_special_elite_24);
+LV_FONT_DECLARE(font_special_elite_28);
 
 // ============================================
 // Theme Types
@@ -208,8 +209,8 @@ void initSummitColors(ThemeColors* colors) {
  * Initialize Enigma color palette
  */
 void initEnigmaColors(ThemeColors* colors) {
-    // Background colors - Near-black with green tint
-    colors->bg_deep = lv_color_hex(0x1A1C1A);
+    // Background colors - Light olive green
+    colors->bg_deep = lv_color_hex(0x9FB069);
     colors->bg_layer2 = lv_color_hex(0x252825);
 
     // Card & surface colors - Army green tones

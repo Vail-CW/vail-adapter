@@ -97,18 +97,18 @@ void updateTabStyles() {
     // HF Tab
     if (band_cond_selected_tab == 0) {
         lv_obj_set_style_bg_color(band_cond_tab_hf, LV_COLOR_ACCENT_CYAN, 0);
-        lv_obj_set_style_text_color(lv_obj_get_child(band_cond_tab_hf, 0), lv_color_hex(0x1A1A2E), 0);
+        lv_obj_set_style_text_color(lv_obj_get_child(band_cond_tab_hf, 0), getThemeColors()->text_on_accent, 0);
     } else {
-        lv_obj_set_style_bg_color(band_cond_tab_hf, lv_color_hex(0x1A2A2A), 0);
+        lv_obj_set_style_bg_color(band_cond_tab_hf, getThemeColors()->bg_layer2, 0);
         lv_obj_set_style_text_color(lv_obj_get_child(band_cond_tab_hf, 0), LV_COLOR_TEXT_SECONDARY, 0);
     }
 
     // VHF Tab
     if (band_cond_selected_tab == 1) {
         lv_obj_set_style_bg_color(band_cond_tab_vhf, LV_COLOR_ACCENT_CYAN, 0);
-        lv_obj_set_style_text_color(lv_obj_get_child(band_cond_tab_vhf, 0), lv_color_hex(0x1A1A2E), 0);
+        lv_obj_set_style_text_color(lv_obj_get_child(band_cond_tab_vhf, 0), getThemeColors()->text_on_accent, 0);
     } else {
-        lv_obj_set_style_bg_color(band_cond_tab_vhf, lv_color_hex(0x1A2A2A), 0);
+        lv_obj_set_style_bg_color(band_cond_tab_vhf, getThemeColors()->bg_layer2, 0);
         lv_obj_set_style_text_color(lv_obj_get_child(band_cond_tab_vhf, 0), LV_COLOR_TEXT_SECONDARY, 0);
     }
 }
@@ -647,7 +647,7 @@ lv_obj_t* createBandConditionsScreen() {
     lv_obj_align(band_cond_loading_bar, LV_ALIGN_CENTER, 0, -20);
     lv_bar_set_range(band_cond_loading_bar, 0, 100);
     lv_bar_set_value(band_cond_loading_bar, 0, LV_ANIM_OFF);
-    lv_obj_set_style_bg_color(band_cond_loading_bar, lv_color_hex(0x2A2A3E), 0);
+    lv_obj_set_style_bg_color(band_cond_loading_bar, getThemeColors()->bg_layer2, 0);
     lv_obj_set_style_bg_color(band_cond_loading_bar, LV_COLOR_ACCENT_CYAN, LV_PART_INDICATOR);
     lv_obj_add_flag(band_cond_loading_bar, LV_OBJ_FLAG_HIDDEN);
 
@@ -670,7 +670,7 @@ lv_obj_t* createBandConditionsScreen() {
     lv_obj_t* footer = lv_obj_create(screen);
     lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
     lv_obj_set_pos(footer, 0, SCREEN_HEIGHT - FOOTER_HEIGHT);
-    lv_obj_set_style_bg_color(footer, lv_color_hex(0x0A0A14), 0);
+    lv_obj_set_style_bg_color(footer, getThemeColors()->bg_deep, 0);
     lv_obj_set_style_bg_opa(footer, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(footer, 0, 0);
     lv_obj_set_style_pad_all(footer, 0, 0);

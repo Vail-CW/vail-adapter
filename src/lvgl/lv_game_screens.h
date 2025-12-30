@@ -42,12 +42,75 @@ static lv_obj_t* shooter_canvas = NULL;
 static lv_obj_t* shooter_score_label = NULL;
 static lv_obj_t* shooter_lives_container = NULL;
 static lv_obj_t* shooter_decoded_label = NULL;
-static lv_obj_t* shooter_letter_labels[5];  // Pool of falling letter objects
+static lv_obj_t* shooter_letter_labels[5] = {NULL, NULL, NULL, NULL, NULL};  // Pool of falling letter objects
 
 // Canvas buffer for game graphics
 static lv_color_t* shooter_canvas_buf = NULL;
 
+// Forward declarations for cleanup and effects
+static void cleanupShooterScreenPointers();
+
+// Static variables for effects, game over, and settings screens
+// All initialized to NULL to prevent crashes on first use
+static lv_obj_t* shooter_laser_line = NULL;
+static lv_obj_t* shooter_explosion_container = NULL;
+static lv_obj_t* shooter_explosion_circles[4] = {NULL, NULL, NULL, NULL};
+static lv_obj_t* shooter_game_over_overlay = NULL;
+static lv_obj_t* shooter_settings_screen = NULL;
+static lv_obj_t* shooter_diff_value = NULL;
+static lv_obj_t* shooter_speed_value = NULL;
+static lv_obj_t* shooter_tone_value = NULL;
+static lv_obj_t* shooter_key_value = NULL;
+static lv_obj_t* shooter_highscore_value = NULL;
+static lv_obj_t* shooter_start_btn = NULL;
+static lv_obj_t* shooter_diff_row = NULL;
+static lv_obj_t* shooter_speed_row = NULL;
+static lv_obj_t* shooter_tone_row = NULL;
+static lv_obj_t* shooter_key_row = NULL;
+
+// Reset all shooter screen static pointers (called before creating new screen)
+// This prevents crashes from stale pointers after screen deletion
+static void cleanupShooterScreenPointers() {
+    // Game screen pointers
+    shooter_screen = NULL;
+    shooter_canvas = NULL;
+    shooter_score_label = NULL;
+    shooter_lives_container = NULL;
+    shooter_decoded_label = NULL;
+    for (int i = 0; i < 5; i++) {
+        shooter_letter_labels[i] = NULL;
+    }
+    // Note: Don't free shooter_canvas_buf here - it's reused across screen recreations
+
+    // Effect pointers
+    shooter_laser_line = NULL;
+    shooter_explosion_container = NULL;
+    for (int i = 0; i < 4; i++) {
+        shooter_explosion_circles[i] = NULL;
+    }
+
+    // Game over overlay
+    shooter_game_over_overlay = NULL;
+}
+
+// Reset settings screen pointers
+static void cleanupShooterSettingsPointers() {
+    shooter_settings_screen = NULL;
+    shooter_diff_value = NULL;
+    shooter_speed_value = NULL;
+    shooter_tone_value = NULL;
+    shooter_key_value = NULL;
+    shooter_highscore_value = NULL;
+    shooter_start_btn = NULL;
+    shooter_diff_row = NULL;
+    shooter_speed_row = NULL;
+    shooter_tone_row = NULL;
+    shooter_key_row = NULL;
+}
+
 lv_obj_t* createMorseShooterScreen() {
+    // Clean up any stale pointers from previous screen
+    cleanupShooterScreenPointers();
     lv_obj_t* screen = createScreen();
     applyScreenStyle(screen);
 
@@ -219,80 +282,397 @@ void updateShooterLetter(int index, char letter, int x, int y, bool visible) {
     }
 }
 
+// Helper to draw a small colorful house with roof on canvas
+static void drawHouse(int x, int baseY, int width, int height, lv_color_t wallColor, lv_color_t roofColor, lv_color_t doorColor) {
+    if (shooter_canvas == NULL) return;
+
+    lv_draw_rect_dsc_t rect_dsc;
+    lv_draw_rect_dsc_init(&rect_dsc);
+    rect_dsc.bg_opa = LV_OPA_COVER;
+
+    // House body
+    rect_dsc.bg_color = wallColor;
+    lv_canvas_draw_rect(shooter_canvas, x, baseY - height, width, height, &rect_dsc);
+
+    // Roof (filled triangle)
+    lv_draw_line_dsc_t line_dsc;
+    lv_draw_line_dsc_init(&line_dsc);
+    line_dsc.color = roofColor;
+    line_dsc.width = 1;
+
+    int roofHeight = height / 2 + 2;
+    int peakX = x + width / 2;
+    int peakY = baseY - height - roofHeight;
+
+    for (int dy = 0; dy <= roofHeight; dy++) {
+        int lineY = peakY + dy;
+        float ratio = (float)dy / roofHeight;
+        int halfWidth = (int)(ratio * (width / 2 + 2));
+        lv_point_t points[2] = {{(lv_coord_t)(peakX - halfWidth), (lv_coord_t)lineY},
+                                {(lv_coord_t)(peakX + halfWidth), (lv_coord_t)lineY}};
+        lv_canvas_draw_line(shooter_canvas, points, 2, &line_dsc);
+    }
+
+    // Window (yellow glow)
+    rect_dsc.bg_color = lv_color_hex(0xFFFF88);  // Warm yellow
+    int winW = width / 3;
+    int winH = height / 3;
+    lv_canvas_draw_rect(shooter_canvas, x + width/2 - winW/2, baseY - height + height/4, winW, winH, &rect_dsc);
+
+    // Door
+    rect_dsc.bg_color = doorColor;
+    int doorW = width / 4;
+    int doorH = height / 2;
+    lv_canvas_draw_rect(shooter_canvas, x + width/2 - doorW/2, baseY - doorH, doorW, doorH, &rect_dsc);
+}
+
+// Helper to draw a small evergreen tree (triangular)
+static void drawPineTree(int x, int baseY, int height, lv_color_t color) {
+    if (shooter_canvas == NULL) return;
+
+    lv_draw_rect_dsc_t rect_dsc;
+    lv_draw_rect_dsc_init(&rect_dsc);
+    rect_dsc.bg_opa = LV_OPA_COVER;
+
+    // Trunk
+    rect_dsc.bg_color = lv_color_hex(0x8B4513);
+    int trunkW = height / 6;
+    int trunkH = height / 4;
+    lv_canvas_draw_rect(shooter_canvas, x - trunkW/2, baseY - trunkH, trunkW, trunkH, &rect_dsc);
+
+    // Tree body (filled triangle - 3 layers for pine look)
+    lv_draw_line_dsc_t line_dsc;
+    lv_draw_line_dsc_init(&line_dsc);
+    line_dsc.color = color;
+    line_dsc.width = 1;
+
+    int treeTop = baseY - height;
+    int treeHeight = height - trunkH;
+    for (int dy = 0; dy <= treeHeight; dy++) {
+        int lineY = treeTop + dy;
+        float ratio = (float)dy / treeHeight;
+        int halfWidth = (int)(ratio * (height / 3));
+        lv_point_t points[2] = {{(lv_coord_t)(x - halfWidth), (lv_coord_t)lineY},
+                                {(lv_coord_t)(x + halfWidth), (lv_coord_t)lineY}};
+        lv_canvas_draw_line(shooter_canvas, points, 2, &line_dsc);
+    }
+}
+
+// Helper to draw a round deciduous tree
+static void drawRoundTree(int x, int baseY, int height, lv_color_t leafColor) {
+    if (shooter_canvas == NULL) return;
+
+    lv_draw_rect_dsc_t rect_dsc;
+    lv_draw_rect_dsc_init(&rect_dsc);
+    rect_dsc.bg_opa = LV_OPA_COVER;
+
+    // Trunk
+    rect_dsc.bg_color = lv_color_hex(0x654321);
+    int trunkW = height / 5;
+    int trunkH = height / 3;
+    lv_canvas_draw_rect(shooter_canvas, x - trunkW/2, baseY - trunkH, trunkW, trunkH, &rect_dsc);
+
+    // Canopy (filled circle)
+    lv_draw_line_dsc_t line_dsc;
+    lv_draw_line_dsc_init(&line_dsc);
+    line_dsc.color = leafColor;
+    line_dsc.width = 1;
+
+    int radius = height / 3;
+    int centerY = baseY - trunkH - radius;
+    for (int dy = -radius; dy <= radius; dy++) {
+        int halfWidth = (int)sqrt(radius * radius - dy * dy);
+        if (halfWidth > 0) {
+            lv_point_t points[2] = {{(lv_coord_t)(x - halfWidth), (lv_coord_t)(centerY + dy)},
+                                    {(lv_coord_t)(x + halfWidth), (lv_coord_t)(centerY + dy)}};
+            lv_canvas_draw_line(shooter_canvas, points, 2, &line_dsc);
+        }
+    }
+}
+
+// Helper to draw a bush/shrub
+static void drawBush(int x, int baseY, int size, lv_color_t color) {
+    if (shooter_canvas == NULL) return;
+
+    lv_draw_line_dsc_t line_dsc;
+    lv_draw_line_dsc_init(&line_dsc);
+    line_dsc.color = color;
+    line_dsc.width = 1;
+
+    // Simple half-circle bush
+    int radius = size / 2;
+    for (int dy = 0; dy <= radius; dy++) {
+        int halfWidth = (int)sqrt(radius * radius - dy * dy);
+        if (halfWidth > 0) {
+            lv_point_t points[2] = {{(lv_coord_t)(x - halfWidth), (lv_coord_t)(baseY - dy)},
+                                    {(lv_coord_t)(x + halfWidth), (lv_coord_t)(baseY - dy)}};
+            lv_canvas_draw_line(shooter_canvas, points, 2, &line_dsc);
+        }
+    }
+}
+
 // Draw scenery on canvas (called once at game start)
 void drawShooterScenery() {
     if (shooter_canvas == NULL || shooter_canvas_buf == NULL) return;
 
-    // Clear canvas
-    lv_canvas_fill_bg(shooter_canvas, LV_COLOR_BG_DEEP, LV_OPA_COVER);
+    // Clear canvas with night sky gradient (dark blue)
+    lv_canvas_fill_bg(shooter_canvas, lv_color_hex(0x0a0a20), LV_OPA_COVER);
 
-    // Draw ground
+    // Canvas coordinates: 0,0 is top-left, canvas height is SCREEN_HEIGHT - 80
+    int canvasHeight = SCREEN_HEIGHT - 80;
+    int groundY = canvasHeight - 30;  // Ground line (lower for more scenery)
+
     lv_draw_rect_dsc_t rect_dsc;
     lv_draw_rect_dsc_init(&rect_dsc);
-    rect_dsc.bg_color = LV_COLOR_CARD_TEAL;
     rect_dsc.bg_opa = LV_OPA_COVER;
 
-    // Ground rectangle
-    lv_canvas_draw_rect(shooter_canvas, 0, SCREEN_HEIGHT - 120, SCREEN_WIDTH, 40, &rect_dsc);
+    // Draw ground (grass gradient - darker at bottom)
+    rect_dsc.bg_color = lv_color_hex(0x228B22);  // Forest green
+    lv_canvas_draw_rect(shooter_canvas, 0, groundY, SCREEN_WIDTH, 30, &rect_dsc);
+    rect_dsc.bg_color = lv_color_hex(0x1a6b1a);  // Darker green bottom
+    lv_canvas_draw_rect(shooter_canvas, 0, groundY + 15, SCREEN_WIDTH, 15, &rect_dsc);
 
-    // Draw some simple buildings/scenery
-    rect_dsc.bg_color = LV_COLOR_CARD_BLUE;
-    lv_canvas_draw_rect(shooter_canvas, 50, SCREEN_HEIGHT - 170, 60, 50, &rect_dsc);
-    lv_canvas_draw_rect(shooter_canvas, 150, SCREEN_HEIGHT - 150, 40, 30, &rect_dsc);
-    lv_canvas_draw_rect(shooter_canvas, 350, SCREEN_HEIGHT - 180, 70, 60, &rect_dsc);
+    // Small colorful houses spread across - various styles
+    // Left side
+    drawHouse(8, groundY, 28, 22, lv_color_hex(0xCD5C5C), lv_color_hex(0x8B0000), lv_color_hex(0x4a2511));    // Indian red, dark red roof
+    drawHouse(50, groundY, 24, 18, lv_color_hex(0x87CEEB), lv_color_hex(0x4682B4), lv_color_hex(0x2F4F4F));   // Sky blue, steel blue roof
+    drawHouse(90, groundY, 30, 24, lv_color_hex(0xFFE4B5), lv_color_hex(0xD2691E), lv_color_hex(0x8B4513));   // Moccasin, chocolate roof
 
-    // Draw turret base
-    rect_dsc.bg_color = LV_COLOR_ACCENT_CYAN;
-    lv_canvas_draw_rect(shooter_canvas, SCREEN_WIDTH/2 - 20, SCREEN_HEIGHT - 120, 40, 20, &rect_dsc);
+    // Center-left
+    drawHouse(140, groundY, 26, 20, lv_color_hex(0x98FB98), lv_color_hex(0x2E8B57), lv_color_hex(0x654321));  // Pale green, sea green roof
+    drawHouse(180, groundY, 22, 16, lv_color_hex(0xFFB6C1), lv_color_hex(0xC71585), lv_color_hex(0x8B4513));  // Light pink, medium violet roof
+
+    // Center-right (leave gap for turret)
+    drawHouse(290, groundY, 24, 18, lv_color_hex(0xDDA0DD), lv_color_hex(0x9932CC), lv_color_hex(0x4a2511));  // Plum, dark orchid roof
+    drawHouse(330, groundY, 28, 22, lv_color_hex(0xF0E68C), lv_color_hex(0xDAA520), lv_color_hex(0x8B4513));  // Khaki, goldenrod roof
+
+    // Right side
+    drawHouse(375, groundY, 26, 20, lv_color_hex(0xADD8E6), lv_color_hex(0x4169E1), lv_color_hex(0x2F4F4F));  // Light blue, royal blue roof
+    drawHouse(415, groundY, 22, 16, lv_color_hex(0xFFA07A), lv_color_hex(0xFF4500), lv_color_hex(0x654321));  // Light salmon, orange red roof
+    drawHouse(450, groundY, 24, 18, lv_color_hex(0xE6E6FA), lv_color_hex(0x6A5ACD), lv_color_hex(0x483D8B));  // Lavender, slate blue roof
+
+    // Trees - varied types and colors
+    drawPineTree(38, groundY, 28, lv_color_hex(0x006400));   // Dark green pine
+    drawRoundTree(78, groundY, 24, lv_color_hex(0x32CD32));  // Lime green round
+    drawPineTree(125, groundY, 22, lv_color_hex(0x228B22));  // Forest green pine
+    drawRoundTree(168, groundY, 20, lv_color_hex(0x3CB371)); // Medium sea green
+    drawPineTree(205, groundY, 26, lv_color_hex(0x2E8B57)); // Sea green pine
+
+    drawPineTree(275, groundY, 24, lv_color_hex(0x006400));  // Dark green pine
+    drawRoundTree(318, groundY, 22, lv_color_hex(0x228B22)); // Forest green
+    drawPineTree(358, groundY, 20, lv_color_hex(0x32CD32));  // Lime pine
+    drawRoundTree(402, groundY, 26, lv_color_hex(0x3CB371)); // Sea green round
+    drawPineTree(438, groundY, 18, lv_color_hex(0x006400));  // Small dark pine
+
+    // Bushes for extra detail
+    drawBush(20, groundY, 10, lv_color_hex(0x228B22));
+    drawBush(65, groundY, 8, lv_color_hex(0x32CD32));
+    drawBush(110, groundY, 12, lv_color_hex(0x2E8B57));
+    drawBush(155, groundY, 9, lv_color_hex(0x3CB371));
+    drawBush(195, groundY, 11, lv_color_hex(0x228B22));
+    drawBush(305, groundY, 10, lv_color_hex(0x32CD32));
+    drawBush(345, groundY, 8, lv_color_hex(0x2E8B57));
+    drawBush(390, groundY, 12, lv_color_hex(0x228B22));
+    drawBush(425, groundY, 9, lv_color_hex(0x3CB371));
+    drawBush(468, groundY, 10, lv_color_hex(0x006400));
+
+    // === TURRET (center of screen) ===
+    int turretCenterX = SCREEN_WIDTH / 2;
+
+    // Turret base platform (metallic gray)
+    rect_dsc.bg_color = lv_color_hex(0x708090);  // Slate gray
+    lv_canvas_draw_rect(shooter_canvas, turretCenterX - 20, groundY - 8, 40, 8, &rect_dsc);
+
+    // Turret body (darker metal)
+    rect_dsc.bg_color = lv_color_hex(0x4a5568);
+    lv_canvas_draw_rect(shooter_canvas, turretCenterX - 12, groundY - 20, 24, 12, &rect_dsc);
+
+    // Turret dome (cyan highlight)
+    lv_draw_line_dsc_t line_dsc;
+    lv_draw_line_dsc_init(&line_dsc);
+    line_dsc.color = LV_COLOR_ACCENT_CYAN;
+    line_dsc.width = 1;
+
+    // Draw dome as half circle
+    int domeRadius = 10;
+    int domeCenterY = groundY - 20;
+    for (int dy = -domeRadius; dy <= 0; dy++) {
+        int halfWidth = (int)sqrt(domeRadius * domeRadius - dy * dy);
+        if (halfWidth > 0) {
+            lv_point_t points[2] = {{(lv_coord_t)(turretCenterX - halfWidth), (lv_coord_t)(domeCenterY + dy)},
+                                    {(lv_coord_t)(turretCenterX + halfWidth), (lv_coord_t)(domeCenterY + dy)}};
+            lv_canvas_draw_line(shooter_canvas, points, 2, &line_dsc);
+        }
+    }
+
+    // Turret barrel (pointing up)
+    line_dsc.color = lv_color_hex(0x00CED1);  // Dark turquoise
+    line_dsc.width = 4;
+    lv_point_t barrel[2] = {{(lv_coord_t)turretCenterX, (lv_coord_t)(groundY - 30)},
+                            {(lv_coord_t)turretCenterX, (lv_coord_t)(groundY - 50)}};
+    lv_canvas_draw_line(shooter_canvas, barrel, 2, &line_dsc);
+
+    // Barrel tip glow
+    line_dsc.color = LV_COLOR_ACCENT_CYAN;
+    line_dsc.width = 6;
+    lv_point_t tip[2] = {{(lv_coord_t)turretCenterX, (lv_coord_t)(groundY - 48)},
+                         {(lv_coord_t)turretCenterX, (lv_coord_t)(groundY - 52)}};
+    lv_canvas_draw_line(shooter_canvas, tip, 2, &line_dsc);
 }
 
 // ============================================
 // Visual Effects and Game Over
 // ============================================
 
-// Hit effect label (reused)
-static lv_obj_t* shooter_hit_label = NULL;
+// Laser beam points (line object declared via forward declaration above)
+static lv_point_t shooter_laser_points[2];
 
 // Animation callback for opacity
-static void shooter_hit_anim_cb(void* obj, int32_t v) {
+static void shooter_effect_fade_cb(void* obj, int32_t v) {
     lv_obj_set_style_opa((lv_obj_t*)obj, v, 0);
 }
 
-// Animation complete callback - hide the label
-static void shooter_hit_anim_ready(lv_anim_t* a) {
+// Animation complete callback - hide the object
+static void shooter_effect_fade_ready(lv_anim_t* a) {
     lv_obj_add_flag((lv_obj_t*)a->var, LV_OBJ_FLAG_HIDDEN);
 }
 
-// Show hit effect at position
-void showShooterHitEffect(int x, int y) {
+// Animation callback for explosion scale (simulated by moving circles outward)
+static void shooter_explosion_scale_cb(void* obj, int32_t v) {
+    // v goes from 0 to 100, we use it to expand circles
+    if (shooter_explosion_container == NULL) return;
+
+    int scale = v;  // 0 to 100
+    for (int i = 0; i < 4; i++) {
+        if (shooter_explosion_circles[i] != NULL) {
+            // Position circles in 4 directions, expanding outward
+            int offset = (scale * 15) / 100;  // Max 15 pixels outward
+            int dx = 0, dy = 0;
+            switch(i) {
+                case 0: dx = -offset; dy = -offset; break;  // Top-left
+                case 1: dx = offset; dy = -offset; break;   // Top-right
+                case 2: dx = -offset; dy = offset; break;   // Bottom-left
+                case 3: dx = offset; dy = offset; break;    // Bottom-right
+            }
+            lv_obj_set_pos(shooter_explosion_circles[i], 10 + dx, 10 + dy);
+        }
+    }
+}
+
+// Show laser beam from turret to target position
+static void showLaserBeam(int targetX, int targetY) {
     if (shooter_screen == NULL) return;
 
-    // Create hit label if needed
-    if (shooter_hit_label == NULL) {
-        shooter_hit_label = lv_label_create(shooter_screen);
-        lv_obj_set_style_text_font(shooter_hit_label, getThemeFonts()->font_large, 0);
+    // Turret position (center of screen, near bottom of canvas area)
+    int turretX = SCREEN_WIDTH / 2;
+    int turretY = SCREEN_HEIGHT - 80 - 10;  // Near bottom of canvas, accounting for HUD
+
+    // Create laser line if needed
+    if (shooter_laser_line == NULL) {
+        shooter_laser_line = lv_line_create(shooter_screen);
+        lv_obj_set_style_line_width(shooter_laser_line, 3, 0);
+        lv_obj_set_style_line_rounded(shooter_laser_line, true, 0);
     }
 
-    // Position and show with checkmark symbol
-    lv_label_set_text(shooter_hit_label, LV_SYMBOL_OK);
-    lv_obj_set_style_text_color(shooter_hit_label, LV_COLOR_SUCCESS, 0);
-    lv_obj_set_pos(shooter_hit_label, x, y);
-    lv_obj_clear_flag(shooter_hit_label, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_style_opa(shooter_hit_label, LV_OPA_COVER, 0);
+    // Set line points
+    shooter_laser_points[0].x = turretX;
+    shooter_laser_points[0].y = turretY;
+    shooter_laser_points[1].x = targetX + 10;  // Center of letter
+    shooter_laser_points[1].y = targetY + 10;
 
-    // Fade out animation
+    lv_line_set_points(shooter_laser_line, shooter_laser_points, 2);
+    lv_obj_set_style_line_color(shooter_laser_line, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_opa(shooter_laser_line, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(shooter_laser_line, LV_OBJ_FLAG_HIDDEN);
+
+    // Fade out animation for laser
     lv_anim_t anim;
     lv_anim_init(&anim);
-    lv_anim_set_var(&anim, shooter_hit_label);
+    lv_anim_set_var(&anim, shooter_laser_line);
     lv_anim_set_values(&anim, LV_OPA_COVER, LV_OPA_TRANSP);
-    lv_anim_set_time(&anim, 400);
-    lv_anim_set_exec_cb(&anim, shooter_hit_anim_cb);
-    lv_anim_set_ready_cb(&anim, shooter_hit_anim_ready);
+    lv_anim_set_time(&anim, 150);  // Quick fade
+    lv_anim_set_exec_cb(&anim, shooter_effect_fade_cb);
+    lv_anim_set_ready_cb(&anim, shooter_effect_fade_ready);
     lv_anim_start(&anim);
 }
 
-// Game over overlay
-static lv_obj_t* shooter_game_over_overlay = NULL;
+// Show explosion effect at position
+static void showExplosion(int x, int y) {
+    if (shooter_screen == NULL) return;
+
+    // Create explosion container if needed
+    if (shooter_explosion_container == NULL) {
+        shooter_explosion_container = lv_obj_create(shooter_screen);
+        lv_obj_set_size(shooter_explosion_container, 40, 40);
+        lv_obj_set_style_bg_opa(shooter_explosion_container, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(shooter_explosion_container, 0, 0);
+        lv_obj_clear_flag(shooter_explosion_container, LV_OBJ_FLAG_SCROLLABLE);
+
+        // Create 4 explosion circles (yellow, orange, red, white center)
+        lv_color_t colors[4] = {
+            lv_color_hex(0xFFFF00),  // Yellow
+            lv_color_hex(0xFF8800),  // Orange
+            lv_color_hex(0xFF0000),  // Red
+            lv_color_hex(0xFFFFFF)   // White
+        };
+        int sizes[4] = {16, 12, 8, 4};
+
+        for (int i = 0; i < 4; i++) {
+            shooter_explosion_circles[i] = lv_obj_create(shooter_explosion_container);
+            lv_obj_set_size(shooter_explosion_circles[i], sizes[i], sizes[i]);
+            lv_obj_set_style_radius(shooter_explosion_circles[i], LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_color(shooter_explosion_circles[i], colors[i], 0);
+            lv_obj_set_style_bg_opa(shooter_explosion_circles[i], LV_OPA_COVER, 0);
+            lv_obj_set_style_border_width(shooter_explosion_circles[i], 0, 0);
+            lv_obj_set_pos(shooter_explosion_circles[i], 10, 10);  // Center initially
+        }
+    }
+
+    // Position container at explosion location
+    lv_obj_set_pos(shooter_explosion_container, x - 10, y - 10);
+    lv_obj_set_style_opa(shooter_explosion_container, LV_OPA_COVER, 0);
+    lv_obj_clear_flag(shooter_explosion_container, LV_OBJ_FLAG_HIDDEN);
+
+    // Reset circle positions
+    for (int i = 0; i < 4; i++) {
+        if (shooter_explosion_circles[i] != NULL) {
+            lv_obj_set_pos(shooter_explosion_circles[i], 10, 10);
+        }
+    }
+
+    // Expansion animation
+    lv_anim_t expand_anim;
+    lv_anim_init(&expand_anim);
+    lv_anim_set_var(&expand_anim, shooter_explosion_container);
+    lv_anim_set_values(&expand_anim, 0, 100);
+    lv_anim_set_time(&expand_anim, 200);
+    lv_anim_set_exec_cb(&expand_anim, shooter_explosion_scale_cb);
+    lv_anim_start(&expand_anim);
+
+    // Fade out animation (starts after expansion)
+    lv_anim_t fade_anim;
+    lv_anim_init(&fade_anim);
+    lv_anim_set_var(&fade_anim, shooter_explosion_container);
+    lv_anim_set_values(&fade_anim, LV_OPA_COVER, LV_OPA_TRANSP);
+    lv_anim_set_time(&fade_anim, 200);
+    lv_anim_set_delay(&fade_anim, 150);  // Start fading after expansion begins
+    lv_anim_set_exec_cb(&fade_anim, shooter_effect_fade_cb);
+    lv_anim_set_ready_cb(&fade_anim, shooter_effect_fade_ready);
+    lv_anim_start(&fade_anim);
+}
+
+// Show hit effect at position (combines laser + explosion)
+void showShooterHitEffect(int x, int y) {
+    if (shooter_screen == NULL) return;
+
+    // Show laser beam from turret to target
+    showLaserBeam(x, y);
+
+    // Show explosion at target
+    showExplosion(x, y);
+}
+
+// (shooter_game_over_overlay declared via forward declaration above)
 
 // External game state
 extern int gameScore;
@@ -374,20 +754,7 @@ enum ShooterScreenState {
 };
 static ShooterScreenState shooterScreenState = SHOOTER_STATE_SETTINGS;
 
-// Settings screen widgets
-static lv_obj_t* shooter_settings_screen = NULL;
-static lv_obj_t* shooter_diff_value = NULL;
-static lv_obj_t* shooter_speed_value = NULL;
-static lv_obj_t* shooter_tone_value = NULL;
-static lv_obj_t* shooter_key_value = NULL;
-static lv_obj_t* shooter_highscore_value = NULL;
-static lv_obj_t* shooter_start_btn = NULL;
-
-// Settings row containers for focus styling
-static lv_obj_t* shooter_diff_row = NULL;
-static lv_obj_t* shooter_speed_row = NULL;
-static lv_obj_t* shooter_tone_row = NULL;
-static lv_obj_t* shooter_key_row = NULL;
+// (Settings screen widget pointers declared via forward declarations above)
 
 // Track which row is focused (0=difficulty, 1=speed, 2=tone, 3=key, 4=start)
 static int shooter_settings_focus = 0;
@@ -559,6 +926,10 @@ static void shooter_settings_key_cb(lv_event_t* e) {
 
 // Create settings screen for Morse Shooter
 lv_obj_t* createMorseShooterSettingsScreen() {
+    // Clean up any stale pointers from previous screens
+    cleanupShooterScreenPointers();
+    cleanupShooterSettingsPointers();
+
     lv_obj_t* screen = createScreen();
     applyScreenStyle(screen);
 
@@ -747,7 +1118,20 @@ static lv_obj_t* memory_status_label = NULL;
 static lv_obj_t* memory_lives_container = NULL;
 static lv_obj_t* memory_score_label = NULL;
 
+// Reset Memory Chain screen pointers to prevent crashes on re-entry
+static void cleanupMemoryScreenPointers() {
+    memory_screen = NULL;
+    memory_level_label = NULL;
+    memory_sequence_label = NULL;
+    memory_status_label = NULL;
+    memory_lives_container = NULL;
+    memory_score_label = NULL;
+}
+
 lv_obj_t* createMemoryChainScreen() {
+    // Clean up any stale pointers from previous screen
+    cleanupMemoryScreenPointers();
+
     lv_obj_t* screen = createScreen();
     applyScreenStyle(screen);
 

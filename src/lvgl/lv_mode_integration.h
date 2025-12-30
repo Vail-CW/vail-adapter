@@ -24,6 +24,8 @@
 #include "lv_game_screens.h"
 #include "lv_mode_screens.h"
 #include "lv_band_conditions.h"
+#include "lv_band_plans.h"
+#include "lv_pota_screens.h"
 #include "../core/config.h"
 #include "../core/hardware_init.h"
 #include "../storage/sd_card.h"
@@ -97,6 +99,11 @@
 #define LVGL_MODE_THEME_SETTINGS         59
 #define LVGL_MODE_LICENSE_ALL_STATS      60
 #define LVGL_MODE_SYSTEM_INFO            61
+#define LVGL_MODE_POTA_MENU              62
+#define LVGL_MODE_POTA_ACTIVE_SPOTS      63
+#define LVGL_MODE_POTA_SPOT_DETAIL       64
+#define LVGL_MODE_POTA_FILTERS           65
+#define LVGL_MODE_POTA_ACTIVATE          66
 
 // ============================================
 // Forward declarations from main file
@@ -264,10 +271,14 @@ lv_obj_t* createScreenForModeInt(int mode) {
     lv_obj_t* modeScreen = createModeScreenForMode(mode);
     if (modeScreen != NULL) return modeScreen;
 
+    // POTA screens
+    lv_obj_t* potaScreen = createPOTAScreenForMode(mode);
+    if (potaScreen != NULL) return potaScreen;
+
     // Placeholder screens for unimplemented features
     switch (mode) {
         case LVGL_MODE_BAND_PLANS:
-            return createComingSoonScreen("BAND PLANS");
+            return createBandPlansScreen();
         case LVGL_MODE_PROPAGATION:
             return createBandConditionsScreen();
         case LVGL_MODE_ANTENNAS:
@@ -350,6 +361,11 @@ void initializeModeInt(int mode) {
         case LVGL_MODE_VAIL_REPEATER:
             Serial.println("[ModeInit] Starting Vail Repeater");
             startVailRepeater(tft);
+            // Auto-connect to General room only if callsign is set
+            // (checkVailCallsignRequired is checked in createVailRepeaterScreen)
+            if (vailCallsign.length() > 0 && vailCallsign != "GUEST") {
+                connectToVail("General");
+            }
             break;
         case LVGL_MODE_RADIO_OUTPUT:
             Serial.println("[ModeInit] Starting Radio Output");
@@ -362,6 +378,12 @@ void initializeModeInt(int mode) {
         case LVGL_MODE_PROPAGATION:
             Serial.println("[ModeInit] Starting Band Conditions");
             startBandConditions(tft);
+            break;
+
+        // POTA modes
+        case LVGL_MODE_POTA_ACTIVE_SPOTS:
+            Serial.println("[ModeInit] Starting POTA Active Spots");
+            startPOTAActiveSpots(tft);
             break;
 
         // Bluetooth modes
@@ -404,18 +426,19 @@ void initializeModeInt(int mode) {
             startWebPasswordSettings(tft);
             break;
 
-        // QSO Logger modes
+        // QSO Logger modes - now handled by LVGL screens in lv_mode_screens.h
+        // Screen creation handles data loading, no legacy init needed
         case LVGL_MODE_QSO_VIEW_LOGS:
-            Serial.println("[ModeInit] Starting View Logs");
-            startViewLogs(tft);
+            Serial.println("[ModeInit] View Logs - LVGL screen handles init");
+            // loadQSOsForView() is called in createQSOViewLogsScreen()
             break;
         case LVGL_MODE_QSO_STATISTICS:
-            Serial.println("[ModeInit] Starting QSO Statistics");
-            startStatistics(tft);
+            Serial.println("[ModeInit] Statistics - LVGL screen handles init");
+            // calculateStatistics() is called in createQSOStatisticsScreen()
             break;
         case LVGL_MODE_QSO_LOGGER_SETTINGS:
-            Serial.println("[ModeInit] Starting Logger Settings");
-            startLoggerSettings(tft);
+            Serial.println("[ModeInit] Logger Settings - LVGL screen handles init");
+            // loadLoggerLocation() is called in createQSOLoggerSettingsScreen()
             break;
 
         // Web modes
@@ -609,7 +632,16 @@ int getParentModeInt(int mode) {
         case LVGL_MODE_ANTENNAS:
         case LVGL_MODE_LICENSE_SELECT:
         case LVGL_MODE_SUMMIT_CHAT:
+        case LVGL_MODE_POTA_MENU:
             return LVGL_MODE_HAM_TOOLS_MENU;
+
+        // POTA submenu items
+        case LVGL_MODE_POTA_ACTIVE_SPOTS:
+        case LVGL_MODE_POTA_ACTIVATE:
+            return LVGL_MODE_POTA_MENU;
+        case LVGL_MODE_POTA_SPOT_DETAIL:
+        case LVGL_MODE_POTA_FILTERS:
+            return LVGL_MODE_POTA_ACTIVE_SPOTS;
 
         // QSO Logger submenu items
         case LVGL_MODE_QSO_LOG_ENTRY:
@@ -669,6 +701,11 @@ void onLVGLBackNavigation() {
     if (currentModeInt == LVGL_MODE_HEAR_IT_TYPE_IT ||
         currentModeInt == LVGL_MODE_HEAR_IT_MENU) {
         cleanupHearItTypeItScreen();
+    }
+    if (currentModeInt == LVGL_MODE_POTA_ACTIVE_SPOTS ||
+        currentModeInt == LVGL_MODE_POTA_SPOT_DETAIL ||
+        currentModeInt == LVGL_MODE_POTA_FILTERS) {
+        cleanupPOTAScreen();
     }
 
     // Get parent mode

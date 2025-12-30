@@ -253,6 +253,31 @@ String formatCurrentDateTime() {
 }
 
 /*
+ * Format current date/time into separate buffers
+ * dateOut: buffer for date in YYYYMMDD format (at least 9 chars)
+ * timeOut: buffer for time in HHMM format (at least 5 chars)
+ */
+void formatCurrentDateTime(char* dateOut, char* timeOut) {
+  String dt = formatCurrentDateTime();  // Get "YYYYMMDD HHMM" string
+
+  // Parse date (first 8 chars)
+  if (dateOut) {
+    strncpy(dateOut, dt.c_str(), 8);
+    dateOut[8] = '\0';
+  }
+
+  // Parse time (chars 9-12, after space)
+  if (timeOut) {
+    if (dt.length() >= 13) {
+      strncpy(timeOut, dt.c_str() + 9, 4);
+      timeOut[4] = '\0';
+    } else {
+      timeOut[0] = '\0';
+    }
+  }
+}
+
+/*
  * Convert string to uppercase
  */
 void toUpperCase(char* str) {

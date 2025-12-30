@@ -2,7 +2,7 @@
  * BLE HID Mode
  * Emulates a BLE keyboard sending Left/Right Ctrl keys for paddle input
  * Compatible with MorseRunner and other CW tools expecting keyboard input
- * Uses NimBLE-Arduino library for improved memory efficiency
+ * Uses NimBLE-Arduino library with NimBLEHIDDevice helper class
  *
  * Keyer Modes:
  * - Passthrough: Raw paddle → immediate key press/release (host handles timing)
@@ -14,28 +14,23 @@
 #define BLE_HID_H
 
 #include <NimBLEDevice.h>
+#include <NimBLEHIDDevice.h>
 #include <Preferences.h>
 #include "ble_core.h"
 #include "../core/config.h"
 #include "../audio/i2s_audio.h"
 
-// HID Service UUIDs
-#define HID_SERVICE_UUID_PERIPH    "1812"
-#define HID_REPORT_MAP_UUID_PERIPH "2A4B"
-#define HID_REPORT_UUID            "2A4D"
-#define HID_INFO_UUID_PERIPH       "2A4A"
-#define HID_CONTROL_UUID           "2A4C"
-#define HID_PROTO_MODE_UUID        "2A4E"
-
-// HID Appearance value for keyboard
+// HID constants
 #define HID_KEYBOARD_APPEARANCE    0x03C1
+#define KEYBOARD_REPORT_ID         0x01
 
 // HID Report Descriptor for keyboard
+// Standard keyboard with Report ID 1
 static const uint8_t hidReportDescriptor[] = {
   0x05, 0x01,        // Usage Page (Generic Desktop)
   0x09, 0x06,        // Usage (Keyboard)
   0xa1, 0x01,        // Collection (Application)
-  0x85, 0x01,        //   Report ID (1)
+  0x85, KEYBOARD_REPORT_ID, //   Report ID (1)
   0x05, 0x07,        //   Usage Page (Key Codes)
   0x19, 0xe0,        //   Usage Minimum (224) - Left Ctrl
   0x29, 0xe7,        //   Usage Maximum (231) - Right GUI
@@ -56,6 +51,14 @@ static const uint8_t hidReportDescriptor[] = {
   0x29, 0x65,        //   Usage Maximum (101)
   0x81, 0x00,        //   Input (Data, Array) - Key array
   0xc0               // End Collection
+};
+
+// Keyboard report structure (8 bytes, no Report ID prefix)
+// Report ID is handled by the characteristic descriptor
+struct KeyboardReport {
+  uint8_t modifiers;   // Modifier keys (bit 0=Left Ctrl, bit 4=Right Ctrl)
+  uint8_t reserved;    // Reserved byte (always 0)
+  uint8_t keys[6];     // Key array (up to 6 simultaneous keys)
 };
 
 // HID modifier key bits
@@ -86,9 +89,8 @@ struct BLEHIDState {
   bool active = false;
   bool lastDitPressed = false;
   bool lastDahPressed = false;
-  NimBLEService* hidService = nullptr;
-  NimBLECharacteristic* inputReport = nullptr;
-  NimBLECharacteristic* reportMap = nullptr;
+  NimBLEHIDDevice* hid = nullptr;          // NimBLEHIDDevice helper class
+  NimBLECharacteristic* inputReport = nullptr;  // Input report characteristic
   unsigned long lastUpdateTime = 0;
 
   // Keyer mode
@@ -196,19 +198,18 @@ void sendHIDReport(uint8_t modifiers) {
   if (!btHID.active || btHID.inputReport == nullptr) return;
   if (!isBLEConnected()) return;
 
-  // Build HID keyboard report with Report ID prefix
-  // Format: [Report ID, Modifiers, Reserved, Key1, Key2, Key3, Key4, Key5, Key6]
-  // Since descriptor uses Report ID (1), we must include it as first byte
-  uint8_t report[9] = {0};
-  report[0] = 0x01;       // Report ID (must match descriptor)
-  report[1] = modifiers;  // Modifier keys (Left Ctrl=0x01, Right Ctrl=0x10)
-  report[2] = 0x00;       // Reserved byte
-  // report[3-8] = Key array (all zeros = no regular keys pressed)
+  // Build HID keyboard report (8 bytes, no Report ID prefix)
+  // The inputReport characteristic handles Report ID via descriptor
+  KeyboardReport report;
+  memset(&report, 0, sizeof(report));
+  report.modifiers = modifiers;  // Modifier keys (Left Ctrl=0x01, Right Ctrl=0x10)
+  report.reserved = 0x00;
+  // report.keys[] = all zeros (no regular keys pressed)
 
-  btHID.inputReport->setValue(report, sizeof(report));
+  btHID.inputReport->setValue((uint8_t*)&report, sizeof(report));
   btHID.inputReport->notify();
 
-  Serial.print("[BT HID] Sent report: ID=0x01, Modifiers=0x");
+  Serial.print("[BT HID] Sent report: Modifiers=0x");
   Serial.println(modifiers, HEX);
 }
 
@@ -242,67 +243,46 @@ void startBTHID(LGFX& display) {
   initBLECore();
   bleCore.activeMode = BLE_MODE_HID;
 
-  // Create HID service
-  btHID.hidService = bleCore.pServer->createService(HID_SERVICE_UUID_PERIPH);
+  // Use NimBLEHIDDevice helper class for proper HID setup
+  // This correctly sets up all required services and characteristics
+  btHID.hid = new NimBLEHIDDevice(bleCore.pServer);
 
-  // Create Report Map characteristic
-  btHID.reportMap = btHID.hidService->createCharacteristic(
-    HID_REPORT_MAP_UUID_PERIPH,
-    NIMBLE_PROPERTY::READ
-  );
-  btHID.reportMap->setValue((uint8_t*)hidReportDescriptor, sizeof(hidReportDescriptor));
+  // Set manufacturer name (optional but nice)
+  btHID.hid->setManufacturer("VAIL SUMMIT");
 
-  // Create HID Information characteristic
-  NimBLECharacteristic* hidInfo = btHID.hidService->createCharacteristic(
-    HID_INFO_UUID_PERIPH,
-    NIMBLE_PROPERTY::READ
-  );
-  uint8_t hidInfoValue[] = {0x11, 0x01, 0x00, 0x01};  // HID version, country, flags
-  hidInfo->setValue(hidInfoValue, sizeof(hidInfoValue));
+  // Set PnP ID (vendor, product, version)
+  // Using 0x02 = USB vendor ID source, Apple VID for HID compatibility
+  btHID.hid->setPnp(0x02, 0x05ac, 0x820a, 0x0001);
 
-  // Create HID Control Point characteristic
-  NimBLECharacteristic* hidControl = btHID.hidService->createCharacteristic(
-    HID_CONTROL_UUID,
-    NIMBLE_PROPERTY::WRITE_NR
-  );
+  // Set HID information (country = 0, flags = 0x01 = normally connectable)
+  btHID.hid->setHidInfo(0x00, 0x01);
 
-  // Create Protocol Mode characteristic
-  NimBLECharacteristic* protoMode = btHID.hidService->createCharacteristic(
-    HID_PROTO_MODE_UUID,
-    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE_NR
-  );
-  uint8_t protoValue = 1;  // Report Protocol
-  protoMode->setValue(&protoValue, 1);
+  // Set report map (HID descriptor)
+  btHID.hid->setReportMap((uint8_t*)hidReportDescriptor, sizeof(hidReportDescriptor));
 
-  // Create Input Report characteristic (for sending keyboard reports)
-  btHID.inputReport = btHID.hidService->createCharacteristic(
-    HID_REPORT_UUID,
-    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY
-  );
+  // Get input report characteristic for keyboard (Report ID 1)
+  // This also creates the Report Reference descriptor automatically
+  btHID.inputReport = btHID.hid->getInputReport(KEYBOARD_REPORT_ID);
 
-  // Add Report Reference descriptor (UUID 0x2908, required for HID)
-  // Note: Use generic descriptor, not NimBLE2904 (which is for Characteristic Presentation Format 0x2904)
-  NimBLEDescriptor* reportRefDesc = btHID.inputReport->createDescriptor(
-    NimBLEUUID((uint16_t)0x2908),
-    NIMBLE_PROPERTY::READ,
-    2  // 2 bytes for Report Reference
-  );
-  uint8_t reportRef[] = {0x01, 0x01};  // Report ID 1, Input Report type
-  reportRefDesc->setValue(reportRef, sizeof(reportRef));
+  // Set security: bonding + MITM + secure connections
+  // This is critical for HID to work properly
+  NimBLEDevice::setSecurityAuth(true, true, true);
 
-  // Start HID service
-  btHID.hidService->start();
+  // Start HID services (this starts HID, Device Info, and Battery services)
+  btHID.hid->startServices();
 
   // Set up advertising
-  NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
+  NimBLEAdvertising* advertising = bleCore.pServer->getAdvertising();
   advertising->setAppearance(HID_KEYBOARD_APPEARANCE);
-  advertising->addServiceUUID(btHID.hidService->getUUID());
-
-  // Set security (bonding)
-  NimBLEDevice::setSecurityAuth(true, false, true);  // bonding, MITM, SC
+  advertising->addServiceUUID(btHID.hid->getHidService()->getUUID());
 
   // Start advertising
   startBLEAdvertising("HID Keyboard");
+
+  // Set initial battery level
+  btHID.hid->setBatteryLevel(100);
+
+  Serial.println("[BT HID] NimBLEHIDDevice initialized successfully");
 
   // Initialize LVGL UI with device name and status
   updateBTHIDDeviceName(getBLEDeviceName().c_str());
@@ -324,9 +304,11 @@ void stopBTHID() {
   stopTone();
 
   btHID.active = false;
-  btHID.hidService = nullptr;
   btHID.inputReport = nullptr;
-  btHID.reportMap = nullptr;
+
+  // Note: NimBLEHIDDevice cleanup is handled by deinitBLECore()
+  // The hid object is owned by the server and will be deleted when server is deinitialized
+  btHID.hid = nullptr;
 
   // Clean up LVGL widget pointers
   cleanupBTHIDScreen();
