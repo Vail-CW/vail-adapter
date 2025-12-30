@@ -116,12 +116,19 @@ lv_obj_t* createSplashScreen() {
     lv_obj_set_style_text_color(splash_title, LV_COLOR_ACCENT_CYAN, 0);
     lv_obj_align(splash_title, LV_ALIGN_TOP_MID, 0, SPLASH_TITLE_Y);
 
-    // Subtitle with version
+    // Subtitle
     lv_obj_t* subtitle = lv_label_create(splash_screen);
     lv_label_set_text(subtitle, "Morse Code Training Device");
     lv_obj_set_style_text_font(subtitle, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(subtitle, LV_COLOR_TEXT_SECONDARY, 0);
     lv_obj_align(subtitle, LV_ALIGN_TOP_MID, 0, SPLASH_TITLE_Y + 35);
+
+    // Version info
+    lv_obj_t* version = lv_label_create(splash_screen);
+    lv_label_set_text_fmt(version, "v%s", FIRMWARE_VERSION);
+    lv_obj_set_style_text_font(version, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(version, LV_COLOR_TEXT_TERTIARY, 0);
+    lv_obj_align(version, LV_ALIGN_TOP_MID, 0, SPLASH_TITLE_Y + 55);
 
     // Progress bar
     splash_bar = lv_bar_create(splash_screen);

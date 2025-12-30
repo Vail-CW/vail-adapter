@@ -51,6 +51,34 @@ unsigned long lastStateChangeTime = 0;
 bool lastToneState = false;
 unsigned long lastElementTime = 0;  // Track last element for timeout flush
 
+// Decoder display line management
+#define DECODER_CHARS_PER_LINE 27
+#define DECODER_MAX_LINES 3
+
+// Helper to manage line wrapping and scrolling
+void manageDecoderLines() {
+    // Insert line break if current line is too long
+    int lastNewline = decodedText.lastIndexOf('\n');
+    int currentLineLen = (lastNewline < 0) ? decodedText.length() : decodedText.length() - lastNewline - 1;
+
+    if (currentLineLen >= DECODER_CHARS_PER_LINE) {
+        decodedText += '\n';
+    }
+
+    // Count lines and remove oldest if too many
+    int lineCount = 1;
+    for (int i = 0; i < decodedText.length(); i++) {
+        if (decodedText[i] == '\n') lineCount++;
+    }
+
+    if (lineCount > DECODER_MAX_LINES) {
+        int firstNewline = decodedText.indexOf('\n');
+        if (firstNewline >= 0) {
+            decodedText = decodedText.substring(firstNewline + 1);
+        }
+    }
+}
+
 // Forward declarations
 void startPracticeMode(LGFX &display);
 void updatePracticeOscillator();
@@ -108,15 +136,8 @@ void startPracticeMode(LGFX &display) {
   decoder.messageCallback = [](String morse, String text) {
     // Process each character in the decoded text individually
     for (int i = 0; i < text.length(); i++) {
-      // Check if adding this character would exceed our 32-char limit
-      if (decodedText.length() >= 32) {
-        // Clear everything and start fresh
-        decodedText = "";
-        decodedMorse = "";
-      }
-
-      // Add the character
       decodedText += text[i];
+      manageDecoderLines();  // Handle line wrapping and scrolling
     }
 
     // Also track morse pattern
@@ -131,8 +152,7 @@ void startPracticeMode(LGFX &display) {
     Serial.print(text);
     Serial.print(" (");
     Serial.print(morse);
-    Serial.print(") -> Total length: ");
-    Serial.println(decodedText.length());
+    Serial.println(")");
   };
 
   decoder.speedCallback = [](float wpm, float fwpm) {

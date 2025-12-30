@@ -93,8 +93,8 @@ void initI2SAudio() {
     .communication_format = I2S_COMM_FORMAT_STAND_I2S,
     .intr_alloc_flags = ESP_INTR_FLAG_LEVEL3,  // Highest priority - must beat SPI DMA
     .dma_buf_count = 8,
-    .dma_buf_len = 64,
-    .use_apll = false,
+    .dma_buf_len = 256,  // Larger buffers reduce DMA interrupt frequency
+    .use_apll = true,  // Use Audio PLL for cleaner clock (reduces noise)
     .tx_desc_auto_clear = true,
     .fixed_mclk = 0
   };

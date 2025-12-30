@@ -211,13 +211,13 @@ lv_obj_t* createPracticeScreen() {
 
     // Decoder box - expanded now that stats row is removed
     practice_decoder_box = lv_obj_create(screen);
-    lv_obj_set_size(practice_decoder_box, SCREEN_WIDTH - 40, 130);  // Taller
-    lv_obj_set_pos(practice_decoder_box, 20, HEADER_HEIGHT + 70);
+    lv_obj_set_size(practice_decoder_box, SCREEN_WIDTH - 20, 130);  // Wider box (20px margin total)
+    lv_obj_set_pos(practice_decoder_box, 10, HEADER_HEIGHT + 70);
     lv_obj_set_style_bg_color(practice_decoder_box, LV_COLOR_BG_LAYER2, 0);
     lv_obj_set_style_border_color(practice_decoder_box, LV_COLOR_BORDER_SUBTLE, 0);
     lv_obj_set_style_border_width(practice_decoder_box, 1, 0);
     lv_obj_set_style_radius(practice_decoder_box, 8, 0);
-    lv_obj_set_style_pad_all(practice_decoder_box, 15, 0);
+    lv_obj_set_style_pad_all(practice_decoder_box, 10, 0);  // Reduced padding
     lv_obj_clear_flag(practice_decoder_box, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* decoder_title = lv_label_create(practice_decoder_box);
@@ -230,9 +230,9 @@ lv_obj_t* createPracticeScreen() {
     lv_label_set_text(practice_decoder_text, "_");
     lv_obj_set_style_text_color(practice_decoder_text, LV_COLOR_ACCENT_GREEN, 0);
     lv_obj_set_style_text_font(practice_decoder_text, getThemeFonts()->font_title, 0);
-    lv_label_set_long_mode(practice_decoder_text, LV_LABEL_LONG_WRAP);  // Wrap instead of scroll
-    lv_obj_set_width(practice_decoder_text, SCREEN_WIDTH - 80);
-    lv_obj_align(practice_decoder_text, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    lv_label_set_long_mode(practice_decoder_text, LV_LABEL_LONG_WRAP);  // Wrap with newlines
+    lv_obj_set_width(practice_decoder_text, SCREEN_WIDTH - 40);  // Wider text area (was -80)
+    lv_obj_align(practice_decoder_text, LV_ALIGN_TOP_LEFT, 0, 18);  // Below "Decoded:" label
 
     // Footer with keyboard shortcuts
     lv_obj_t* footer = lv_obj_create(screen);
@@ -344,6 +344,9 @@ static lv_timer_t* hear_it_start_timer = NULL;
 // Track which settings widget is currently focused (0=mode, 1=slider, 2=button)
 static int hear_it_settings_focus = 0;
 
+// Focus container for settings navigation (invisible widget that receives key events)
+static lv_obj_t* hear_it_focus_container = NULL;
+
 // Forward declaration for focus update function
 static void hear_it_update_focus();
 
@@ -420,6 +423,18 @@ static void hear_it_key_event_cb(lv_event_t* e) {
         hear_it_settings_focus = 0;  // Reset focus to first item
         updateHearItSettingsDisplay();
         hear_it_update_focus();
+
+        // Re-focus the settings focus container so arrow keys work
+        if (hear_it_focus_container != NULL) {
+            lv_group_focus_obj(hear_it_focus_container);
+        }
+
+        // Ensure group is in edit mode for arrow key navigation
+        lv_group_t* group = getLVGLInputGroup();
+        if (group != NULL) {
+            lv_group_set_editing(group, true);
+        }
+
         beep(TONE_MENU_NAV, BEEP_SHORT);
         lv_event_stop_processing(e);  // Prevent global ESC handler from also firing
         return;
@@ -534,10 +549,13 @@ void cleanupHearItTypeItScreen() {
     hear_it_footer_help = NULL;
     hear_it_settings_container = NULL;
     hear_it_training_container = NULL;
+    hear_it_mode_row = NULL;
     hear_it_mode_value = NULL;
+    hear_it_length_row = NULL;
     hear_it_length_slider = NULL;
     hear_it_length_value = NULL;
     hear_it_start_btn = NULL;
+    hear_it_focus_container = NULL;
 }
 
 // Timer callback for correct answer - play next callsign after feedback delay
@@ -811,14 +829,15 @@ lv_obj_t* createHearItTypeItScreen() {
 
     // Create an invisible focus container to receive all key events
     // This bypasses LVGL's widget-level key handling
-    lv_obj_t* focus_container = lv_obj_create(hear_it_settings_container);
-    lv_obj_set_size(focus_container, 0, 0);
-    lv_obj_set_style_bg_opa(focus_container, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(focus_container, 0, 0);
-    lv_obj_clear_flag(focus_container, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(focus_container, hear_it_settings_key_handler, LV_EVENT_KEY, NULL);
-    addNavigableWidget(focus_container);
+    // Use static variable so we can re-focus it when returning from training mode
+    hear_it_focus_container = lv_obj_create(hear_it_settings_container);
+    lv_obj_set_size(hear_it_focus_container, 0, 0);
+    lv_obj_set_style_bg_opa(hear_it_focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(hear_it_focus_container, 0, 0);
+    lv_obj_clear_flag(hear_it_focus_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(hear_it_focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(hear_it_focus_container, hear_it_settings_key_handler, LV_EVENT_KEY, NULL);
+    addNavigableWidget(hear_it_focus_container);
 
     // Put group in edit mode - this makes UP/DOWN keys go to the widget instead of being consumed by LVGL
     lv_group_t* group = getLVGLInputGroup();
@@ -827,7 +846,7 @@ lv_obj_t* createHearItTypeItScreen() {
     }
 
     // Ensure focus is on our container
-    lv_group_focus_obj(focus_container);
+    lv_group_focus_obj(hear_it_focus_container);
 
     // Reset focus state and set initial focus
     hear_it_settings_focus = 0;

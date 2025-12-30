@@ -281,9 +281,232 @@ lv_obj_t* createBrightnessSettingsScreen() {
 static lv_obj_t* cw_settings_screen = NULL;
 static lv_obj_t* cw_speed_slider = NULL;
 static lv_obj_t* cw_tone_slider = NULL;
-static lv_obj_t* cw_keytype_dropdown = NULL;
+static lv_obj_t* cw_keytype_value = NULL;  // Changed from dropdown to label
 static lv_obj_t* cw_speed_value = NULL;
 static lv_obj_t* cw_tone_value = NULL;
+
+// CW Settings focus state and row references
+static int cw_settings_focus = 0;  // 0=Speed, 1=Tone, 2=Key Type
+static lv_obj_t* cw_focus_container = NULL;
+static lv_obj_t* cw_speed_row = NULL;
+static lv_obj_t* cw_tone_row = NULL;
+static lv_obj_t* cw_keytype_row = NULL;
+
+// Key type names for selector display
+static const char* cw_keytype_names[] = {"Straight", "Iambic A", "Iambic B"};
+static const int cw_keytype_count = 3;
+
+// Musical note frequencies in the CW tone range (400-1200 Hz)
+// A4 = 440 Hz standard tuning, includes all semitones (chromatic scale)
+static const int cw_note_frequencies[] = {
+    400,   // G4 (392 Hz rounded up)
+    415,   // G#4/Ab4
+    440,   // A4
+    466,   // A#4/Bb4
+    494,   // B4
+    523,   // C5
+    554,   // C#5/Db5
+    587,   // D5
+    622,   // D#5/Eb5
+    659,   // E5
+    698,   // F5
+    740,   // F#5/Gb5
+    784,   // G5
+    831,   // G#5/Ab5
+    880,   // A5
+    932,   // A#5/Bb5
+    988,   // B5
+    1047,  // C6
+    1109,  // C#6/Db6
+    1175   // D6
+};
+static const int cw_note_count = sizeof(cw_note_frequencies) / sizeof(cw_note_frequencies[0]);
+
+// Snap a frequency to the nearest musical note
+static int snapToNearestNote(int freq) {
+    int closest = cw_note_frequencies[0];
+    int minDiff = abs(freq - closest);
+
+    for (int i = 1; i < cw_note_count; i++) {
+        int diff = abs(freq - cw_note_frequencies[i]);
+        if (diff < minDiff) {
+            minDiff = diff;
+            closest = cw_note_frequencies[i];
+        }
+    }
+    return closest;
+}
+
+// Update visual focus indicator for CW settings rows
+static void cw_update_focus() {
+    // Speed row styling (focus == 0)
+    if (cw_speed_row) {
+        if (cw_settings_focus == 0) {
+            lv_obj_set_style_bg_color(cw_speed_row, LV_COLOR_CARD_TEAL, 0);
+            lv_obj_set_style_bg_opa(cw_speed_row, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_color(cw_speed_row, LV_COLOR_ACCENT_CYAN, 0);
+            lv_obj_set_style_border_width(cw_speed_row, 2, 0);
+        } else {
+            lv_obj_set_style_bg_opa(cw_speed_row, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(cw_speed_row, 0, 0);
+        }
+    }
+    if (cw_speed_slider) {
+        if (cw_settings_focus == 0) {
+            lv_obj_add_state(cw_speed_slider, LV_STATE_FOCUSED);
+        } else {
+            lv_obj_clear_state(cw_speed_slider, LV_STATE_FOCUSED);
+        }
+    }
+
+    // Tone row styling (focus == 1)
+    if (cw_tone_row) {
+        if (cw_settings_focus == 1) {
+            lv_obj_set_style_bg_color(cw_tone_row, LV_COLOR_CARD_TEAL, 0);
+            lv_obj_set_style_bg_opa(cw_tone_row, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_color(cw_tone_row, LV_COLOR_ACCENT_CYAN, 0);
+            lv_obj_set_style_border_width(cw_tone_row, 2, 0);
+        } else {
+            lv_obj_set_style_bg_opa(cw_tone_row, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(cw_tone_row, 0, 0);
+        }
+    }
+    if (cw_tone_slider) {
+        if (cw_settings_focus == 1) {
+            lv_obj_add_state(cw_tone_slider, LV_STATE_FOCUSED);
+        } else {
+            lv_obj_clear_state(cw_tone_slider, LV_STATE_FOCUSED);
+        }
+    }
+
+    // Key type row styling (focus == 2)
+    if (cw_keytype_row) {
+        if (cw_settings_focus == 2) {
+            lv_obj_set_style_bg_color(cw_keytype_row, LV_COLOR_CARD_TEAL, 0);
+            lv_obj_set_style_bg_opa(cw_keytype_row, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_color(cw_keytype_row, LV_COLOR_ACCENT_CYAN, 0);
+            lv_obj_set_style_border_width(cw_keytype_row, 2, 0);
+        } else {
+            lv_obj_set_style_bg_opa(cw_keytype_row, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(cw_keytype_row, 0, 0);
+        }
+    }
+    if (cw_keytype_value) {
+        lv_obj_set_style_text_color(cw_keytype_value,
+            cw_settings_focus == 2 ? LV_COLOR_ACCENT_CYAN : LV_COLOR_TEXT_SECONDARY, 0);
+    }
+}
+
+// Forward declaration for back navigation
+extern void onLVGLBackNavigation();
+
+// Unified key handler for CW settings - handles all navigation
+static void cw_settings_key_handler(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+
+    // Block Tab key - we don't want LVGL's default group navigation
+    if (key == LV_KEY_NEXT || key == LV_KEY_PREV) {
+        lv_event_stop_bubbling(e);
+        return;
+    }
+
+    // Handle ESC for back navigation
+    if (key == LV_KEY_ESC) {
+        lv_event_stop_bubbling(e);  // Prevent double-navigation
+        onLVGLBackNavigation();
+        return;
+    }
+
+    // Handle UP/DOWN for navigation between settings
+    if (key == LV_KEY_UP) {
+        lv_event_stop_bubbling(e);
+        if (cw_settings_focus > 0) {
+            cw_settings_focus--;
+            cw_update_focus();
+        }
+        return;
+    }
+    if (key == LV_KEY_DOWN) {
+        lv_event_stop_bubbling(e);
+        if (cw_settings_focus < 2) {
+            cw_settings_focus++;
+            cw_update_focus();
+        }
+        return;
+    }
+
+    // Handle LEFT/RIGHT for value adjustment based on current focus
+    if (key == LV_KEY_LEFT || key == LV_KEY_RIGHT) {
+        lv_event_stop_bubbling(e);
+        if (cw_settings_focus == 0 && cw_speed_slider) {
+            // Speed slider - adjust WPM with acceleration
+            int step = getKeyAccelerationStep();
+            int delta = (key == LV_KEY_RIGHT) ? step : -step;
+            int current = lv_slider_get_value(cw_speed_slider);
+            int new_val = current + delta;
+
+            // Clamp to range
+            if (new_val < WPM_MIN) new_val = WPM_MIN;
+            if (new_val > WPM_MAX) new_val = WPM_MAX;
+
+            lv_slider_set_value(cw_speed_slider, new_val, LV_ANIM_OFF);
+            lv_event_send(cw_speed_slider, LV_EVENT_VALUE_CHANGED, NULL);
+        }
+        else if (cw_settings_focus == 1 && cw_tone_slider) {
+            // Tone slider - move to next/previous musical note
+            int current = lv_slider_get_value(cw_tone_slider);
+            int new_val = current;
+
+            // Find current note index
+            int current_idx = 0;
+            int minDiff = abs(current - cw_note_frequencies[0]);
+            for (int i = 1; i < cw_note_count; i++) {
+                int diff = abs(current - cw_note_frequencies[i]);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    current_idx = i;
+                }
+            }
+
+            // Move to next/previous note
+            if (key == LV_KEY_RIGHT && current_idx < cw_note_count - 1) {
+                new_val = cw_note_frequencies[current_idx + 1];
+            } else if (key == LV_KEY_LEFT && current_idx > 0) {
+                new_val = cw_note_frequencies[current_idx - 1];
+            }
+
+            if (new_val != current) {
+                lv_slider_set_value(cw_tone_slider, new_val, LV_ANIM_OFF);
+                lv_event_send(cw_tone_slider, LV_EVENT_VALUE_CHANGED, NULL);
+            }
+        }
+        else if (cw_settings_focus == 2 && cw_keytype_value) {
+            // Key type - cycle through options using arrow selector
+            int current = getCwKeyTypeAsInt();
+
+            if (key == LV_KEY_RIGHT) {
+                current = (current + 1) % cw_keytype_count;
+            } else {
+                current = (current - 1 + cw_keytype_count) % cw_keytype_count;
+            }
+
+            // Update display and save
+            lv_label_set_text_fmt(cw_keytype_value, "< %s >", cw_keytype_names[current]);
+            setCwKeyTypeFromInt(current);
+            saveCWSettings();
+        }
+        return;
+    }
+
+    // Handle ENTER - no action needed, all settings use LEFT/RIGHT
+    if (key == LV_KEY_ENTER) {
+        lv_event_stop_bubbling(e);
+        return;
+    }
+}
 
 static void cw_speed_event_cb(lv_event_t* e) {
     lv_obj_t* slider = lv_event_get_target(e);
@@ -294,31 +517,6 @@ static void cw_speed_event_cb(lv_event_t* e) {
     saveCWSettings();
 }
 
-// Key handler for CW speed slider - applies acceleration
-static void cw_speed_key_cb(lv_event_t* e) {
-    if (lv_event_get_code(e) != LV_EVENT_KEY) return;
-
-    uint32_t key = lv_event_get_key(e);
-    lv_obj_t* slider = lv_event_get_target(e);
-
-    if (key == LV_KEY_LEFT || key == LV_KEY_RIGHT) {
-        int step = getKeyAccelerationStep();
-        int delta = (key == LV_KEY_RIGHT) ? step : -step;
-        int current = lv_slider_get_value(slider);
-        int new_val = current + delta;
-
-        // Clamp to range
-        int min_val = lv_slider_get_min_value(slider);
-        int max_val = lv_slider_get_max_value(slider);
-        if (new_val < min_val) new_val = min_val;
-        if (new_val > max_val) new_val = max_val;
-
-        lv_slider_set_value(slider, new_val, LV_ANIM_OFF);
-        lv_event_send(slider, LV_EVENT_VALUE_CHANGED, NULL);
-
-        lv_event_stop_bubbling(e);
-    }
-}
 
 static void cw_tone_event_cb(lv_event_t* e) {
     lv_obj_t* slider = lv_event_get_target(e);
@@ -331,39 +529,6 @@ static void cw_tone_event_cb(lv_event_t* e) {
     beep(cwTone, 100);
 }
 
-// Key handler for CW tone slider - applies acceleration (larger steps for Hz range)
-static void cw_tone_key_cb(lv_event_t* e) {
-    if (lv_event_get_code(e) != LV_EVENT_KEY) return;
-
-    uint32_t key = lv_event_get_key(e);
-    lv_obj_t* slider = lv_event_get_target(e);
-
-    if (key == LV_KEY_LEFT || key == LV_KEY_RIGHT) {
-        // Tone range is 400-1200 Hz, so use larger base step (10 Hz)
-        int accel = getKeyAccelerationStep();
-        int step = 10 * accel;  // 10, 20, or 40 Hz steps
-        int delta = (key == LV_KEY_RIGHT) ? step : -step;
-        int current = lv_slider_get_value(slider);
-        int new_val = current + delta;
-
-        // Clamp to range
-        int min_val = lv_slider_get_min_value(slider);
-        int max_val = lv_slider_get_max_value(slider);
-        if (new_val < min_val) new_val = min_val;
-        if (new_val > max_val) new_val = max_val;
-
-        lv_slider_set_value(slider, new_val, LV_ANIM_OFF);
-        lv_event_send(slider, LV_EVENT_VALUE_CHANGED, NULL);
-
-        lv_event_stop_bubbling(e);
-    }
-}
-
-static void cw_keytype_event_cb(lv_event_t* e) {
-    lv_obj_t* dd = lv_event_get_target(e);
-    setCwKeyTypeFromInt(lv_dropdown_get_selected(dd));
-    saveCWSettings();
-}
 
 lv_obj_t* createCWSettingsScreen() {
     lv_obj_t* screen = createScreen();
@@ -390,21 +555,48 @@ lv_obj_t* createCWSettingsScreen() {
     lv_obj_set_pos(content, 20, HEADER_HEIGHT + 10);
     lv_obj_set_layout(content, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(content, 15, 0);
-    lv_obj_set_style_pad_all(content, 15, 0);
+    lv_obj_set_style_pad_row(content, 8, 0);
+    lv_obj_set_style_pad_all(content, 10, 0);
     applyCardStyle(content);
+    lv_obj_add_flag(content, LV_OBJ_FLAG_OVERFLOW_VISIBLE);  // Prevent slider clipping
 
-    // Speed setting
-    lv_obj_t* speed_row = lv_obj_create(content);
-    lv_obj_set_size(speed_row, lv_pct(100), LV_SIZE_CONTENT);
-    lv_obj_set_layout(speed_row, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(speed_row, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(speed_row, 5, 0);
-    lv_obj_set_style_bg_opa(speed_row, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(speed_row, 0, 0);
-    lv_obj_set_style_pad_all(speed_row, 0, 0);
+    // Create an invisible focus container to receive all key events
+    // This bypasses LVGL's widget-level key handling
+    cw_focus_container = lv_obj_create(content);
+    lv_obj_set_size(cw_focus_container, 0, 0);
+    lv_obj_set_style_bg_opa(cw_focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(cw_focus_container, 0, 0);
+    lv_obj_clear_flag(cw_focus_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(cw_focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(cw_focus_container, cw_settings_key_handler, LV_EVENT_KEY, NULL);
+    addNavigableWidget(cw_focus_container);
 
-    lv_obj_t* speed_header = lv_obj_create(speed_row);
+    // Put group in edit mode - this makes UP/DOWN keys go to the widget instead of being consumed by LVGL
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_set_editing(group, true);
+    }
+
+    // Ensure focus is on our container
+    lv_group_focus_obj(cw_focus_container);
+
+    // Reset focus state
+    cw_settings_focus = 0;
+
+    // Speed setting row (with styling for focus highlight)
+    cw_speed_row = lv_obj_create(content);
+    lv_obj_set_size(cw_speed_row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(cw_speed_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(cw_speed_row, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(cw_speed_row, 5, 0);
+    lv_obj_set_style_bg_opa(cw_speed_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(cw_speed_row, 0, 0);
+    lv_obj_set_style_pad_all(cw_speed_row, 8, 0);
+    lv_obj_set_style_radius(cw_speed_row, 6, 0);
+    lv_obj_clear_flag(cw_speed_row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(cw_speed_row, LV_OBJ_FLAG_OVERFLOW_VISIBLE);  // Prevent slider knob clipping
+
+    lv_obj_t* speed_header = lv_obj_create(cw_speed_row);
     lv_obj_set_size(speed_header, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_layout(speed_header, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(speed_header, LV_FLEX_FLOW_ROW);
@@ -421,26 +613,28 @@ lv_obj_t* createCWSettingsScreen() {
     lv_label_set_text_fmt(cw_speed_value, "%d WPM", cwSpeed);
     lv_obj_set_style_text_color(cw_speed_value, LV_COLOR_ACCENT_CYAN, 0);
 
-    cw_speed_slider = lv_slider_create(speed_row);
+    cw_speed_slider = lv_slider_create(cw_speed_row);
     lv_obj_set_width(cw_speed_slider, lv_pct(100));
     lv_slider_set_range(cw_speed_slider, WPM_MIN, WPM_MAX);
     lv_slider_set_value(cw_speed_slider, cwSpeed, LV_ANIM_OFF);
     applySliderStyle(cw_speed_slider);
     lv_obj_add_event_cb(cw_speed_slider, cw_speed_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(cw_speed_slider, cw_speed_key_cb, LV_EVENT_KEY, NULL);
-    addNavigableWidget(cw_speed_slider);
+    // No addNavigableWidget - focus container handles all navigation
 
-    // Tone setting
-    lv_obj_t* tone_row = lv_obj_create(content);
-    lv_obj_set_size(tone_row, lv_pct(100), LV_SIZE_CONTENT);
-    lv_obj_set_layout(tone_row, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(tone_row, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(tone_row, 5, 0);
-    lv_obj_set_style_bg_opa(tone_row, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(tone_row, 0, 0);
-    lv_obj_set_style_pad_all(tone_row, 0, 0);
+    // Tone setting row (with styling for focus highlight)
+    cw_tone_row = lv_obj_create(content);
+    lv_obj_set_size(cw_tone_row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(cw_tone_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(cw_tone_row, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(cw_tone_row, 5, 0);
+    lv_obj_set_style_bg_opa(cw_tone_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(cw_tone_row, 0, 0);
+    lv_obj_set_style_pad_all(cw_tone_row, 8, 0);
+    lv_obj_set_style_radius(cw_tone_row, 6, 0);
+    lv_obj_clear_flag(cw_tone_row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(cw_tone_row, LV_OBJ_FLAG_OVERFLOW_VISIBLE);  // Prevent slider knob clipping
 
-    lv_obj_t* tone_header = lv_obj_create(tone_row);
+    lv_obj_t* tone_header = lv_obj_create(cw_tone_row);
     lv_obj_set_size(tone_header, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_layout(tone_header, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(tone_header, LV_FLEX_FLOW_ROW);
@@ -457,36 +651,38 @@ lv_obj_t* createCWSettingsScreen() {
     lv_label_set_text_fmt(cw_tone_value, "%d Hz", cwTone);
     lv_obj_set_style_text_color(cw_tone_value, LV_COLOR_ACCENT_CYAN, 0);
 
-    cw_tone_slider = lv_slider_create(tone_row);
+    cw_tone_slider = lv_slider_create(cw_tone_row);
     lv_obj_set_width(cw_tone_slider, lv_pct(100));
     lv_slider_set_range(cw_tone_slider, 400, 1200);
     lv_slider_set_value(cw_tone_slider, cwTone, LV_ANIM_OFF);
     applySliderStyle(cw_tone_slider);
     lv_obj_add_event_cb(cw_tone_slider, cw_tone_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    lv_obj_add_event_cb(cw_tone_slider, cw_tone_key_cb, LV_EVENT_KEY, NULL);
-    addNavigableWidget(cw_tone_slider);
+    // No addNavigableWidget - focus container handles all navigation
 
-    // Key type setting
-    lv_obj_t* keytype_row = lv_obj_create(content);
-    lv_obj_set_size(keytype_row, lv_pct(100), LV_SIZE_CONTENT);
-    lv_obj_set_layout(keytype_row, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(keytype_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(keytype_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_bg_opa(keytype_row, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(keytype_row, 0, 0);
-    lv_obj_set_style_pad_all(keytype_row, 0, 0);
+    // Key type setting row (with styling for focus highlight)
+    cw_keytype_row = lv_obj_create(content);
+    lv_obj_set_size(cw_keytype_row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(cw_keytype_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(cw_keytype_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(cw_keytype_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_opa(cw_keytype_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(cw_keytype_row, 0, 0);
+    lv_obj_set_style_pad_all(cw_keytype_row, 8, 0);
+    lv_obj_set_style_radius(cw_keytype_row, 6, 0);
+    lv_obj_clear_flag(cw_keytype_row, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* keytype_label = lv_label_create(keytype_row);
+    lv_obj_t* keytype_label = lv_label_create(cw_keytype_row);
     lv_label_set_text(keytype_label, "Key Type");
     lv_obj_add_style(keytype_label, getStyleLabelSubtitle(), 0);
 
-    cw_keytype_dropdown = lv_dropdown_create(keytype_row);
-    lv_dropdown_set_options(cw_keytype_dropdown, "Straight\nIambic A\nIambic B");
-    lv_dropdown_set_selected(cw_keytype_dropdown, getCwKeyTypeAsInt());
-    lv_obj_set_width(cw_keytype_dropdown, 150);
-    lv_obj_add_style(cw_keytype_dropdown, getStyleDropdown(), 0);
-    lv_obj_add_event_cb(cw_keytype_dropdown, cw_keytype_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    addNavigableWidget(cw_keytype_dropdown);
+    // Key type value - shows "< Straight >" style selector (like Hear It Type It)
+    cw_keytype_value = lv_label_create(cw_keytype_row);
+    lv_label_set_text_fmt(cw_keytype_value, "< %s >", cw_keytype_names[getCwKeyTypeAsInt()]);
+    lv_obj_set_style_text_color(cw_keytype_value, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_text_font(cw_keytype_value, getThemeFonts()->font_subtitle, 0);
+
+    // Set initial focus styling
+    cw_update_focus();
 
     // Footer
     lv_obj_t* footer = lv_obj_create(screen);
@@ -512,9 +708,6 @@ lv_obj_t* createCWSettingsScreen() {
 
 static lv_obj_t* callsign_screen = NULL;
 static lv_obj_t* callsign_textarea = NULL;
-
-// Forward declaration for back navigation
-extern void onLVGLBackNavigation();
 
 // Key handler for callsign textarea - handles ENTER to save
 static void callsign_textarea_key_handler(lv_event_t* e) {
@@ -881,6 +1074,144 @@ lv_obj_t* createThemeSettingsScreen() {
 }
 
 // ============================================
+// System Info Screen
+// ============================================
+
+static lv_obj_t* system_info_screen = NULL;
+
+// Helper to format uptime as HH:MM:SS
+static void formatUptime(unsigned long ms, char* buf, size_t bufSize) {
+    unsigned long totalSecs = ms / 1000;
+    unsigned long hours = totalSecs / 3600;
+    unsigned long minutes = (totalSecs % 3600) / 60;
+    unsigned long seconds = totalSecs % 60;
+    snprintf(buf, bufSize, "%lu:%02lu:%02lu", hours, minutes, seconds);
+}
+
+// Helper to create an info row (label: value)
+static void createInfoRow(lv_obj_t* parent, const char* label, const char* value) {
+    lv_obj_t* row = lv_obj_create(parent);
+    lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_set_style_pad_all(row, 0, 0);
+    lv_obj_set_style_pad_ver(row, 4, 0);
+
+    lv_obj_t* lbl = lv_label_create(row);
+    lv_label_set_text(lbl, label);
+    lv_obj_set_style_text_color(lbl, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_style_text_font(lbl, getThemeFonts()->font_body, 0);
+
+    lv_obj_t* val = lv_label_create(row);
+    lv_label_set_text(val, value);
+    lv_obj_set_style_text_color(val, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_style_text_font(val, getThemeFonts()->font_body, 0);
+}
+
+lv_obj_t* createSystemInfoScreen() {
+    lv_obj_t* screen = createScreen();
+    applyScreenStyle(screen);
+
+    // Title bar
+    lv_obj_t* title_bar = lv_obj_create(screen);
+    lv_obj_set_size(title_bar, SCREEN_WIDTH, HEADER_HEIGHT);
+    lv_obj_set_pos(title_bar, 0, 0);
+    lv_obj_add_style(title_bar, getStyleStatusBar(), 0);
+    lv_obj_clear_flag(title_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* title = lv_label_create(title_bar);
+    lv_label_set_text(title, "SYSTEM INFO");
+    lv_obj_add_style(title, getStyleLabelTitle(), 0);
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 15, 0);
+
+    // Status bar (WiFi + battery) on the right side
+    createCompactStatusBar(screen);
+
+    // Content card
+    lv_obj_t* content = lv_obj_create(screen);
+    lv_obj_set_size(content, SCREEN_WIDTH - 40, SCREEN_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - 20);
+    lv_obj_align(content, LV_ALIGN_TOP_MID, 0, HEADER_HEIGHT + 10);
+    lv_obj_set_layout(content, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(content, 8, 0);
+    lv_obj_set_style_pad_all(content, 20, 0);
+    applyCardStyle(content);
+
+    // Firmware version (prominent)
+    lv_obj_t* version_label = lv_label_create(content);
+    lv_label_set_text_fmt(version_label, "v%s", FIRMWARE_VERSION);
+    lv_obj_set_style_text_color(version_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_text_font(version_label, getThemeFonts()->font_title, 0);
+    lv_obj_set_width(version_label, lv_pct(100));
+    lv_obj_set_style_text_align(version_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    // Build date
+    lv_obj_t* date_label = lv_label_create(content);
+    lv_label_set_text_fmt(date_label, "Built: %s", FIRMWARE_DATE);
+    lv_obj_set_style_text_color(date_label, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_style_text_font(date_label, getThemeFonts()->font_small, 0);
+    lv_obj_set_width(date_label, lv_pct(100));
+    lv_obj_set_style_text_align(date_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    // Spacer
+    lv_obj_t* spacer = lv_obj_create(content);
+    lv_obj_set_size(spacer, lv_pct(100), 10);
+    lv_obj_set_style_bg_opa(spacer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(spacer, 0, 0);
+
+    // System info rows
+    createInfoRow(content, "Device:", FIRMWARE_NAME);
+    createInfoRow(content, "Chip:", "ESP32-S3");
+
+    // Free heap
+    char heapBuf[32];
+    snprintf(heapBuf, sizeof(heapBuf), "%lu KB", ESP.getFreeHeap() / 1024);
+    createInfoRow(content, "Free Heap:", heapBuf);
+
+    // PSRAM
+    if (psramFound()) {
+        char psramBuf[32];
+        snprintf(psramBuf, sizeof(psramBuf), "%lu KB", ESP.getFreePsram() / 1024);
+        createInfoRow(content, "Free PSRAM:", psramBuf);
+    } else {
+        createInfoRow(content, "PSRAM:", "Not available");
+    }
+
+    // Uptime
+    char uptimeBuf[32];
+    formatUptime(millis(), uptimeBuf, sizeof(uptimeBuf));
+    createInfoRow(content, "Uptime:", uptimeBuf);
+
+    // Invisible focusable object for ESC key handling
+    lv_obj_t* focus_target = lv_obj_create(screen);
+    lv_obj_set_size(focus_target, 1, 1);
+    lv_obj_set_style_bg_opa(focus_target, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(focus_target, 0, 0);
+    lv_obj_add_flag(focus_target, LV_OBJ_FLAG_CLICKABLE);
+    addNavigableWidget(focus_target);
+
+    // Footer
+    lv_obj_t* footer = lv_obj_create(screen);
+    lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
+    lv_obj_set_pos(footer, 0, SCREEN_HEIGHT - FOOTER_HEIGHT);
+    lv_obj_set_style_bg_opa(footer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(footer, 0, 0);
+    lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* help = lv_label_create(footer);
+    lv_label_set_text(help, "ESC Back");
+    lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
+    lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
+    lv_obj_center(help);
+
+    system_info_screen = screen;
+    return screen;
+}
+
+// ============================================
 // Screen Selector
 // Mode values MUST match MenuMode enum in menu_ui.h
 // ============================================
@@ -901,6 +1232,8 @@ lv_obj_t* createSettingsScreenForMode(int mode) {
             return createWiFiSettingsScreen();
         case 59: // MODE_THEME_SETTINGS
             return createThemeSettingsScreen();
+        case 61: // MODE_SYSTEM_INFO
+            return createSystemInfoScreen();
         default:
             Serial.printf("[SettingsScreens] Unknown settings mode: %d\n", mode);
             return NULL;

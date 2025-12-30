@@ -307,6 +307,12 @@ static void wifi_global_key_handler(lv_event_t* e) {
                 return;
 
             case LVGL_WIFI_AP_MODE:
+                // ESC from AP mode goes back to network list (AP stays active)
+                wifi_lvgl_state = LVGL_WIFI_NETWORK_LIST;
+                updateWiFiContent();
+                beep(TONE_MENU_NAV, BEEP_SHORT);
+                return;
+
             case LVGL_WIFI_CURRENT_CONNECTION:
             case LVGL_WIFI_NETWORK_LIST:
                 // These states allow ESC to exit the WiFi setup entirely
@@ -482,7 +488,10 @@ static void wifi_view_key_handler(lv_event_t* e) {
                 beep(TONE_MENU_NAV, BEEP_SHORT);
                 triggerWiFiScan();
             } else if (key == LV_KEY_ESC) {
-                onLVGLBackNavigation();
+                // ESC from AP mode goes back to network list (AP stays active)
+                wifi_lvgl_state = LVGL_WIFI_NETWORK_LIST;
+                updateWiFiContent();
+                beep(TONE_MENU_NAV, BEEP_SHORT);
             }
             break;
 

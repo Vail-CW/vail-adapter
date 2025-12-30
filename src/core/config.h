@@ -9,8 +9,8 @@
 // ============================================
 // Firmware Version Information
 // ============================================
-#define FIRMWARE_VERSION "0.2-4inch"
-#define FIRMWARE_DATE "2025-01-22"  // Update this date each time you build new firmware
+#define FIRMWARE_VERSION "0.21"
+#define FIRMWARE_DATE "2025-12-30"  // Update this date each time you build new firmware
 #define FIRMWARE_NAME "VAIL SUMMIT"
 
 // ============================================
@@ -84,7 +84,7 @@
 #define BEEP_LONG       200   // ms - Long beep duration
 
 // I2S Audio Configuration
-#define I2S_SAMPLE_RATE 44100 // 44.1kHz sample rate
+#define I2S_SAMPLE_RATE 22050 // 22.05kHz sample rate (reduced for less I2S bus noise)
 #define I2S_BUFFER_SIZE 256   // Total samples (128 stereo pairs = 256 int16 values)
 
 // Volume Control

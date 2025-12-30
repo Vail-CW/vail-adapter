@@ -10,21 +10,52 @@
 #include "../core/morse_code.h"
 #include "../audio/i2s_audio.h"
 #include "../audio/morse_decoder_adaptive.h"
+#include <Preferences.h>
 
 // ============================================
 // Game Constants
 // ============================================
 
 #define MAX_FALLING_LETTERS 5
-#define LETTER_FALL_SPEED 1      // Pixels per update (1 = slow and steady)
-#define LETTER_SPAWN_INTERVAL 3000  // ms between spawns
-// GROUND_Y now defined in config.h (scaled for 4" display)
-#define MAX_LIVES 5               // Lives (letters that can hit ground)
 #define GAME_UPDATE_INTERVAL 1000  // ms between game updates (1 second)
+// GROUND_Y now defined in config.h (scaled for 4" display)
+#define MAX_LIVES 3               // Lives (letters that can hit ground)
 
-// Available characters for the game
-const char SHOOTER_CHARSET[] = "ETIANMSURWDKGOHVFLPJBXCYZQ0123456789";
-const int CHARSET_SIZE = 36;
+// ============================================
+// Difficulty System
+// ============================================
+
+enum ShooterDifficulty {
+    SHOOTER_EASY = 0,
+    SHOOTER_MEDIUM = 1,
+    SHOOTER_HARD = 2
+};
+
+struct DifficultyParams {
+    int spawnInterval;      // ms between spawns
+    float fallSpeed;        // pixels per update
+    const char* charset;    // available characters
+    int charsetSize;
+    int startLives;
+    int scoreMultiplier;
+    const char* name;       // display name
+};
+
+// Character sets for each difficulty
+static const char CHARSET_EASY[] = "ETIANMS";
+static const char CHARSET_MEDIUM[] = "ETIANMSURWDKGOHVFLPJBXCYZQ";
+static const char CHARSET_HARD[] = "ETIANMSURWDKGOHVFLPJBXCYZQ0123456789";
+
+// Difficulty parameters table
+static const DifficultyParams DIFF_PARAMS[] = {
+    { 4000, 0.5f, CHARSET_EASY,   7,  3, 1, "Easy" },
+    { 3000, 1.0f, CHARSET_MEDIUM, 26, 3, 2, "Medium" },
+    { 2000, 1.5f, CHARSET_HARD,   36, 3, 3, "Hard" }
+};
+
+// Current difficulty setting
+static ShooterDifficulty shooterDifficulty = SHOOTER_MEDIUM;
+static int shooterHighScores[3] = {0, 0, 0};  // Per difficulty
 
 // ============================================
 // Game State Structures
@@ -64,7 +95,7 @@ unsigned long lastGameUpdate = 0;
 unsigned long gameStartTime = 0;
 bool gameOver = false;
 bool gamePaused = false;
-int highScore = 0;
+// Note: highScore moved to shooterHighScores[] array per difficulty
 
 // Decoder state
 MorseDecoderAdaptive shooterDecoder(20, 20, 30);  // Initial 20 WPM, buffer size 30
@@ -73,7 +104,7 @@ unsigned long shooterLastStateChangeTime = 0;
 bool shooterLastToneState = false;
 unsigned long shooterLastElementTime = 0;  // Track last element for timeout flush
 
-// Settings mode state
+// Settings mode state (legacy - will be removed)
 bool inShooterSettings = false;
 int shooterSettingsSelection = 0;  // 0=Speed, 1=Tone, 2=Key Type, 3=Save & Return
 
@@ -84,11 +115,59 @@ bool shooterUseLVGL = true;  // Default to LVGL mode
 void drawShooterSettings(LGFX& tft);
 int handleShooterSettingsInput(char key, LGFX& tft);
 
+// ============================================
+// Preferences Functions
+// ============================================
+
+void loadShooterPrefs() {
+    Preferences prefs;
+    prefs.begin("shooter", true);  // read-only
+    shooterDifficulty = (ShooterDifficulty)prefs.getInt("difficulty", SHOOTER_MEDIUM);
+    if (shooterDifficulty > SHOOTER_HARD) shooterDifficulty = SHOOTER_MEDIUM;
+    shooterHighScores[0] = prefs.getInt("hs_easy", 0);
+    shooterHighScores[1] = prefs.getInt("hs_medium", 0);
+    shooterHighScores[2] = prefs.getInt("hs_hard", 0);
+    prefs.end();
+    Serial.printf("[Shooter] Loaded prefs: difficulty=%d, HS=[%d,%d,%d]\n",
+                  shooterDifficulty, shooterHighScores[0], shooterHighScores[1], shooterHighScores[2]);
+}
+
+void saveShooterPrefs() {
+    Preferences prefs;
+    prefs.begin("shooter", false);  // read-write
+    prefs.putInt("difficulty", (int)shooterDifficulty);
+    prefs.end();
+    Serial.printf("[Shooter] Saved difficulty: %d\n", shooterDifficulty);
+}
+
+void saveShooterHighScore() {
+    Preferences prefs;
+    prefs.begin("shooter", false);  // read-write
+    const char* keys[] = {"hs_easy", "hs_medium", "hs_hard"};
+    prefs.putInt(keys[shooterDifficulty], shooterHighScores[shooterDifficulty]);
+    prefs.end();
+    Serial.printf("[Shooter] Saved high score for %s: %d\n",
+                  DIFF_PARAMS[shooterDifficulty].name,
+                  shooterHighScores[shooterDifficulty]);
+}
+
+// ============================================
+// LVGL Display Update Functions (defined in lv_game_screens.h)
+// ============================================
+
+extern void updateShooterScore(int score);
+extern void updateShooterLives(int lives);
+extern void updateShooterDecoded(const char* text);
+extern void updateShooterLetter(int index, char letter, int x, int y, bool visible);
+extern void showShooterHitEffect(int x, int y);
+extern void showShooterGameOver();
+
 /*
  * Initialize a falling letter (with collision avoidance)
  */
 void initFallingLetter(int index) {
-  fallingLetters[index].letter = SHOOTER_CHARSET[random(CHARSET_SIZE)];
+  const DifficultyParams& params = DIFF_PARAMS[shooterDifficulty];
+  fallingLetters[index].letter = params.charset[random(params.charsetSize)];
 
   // Try to find a spawn position that doesn't overlap with existing letters
   int attempts = 0;
@@ -116,12 +195,19 @@ void initFallingLetter(int index) {
   fallingLetters[index].x = newX;
   fallingLetters[index].y = 75;  // Start well below header (header is 0-42)
   fallingLetters[index].active = true;
+
+  // Update LVGL display (y+40 for header offset)
+  updateShooterLetter(index, fallingLetters[index].letter,
+                     (int)fallingLetters[index].x,
+                     (int)fallingLetters[index].y + 40, true);
 }
 
 /*
  * Reset game state
  */
 void resetGame() {
+  const DifficultyParams& params = DIFF_PARAMS[shooterDifficulty];
+
   // Clear all falling letters
   for (int i = 0; i < MAX_FALLING_LETTERS; i++) {
     fallingLetters[i].active = false;
@@ -147,14 +233,25 @@ void resetGame() {
   shooterLastToneState = false;
   shooterLastElementTime = 0;
 
-  // Reset game variables
+  // Reset game variables using difficulty params
   gameScore = 0;
-  gameLives = MAX_LIVES;
+  gameLives = params.startLives;
   lastSpawnTime = millis();
   lastGameUpdate = millis();
   gameStartTime = millis();
   gameOver = false;
   gamePaused = false;
+
+  // Update LVGL display
+  updateShooterScore(0);
+  updateShooterLives(gameLives);
+  updateShooterDecoded("");
+  for (int i = 0; i < MAX_FALLING_LETTERS; i++) {
+    updateShooterLetter(i, ' ', 0, 0, false);  // Hide all letters
+  }
+
+  Serial.printf("[Shooter] Game reset: difficulty=%s, lives=%d\n",
+                params.name, gameLives);
 }
 
 /*
@@ -314,18 +411,28 @@ void drawHUD(LGFX& tft) {
  * Update falling letters (physics)
  */
 void updateFallingLetters() {
+  const DifficultyParams& params = DIFF_PARAMS[shooterDifficulty];
+
   for (int i = 0; i < MAX_FALLING_LETTERS; i++) {
     if (fallingLetters[i].active) {
-      fallingLetters[i].y += LETTER_FALL_SPEED;
+      fallingLetters[i].y += params.fallSpeed;
+
+      // Update LVGL display (y+40 for header offset)
+      updateShooterLetter(i, fallingLetters[i].letter,
+                         (int)fallingLetters[i].x,
+                         (int)fallingLetters[i].y + 40, true);
 
       // Check if letter hit the ground
       if (fallingLetters[i].y >= GROUND_Y - 20) {
         fallingLetters[i].active = false;
+        updateShooterLetter(i, ' ', 0, 0, false);  // Hide letter
         gameLives--;
+        updateShooterLives(gameLives);  // Update LVGL
         beep(TONE_ERROR, 200);  // Hit ground sound
 
         if (gameLives <= 0) {
           gameOver = true;
+          showShooterGameOver();  // Show game over overlay
         }
       }
     }
@@ -336,7 +443,9 @@ void updateFallingLetters() {
  * Spawn new falling letter
  */
 void spawnFallingLetter() {
-  if (millis() - lastSpawnTime < LETTER_SPAWN_INTERVAL) {
+  const DifficultyParams& params = DIFF_PARAMS[shooterDifficulty];
+
+  if (millis() - lastSpawnTime < (unsigned long)params.spawnInterval) {
     return;  // Not time to spawn yet
   }
 
@@ -375,32 +484,34 @@ bool checkMorseShoot(LGFX& tft) {
 
       // Remove letter FIRST (before any redraw)
       fallingLetters[j].active = false;
+      updateShooterLetter(j, ' ', 0, 0, false);  // Hide letter in LVGL
 
-      // Draw laser and explosion
-      drawLaserShot(tft, targetX, targetY);
+      // Play hit sounds (no delays for smoother LVGL updates)
       beep(1200, 50);  // Laser sound
-      delay(100);
+
+      // Show hit effect in LVGL (y+40 for header offset)
+      showShooterHitEffect(targetX, targetY + 40);
+
+      // Legacy drawing (will no-op when using LVGL)
+      drawLaserShot(tft, targetX, targetY);
       drawExplosion(tft, targetX, targetY);
-      beep(1000, 100);  // Explosion sound
-      delay(150);
-
-      // Clean up - clear everything between header and ground, then redraw
-      tft.fillRect(0, 42, SCREEN_WIDTH, GROUND_Y - 42, COLOR_BACKGROUND);  // Clear play area
-
-      // Redraw all game elements (shot letter won't be drawn since it's inactive)
       drawGroundScenery(tft);
-      drawFallingLetters(tft);  // Redraw remaining letters only
+      drawFallingLetters(tft);
 
-      // Add score
-      gameScore += 10;
+      // Add score with difficulty multiplier
+      const DifficultyParams& params = DIFF_PARAMS[shooterDifficulty];
+      gameScore += 10 * params.scoreMultiplier;
+      updateShooterScore(gameScore);  // Update LVGL
 
-      // Update high score
-      if (gameScore > highScore) {
-        highScore = gameScore;
+      // Update high score for current difficulty
+      if (gameScore > shooterHighScores[shooterDifficulty]) {
+        shooterHighScores[shooterDifficulty] = gameScore;
+        saveShooterHighScore();
       }
 
       // Clear decoded text
       shooterDecodedText = "";
+      updateShooterDecoded("");  // Update LVGL
       return true;
     }
   }
@@ -799,7 +910,7 @@ void drawGameOver(LGFX& tft) {
   tft.setCursor(70, 145);
   tft.setTextColor(ST77XX_YELLOW);
   tft.print("Best: ");
-  tft.print(highScore);
+  tft.print(shooterHighScores[shooterDifficulty]);
 
   // Instructions
   tft.setTextSize(1);
@@ -822,6 +933,9 @@ void startMorseShooter(LGFX& tft) {
     for (int i = 0; i < text.length(); i++) {
       shooterDecodedText += text[i];
     }
+
+    // Update LVGL display
+    updateShooterDecoded(shooterDecodedText.c_str());
 
     Serial.print("Morse Shooter decoded: ");
     Serial.print(text);

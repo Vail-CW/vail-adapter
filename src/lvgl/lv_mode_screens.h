@@ -19,7 +19,339 @@ extern void onLVGLBackNavigation();
 // Radio Output Screen
 // ============================================
 
-// Key event callback for Radio Output keyboard input
+// External references for radio settings
+extern int cwSpeed;
+extern int cwTone;
+extern KeyType cwKeyType;
+extern void saveCWSettings();
+
+// Forward declarations for radio functions (defined in radio_output.h)
+extern bool queueRadioMessage(const char* message);
+
+// Radio mode - use values from radio_output.h (already included before this file)
+// RadioMode enum: RADIO_MODE_SUMMIT_KEYER, RADIO_MODE_RADIO_KEYER
+extern RadioMode radioMode;
+extern void saveRadioSettings();
+
+// CW Memories - use values from radio_cw_memories.h (already included before this file)
+// CWMemoryPreset struct and CW_MEMORY_MAX_SLOTS defined there
+extern CWMemoryPreset cwMemories[];
+
+// Radio screen state
+static lv_obj_t* radio_screen = NULL;
+static lv_obj_t* radio_mode_label = NULL;
+static lv_obj_t* radio_status_label = NULL;
+static lv_obj_t* radio_wpm_label = NULL;
+static lv_obj_t* radio_tone_label = NULL;
+static lv_obj_t* radio_keytype_label = NULL;
+
+// Action bar buttons
+static lv_obj_t* radio_btn_mode = NULL;
+static lv_obj_t* radio_btn_settings = NULL;
+static lv_obj_t* radio_btn_memories = NULL;
+static int radio_action_focus = 0;  // 0=Mode, 1=Settings, 2=Memories
+
+// Overlay state
+static lv_obj_t* radio_overlay = NULL;
+static bool radio_settings_active = false;
+static bool radio_memories_active = false;
+static int radio_settings_selection = 0;  // 0=WPM, 1=KeyType, 2=Tone
+static int radio_memory_selection = 0;    // 0-9 for memory slots
+
+// Forward declarations
+void createRadioSettingsOverlay();
+void createRadioMemoriesOverlay();
+void closeRadioOverlay();
+void updateRadioSettingsDisplay();
+void updateRadioMemoriesDisplay();
+
+// Helper to get key type string
+const char* getKeyTypeString(KeyType type) {
+    switch(type) {
+        case KEY_STRAIGHT: return "Straight";
+        case KEY_IAMBIC_A: return "Iambic A";
+        case KEY_IAMBIC_B: return "Iambic B";
+        default: return "Unknown";
+    }
+}
+
+// Update action bar button focus styling
+void updateRadioActionBarFocus() {
+    // Reset all buttons
+    if (radio_btn_mode) {
+        lv_obj_set_style_border_color(radio_btn_mode, LV_COLOR_BORDER_SUBTLE, 0);
+        lv_obj_set_style_border_width(radio_btn_mode, 1, 0);
+    }
+    if (radio_btn_settings) {
+        lv_obj_set_style_border_color(radio_btn_settings, LV_COLOR_BORDER_SUBTLE, 0);
+        lv_obj_set_style_border_width(radio_btn_settings, 1, 0);
+    }
+    if (radio_btn_memories) {
+        lv_obj_set_style_border_color(radio_btn_memories, LV_COLOR_BORDER_SUBTLE, 0);
+        lv_obj_set_style_border_width(radio_btn_memories, 1, 0);
+    }
+
+    // Highlight focused button
+    lv_obj_t* focused = NULL;
+    switch(radio_action_focus) {
+        case 0: focused = radio_btn_mode; break;
+        case 1: focused = radio_btn_settings; break;
+        case 2: focused = radio_btn_memories; break;
+    }
+    if (focused) {
+        lv_obj_set_style_border_color(focused, LV_COLOR_ACCENT_CYAN, 0);
+        lv_obj_set_style_border_width(focused, 2, 0);
+    }
+}
+
+// Settings overlay row labels for highlighting
+static lv_obj_t* settings_row_wpm = NULL;
+static lv_obj_t* settings_row_keytype = NULL;
+static lv_obj_t* settings_row_tone = NULL;
+static lv_obj_t* settings_val_wpm = NULL;
+static lv_obj_t* settings_val_keytype = NULL;
+static lv_obj_t* settings_val_tone = NULL;
+
+// Memory overlay display elements
+static lv_obj_t* memory_rows[5] = {NULL};  // Show 5 at a time
+static lv_obj_t* memory_labels[5] = {NULL};
+static int memory_scroll_offset = 0;
+
+void updateRadioSettingsDisplay() {
+    // Update selection highlight
+    lv_color_t normal_bg = LV_COLOR_BG_LAYER2;
+    lv_color_t selected_bg = lv_color_hex(0x1A4A4A);  // Teal highlight
+
+    if (settings_row_wpm) {
+        lv_obj_set_style_bg_color(settings_row_wpm,
+            radio_settings_selection == 0 ? selected_bg : normal_bg, 0);
+    }
+    if (settings_row_keytype) {
+        lv_obj_set_style_bg_color(settings_row_keytype,
+            radio_settings_selection == 1 ? selected_bg : normal_bg, 0);
+    }
+    if (settings_row_tone) {
+        lv_obj_set_style_bg_color(settings_row_tone,
+            radio_settings_selection == 2 ? selected_bg : normal_bg, 0);
+    }
+
+    // Update values
+    if (settings_val_wpm) lv_label_set_text_fmt(settings_val_wpm, "%d", cwSpeed);
+    if (settings_val_keytype) lv_label_set_text(settings_val_keytype, getKeyTypeString(cwKeyType));
+    if (settings_val_tone) lv_label_set_text_fmt(settings_val_tone, "%d Hz", cwTone);
+}
+
+void updateRadioMemoriesDisplay() {
+    // Calculate scroll offset
+    if (radio_memory_selection >= memory_scroll_offset + 5) {
+        memory_scroll_offset = radio_memory_selection - 4;
+    } else if (radio_memory_selection < memory_scroll_offset) {
+        memory_scroll_offset = radio_memory_selection;
+    }
+
+    for (int i = 0; i < 5; i++) {
+        int slot = memory_scroll_offset + i;
+        if (slot >= CW_MEMORY_MAX_SLOTS) break;
+
+        bool isSelected = (slot == radio_memory_selection);
+
+        if (memory_rows[i]) {
+            lv_obj_set_style_bg_color(memory_rows[i],
+                isSelected ? lv_color_hex(0x1A4A4A) : LV_COLOR_BG_LAYER2, 0);
+        }
+
+        if (memory_labels[i]) {
+            char buf[32];
+            if (cwMemories[slot].isEmpty) {
+                snprintf(buf, sizeof(buf), "%d. (empty)", slot + 1);
+                lv_obj_set_style_text_color(memory_labels[i],
+                    isSelected ? LV_COLOR_TEXT_SECONDARY : LV_COLOR_TEXT_DISABLED, 0);
+            } else {
+                snprintf(buf, sizeof(buf), "%d. %s", slot + 1, cwMemories[slot].label);
+                lv_obj_set_style_text_color(memory_labels[i],
+                    isSelected ? LV_COLOR_TEXT_PRIMARY : LV_COLOR_ACCENT_CYAN, 0);
+            }
+            lv_label_set_text(memory_labels[i], buf);
+        }
+    }
+}
+
+void closeRadioOverlay() {
+    if (radio_overlay) {
+        lv_obj_del(radio_overlay);
+        radio_overlay = NULL;
+    }
+    radio_settings_active = false;
+    radio_memories_active = false;
+
+    // Clear row references
+    settings_row_wpm = NULL;
+    settings_row_keytype = NULL;
+    settings_row_tone = NULL;
+    settings_val_wpm = NULL;
+    settings_val_keytype = NULL;
+    settings_val_tone = NULL;
+    for (int i = 0; i < 5; i++) {
+        memory_rows[i] = NULL;
+        memory_labels[i] = NULL;
+    }
+}
+
+void createRadioSettingsOverlay() {
+    if (radio_overlay) return;  // Already open
+
+    radio_settings_active = true;
+    radio_settings_selection = 0;
+
+    // Create overlay container
+    radio_overlay = lv_obj_create(radio_screen);
+    lv_obj_set_size(radio_overlay, 320, 200);
+    lv_obj_center(radio_overlay);
+    lv_obj_set_style_bg_color(radio_overlay, LV_COLOR_BG_DEEP, 0);
+    lv_obj_set_style_bg_opa(radio_overlay, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(radio_overlay, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_border_width(radio_overlay, 2, 0);
+    lv_obj_set_style_radius(radio_overlay, 12, 0);
+    lv_obj_set_style_pad_all(radio_overlay, 15, 0);
+    lv_obj_clear_flag(radio_overlay, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Title
+    lv_obj_t* title = lv_label_create(radio_overlay);
+    lv_label_set_text(title, "KEYER SETTINGS");
+    lv_obj_set_style_text_color(title, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_text_font(title, getThemeFonts()->font_subtitle, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
+
+    // WPM row
+    settings_row_wpm = lv_obj_create(radio_overlay);
+    lv_obj_set_size(settings_row_wpm, 280, 40);
+    lv_obj_set_pos(settings_row_wpm, 5, 35);
+    lv_obj_set_style_bg_color(settings_row_wpm, lv_color_hex(0x1A4A4A), 0);
+    lv_obj_set_style_bg_opa(settings_row_wpm, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(settings_row_wpm, 6, 0);
+    lv_obj_set_style_border_width(settings_row_wpm, 0, 0);
+    lv_obj_set_style_pad_hor(settings_row_wpm, 10, 0);
+    lv_obj_clear_flag(settings_row_wpm, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* wpm_lbl = lv_label_create(settings_row_wpm);
+    lv_label_set_text(wpm_lbl, "Speed (WPM)");
+    lv_obj_set_style_text_color(wpm_lbl, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align(wpm_lbl, LV_ALIGN_LEFT_MID, 0, 0);
+
+    settings_val_wpm = lv_label_create(settings_row_wpm);
+    lv_label_set_text_fmt(settings_val_wpm, "%d", cwSpeed);
+    lv_obj_set_style_text_color(settings_val_wpm, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_text_font(settings_val_wpm, getThemeFonts()->font_input, 0);
+    lv_obj_align(settings_val_wpm, LV_ALIGN_RIGHT_MID, 0, 0);
+
+    // Key Type row
+    settings_row_keytype = lv_obj_create(radio_overlay);
+    lv_obj_set_size(settings_row_keytype, 280, 40);
+    lv_obj_set_pos(settings_row_keytype, 5, 80);
+    lv_obj_set_style_bg_color(settings_row_keytype, LV_COLOR_BG_LAYER2, 0);
+    lv_obj_set_style_bg_opa(settings_row_keytype, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(settings_row_keytype, 6, 0);
+    lv_obj_set_style_border_width(settings_row_keytype, 0, 0);
+    lv_obj_set_style_pad_hor(settings_row_keytype, 10, 0);
+    lv_obj_clear_flag(settings_row_keytype, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* keytype_lbl = lv_label_create(settings_row_keytype);
+    lv_label_set_text(keytype_lbl, "Key Type");
+    lv_obj_set_style_text_color(keytype_lbl, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align(keytype_lbl, LV_ALIGN_LEFT_MID, 0, 0);
+
+    settings_val_keytype = lv_label_create(settings_row_keytype);
+    lv_label_set_text(settings_val_keytype, getKeyTypeString(cwKeyType));
+    lv_obj_set_style_text_color(settings_val_keytype, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_text_font(settings_val_keytype, getThemeFonts()->font_input, 0);
+    lv_obj_align(settings_val_keytype, LV_ALIGN_RIGHT_MID, 0, 0);
+
+    // Tone row
+    settings_row_tone = lv_obj_create(radio_overlay);
+    lv_obj_set_size(settings_row_tone, 280, 40);
+    lv_obj_set_pos(settings_row_tone, 5, 125);
+    lv_obj_set_style_bg_color(settings_row_tone, LV_COLOR_BG_LAYER2, 0);
+    lv_obj_set_style_bg_opa(settings_row_tone, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(settings_row_tone, 6, 0);
+    lv_obj_set_style_border_width(settings_row_tone, 0, 0);
+    lv_obj_set_style_pad_hor(settings_row_tone, 10, 0);
+    lv_obj_clear_flag(settings_row_tone, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* tone_lbl = lv_label_create(settings_row_tone);
+    lv_label_set_text(tone_lbl, "Sidetone");
+    lv_obj_set_style_text_color(tone_lbl, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align(tone_lbl, LV_ALIGN_LEFT_MID, 0, 0);
+
+    settings_val_tone = lv_label_create(settings_row_tone);
+    lv_label_set_text_fmt(settings_val_tone, "%d Hz", cwTone);
+    lv_obj_set_style_text_color(settings_val_tone, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_text_font(settings_val_tone, getThemeFonts()->font_input, 0);
+    lv_obj_align(settings_val_tone, LV_ALIGN_RIGHT_MID, 0, 0);
+
+    // Footer hint
+    lv_obj_t* hint = lv_label_create(radio_overlay);
+    lv_label_set_text(hint, "UP/DN Select   L/R Adjust   ESC Close");
+    lv_obj_set_style_text_color(hint, LV_COLOR_WARNING, 0);
+    lv_obj_set_style_text_font(hint, getThemeFonts()->font_small, 0);
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, 0);
+}
+
+void createRadioMemoriesOverlay() {
+    if (radio_overlay) return;  // Already open
+
+    radio_memories_active = true;
+    radio_memory_selection = 0;
+    memory_scroll_offset = 0;
+
+    // Create overlay container
+    radio_overlay = lv_obj_create(radio_screen);
+    lv_obj_set_size(radio_overlay, 320, 220);
+    lv_obj_center(radio_overlay);
+    lv_obj_set_style_bg_color(radio_overlay, LV_COLOR_BG_DEEP, 0);
+    lv_obj_set_style_bg_opa(radio_overlay, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(radio_overlay, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_border_width(radio_overlay, 2, 0);
+    lv_obj_set_style_radius(radio_overlay, 12, 0);
+    lv_obj_set_style_pad_all(radio_overlay, 15, 0);
+    lv_obj_clear_flag(radio_overlay, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Title
+    lv_obj_t* title = lv_label_create(radio_overlay);
+    lv_label_set_text(title, "CW MEMORIES");
+    lv_obj_set_style_text_color(title, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_text_font(title, getThemeFonts()->font_subtitle, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
+
+    // Create 5 visible rows
+    for (int i = 0; i < 5; i++) {
+        memory_rows[i] = lv_obj_create(radio_overlay);
+        lv_obj_set_size(memory_rows[i], 280, 30);
+        lv_obj_set_pos(memory_rows[i], 5, 30 + (i * 32));
+        lv_obj_set_style_bg_color(memory_rows[i], LV_COLOR_BG_LAYER2, 0);
+        lv_obj_set_style_bg_opa(memory_rows[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(memory_rows[i], 4, 0);
+        lv_obj_set_style_border_width(memory_rows[i], 0, 0);
+        lv_obj_set_style_pad_hor(memory_rows[i], 10, 0);
+        lv_obj_clear_flag(memory_rows[i], LV_OBJ_FLAG_SCROLLABLE);
+
+        memory_labels[i] = lv_label_create(memory_rows[i]);
+        lv_label_set_text(memory_labels[i], "");
+        lv_obj_set_style_text_font(memory_labels[i], getThemeFonts()->font_body, 0);
+        lv_obj_align(memory_labels[i], LV_ALIGN_LEFT_MID, 0, 0);
+    }
+
+    // Footer hint
+    lv_obj_t* hint = lv_label_create(radio_overlay);
+    lv_label_set_text(hint, "UP/DN Select   ENTER Send   ESC Close");
+    lv_obj_set_style_text_color(hint, LV_COLOR_WARNING, 0);
+    lv_obj_set_style_text_font(hint, getThemeFonts()->font_small, 0);
+    lv_obj_align(hint, LV_ALIGN_BOTTOM_MID, 0, 0);
+
+    // Initialize display
+    updateRadioMemoriesDisplay();
+}
+
+// Key event callback for Radio Output - handles action bar and overlays
 static void radio_key_event_cb(lv_event_t* e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code != LV_EVENT_KEY) return;
@@ -27,23 +359,198 @@ static void radio_key_event_cb(lv_event_t* e) {
     uint32_t key = lv_event_get_key(e);
     Serial.printf("[Radio LVGL] Key event: %lu (0x%02lX)\n", key, key);
 
+    // Handle settings overlay
+    if (radio_settings_active) {
+        switch(key) {
+            case LV_KEY_ESC:
+                closeRadioOverlay();
+                beep(TONE_MENU_NAV, BEEP_SHORT);
+                lv_event_stop_processing(e);
+                return;
+            case LV_KEY_UP:
+            case LV_KEY_PREV:
+                if (radio_settings_selection > 0) {
+                    radio_settings_selection--;
+                    updateRadioSettingsDisplay();
+                    beep(TONE_MENU_NAV, BEEP_SHORT);
+                }
+                lv_event_stop_processing(e);
+                return;
+            case LV_KEY_DOWN:
+            case LV_KEY_NEXT:
+                if (radio_settings_selection < 2) {
+                    radio_settings_selection++;
+                    updateRadioSettingsDisplay();
+                    beep(TONE_MENU_NAV, BEEP_SHORT);
+                }
+                lv_event_stop_processing(e);
+                return;
+            case LV_KEY_LEFT:
+                // Decrease value
+                if (radio_settings_selection == 0) {
+                    // WPM
+                    if (cwSpeed > 5) {
+                        cwSpeed--;
+                        saveCWSettings();
+                        updateRadioSettingsDisplay();
+                        if (radio_wpm_label) lv_label_set_text_fmt(radio_wpm_label, "%d WPM", cwSpeed);
+                        beep(TONE_MENU_NAV, BEEP_SHORT);
+                    }
+                } else if (radio_settings_selection == 1) {
+                    // Key Type
+                    if (cwKeyType == KEY_STRAIGHT) cwKeyType = KEY_IAMBIC_B;
+                    else if (cwKeyType == KEY_IAMBIC_A) cwKeyType = KEY_STRAIGHT;
+                    else cwKeyType = KEY_IAMBIC_A;
+                    saveCWSettings();
+                    updateRadioSettingsDisplay();
+                    if (radio_keytype_label) lv_label_set_text(radio_keytype_label, getKeyTypeString(cwKeyType));
+                    beep(TONE_MENU_NAV, BEEP_SHORT);
+                } else if (radio_settings_selection == 2) {
+                    // Tone
+                    if (cwTone > 400) {
+                        cwTone -= 50;
+                        saveCWSettings();
+                        updateRadioSettingsDisplay();
+                        if (radio_tone_label) lv_label_set_text_fmt(radio_tone_label, "%d Hz", cwTone);
+                        beep(TONE_MENU_NAV, BEEP_SHORT);
+                    }
+                }
+                lv_event_stop_processing(e);
+                return;
+            case LV_KEY_RIGHT:
+                // Increase value
+                if (radio_settings_selection == 0) {
+                    // WPM
+                    if (cwSpeed < 40) {
+                        cwSpeed++;
+                        saveCWSettings();
+                        updateRadioSettingsDisplay();
+                        if (radio_wpm_label) lv_label_set_text_fmt(radio_wpm_label, "%d WPM", cwSpeed);
+                        beep(TONE_MENU_NAV, BEEP_SHORT);
+                    }
+                } else if (radio_settings_selection == 1) {
+                    // Key Type
+                    if (cwKeyType == KEY_STRAIGHT) cwKeyType = KEY_IAMBIC_A;
+                    else if (cwKeyType == KEY_IAMBIC_A) cwKeyType = KEY_IAMBIC_B;
+                    else cwKeyType = KEY_STRAIGHT;
+                    saveCWSettings();
+                    updateRadioSettingsDisplay();
+                    if (radio_keytype_label) lv_label_set_text(radio_keytype_label, getKeyTypeString(cwKeyType));
+                    beep(TONE_MENU_NAV, BEEP_SHORT);
+                } else if (radio_settings_selection == 2) {
+                    // Tone
+                    if (cwTone < 1000) {
+                        cwTone += 50;
+                        saveCWSettings();
+                        updateRadioSettingsDisplay();
+                        if (radio_tone_label) lv_label_set_text_fmt(radio_tone_label, "%d Hz", cwTone);
+                        beep(TONE_MENU_NAV, BEEP_SHORT);
+                    }
+                }
+                lv_event_stop_processing(e);
+                return;
+        }
+        return;
+    }
+
+    // Handle memories overlay
+    if (radio_memories_active) {
+        switch(key) {
+            case LV_KEY_ESC:
+                closeRadioOverlay();
+                beep(TONE_MENU_NAV, BEEP_SHORT);
+                lv_event_stop_processing(e);
+                return;
+            case LV_KEY_UP:
+            case LV_KEY_PREV:
+                if (radio_memory_selection > 0) {
+                    radio_memory_selection--;
+                    updateRadioMemoriesDisplay();
+                    beep(TONE_MENU_NAV, BEEP_SHORT);
+                }
+                lv_event_stop_processing(e);
+                return;
+            case LV_KEY_DOWN:
+            case LV_KEY_NEXT:
+                if (radio_memory_selection < CW_MEMORY_MAX_SLOTS - 1) {
+                    radio_memory_selection++;
+                    updateRadioMemoriesDisplay();
+                    beep(TONE_MENU_NAV, BEEP_SHORT);
+                }
+                lv_event_stop_processing(e);
+                return;
+            case LV_KEY_ENTER:
+                // Send selected memory
+                if (!cwMemories[radio_memory_selection].isEmpty) {
+                    bool success = queueRadioMessage(cwMemories[radio_memory_selection].message);
+                    closeRadioOverlay();
+                    if (success) {
+                        beep(TONE_SUCCESS, BEEP_MEDIUM);
+                        if (radio_status_label) {
+                            lv_label_set_text(radio_status_label, "Sending memory...");
+                        }
+                    } else {
+                        beep(TONE_ERROR, BEEP_SHORT);
+                    }
+                } else {
+                    beep(TONE_ERROR, BEEP_SHORT);
+                }
+                lv_event_stop_processing(e);
+                return;
+        }
+        return;
+    }
+
+    // Handle main screen action bar
     switch(key) {
         case LV_KEY_ESC:
             onLVGLBackNavigation();
-            lv_event_stop_processing(e);  // Prevent global ESC handler from also firing
+            lv_event_stop_processing(e);
             break;
-        case 'm':
-        case 'M':
-            // M key opens memory selector - handled by mode update loop
-            beep(TONE_MENU_NAV, BEEP_SHORT);
+        case LV_KEY_LEFT:
+            if (radio_action_focus > 0) {
+                radio_action_focus--;
+                updateRadioActionBarFocus();
+                beep(TONE_MENU_NAV, BEEP_SHORT);
+            }
+            lv_event_stop_processing(e);
+            break;
+        case LV_KEY_RIGHT:
+            if (radio_action_focus < 2) {
+                radio_action_focus++;
+                updateRadioActionBarFocus();
+                beep(TONE_MENU_NAV, BEEP_SHORT);
+            }
+            lv_event_stop_processing(e);
+            break;
+        case LV_KEY_ENTER:
+            // Activate focused action
+            if (radio_action_focus == 0) {
+                // Toggle mode
+                if (radioMode == RADIO_MODE_SUMMIT_KEYER) {
+                    radioMode = RADIO_MODE_RADIO_KEYER;
+                } else {
+                    radioMode = RADIO_MODE_SUMMIT_KEYER;
+                }
+                saveRadioSettings();
+                if (radio_mode_label) {
+                    lv_label_set_text(radio_mode_label,
+                        radioMode == RADIO_MODE_SUMMIT_KEYER ? "Summit Keyer" : "Radio Keyer");
+                }
+                beep(TONE_SUCCESS, BEEP_SHORT);
+            } else if (radio_action_focus == 1) {
+                // Open settings
+                createRadioSettingsOverlay();
+                beep(TONE_SELECT, BEEP_SHORT);
+            } else if (radio_action_focus == 2) {
+                // Open memories
+                createRadioMemoriesOverlay();
+                beep(TONE_SELECT, BEEP_SHORT);
+            }
+            lv_event_stop_processing(e);
             break;
     }
 }
-
-static lv_obj_t* radio_screen = NULL;
-static lv_obj_t* radio_mode_label = NULL;
-static lv_obj_t* radio_status_label = NULL;
-static lv_obj_t* radio_wpm_label = NULL;
 
 lv_obj_t* createRadioOutputScreen() {
     lv_obj_t* screen = createScreen();
@@ -64,58 +571,137 @@ lv_obj_t* createRadioOutputScreen() {
     // Status bar (WiFi + battery) on the right side
     createCompactStatusBar(screen);
 
-    // Mode card
+    // Mode card - shows current keyer mode
     lv_obj_t* mode_card = lv_obj_create(screen);
-    lv_obj_set_size(mode_card, SCREEN_WIDTH - 40, 80);
-    lv_obj_set_pos(mode_card, 20, HEADER_HEIGHT + 20);
+    lv_obj_set_size(mode_card, SCREEN_WIDTH - 40, 70);
+    lv_obj_set_pos(mode_card, 20, HEADER_HEIGHT + 10);
     lv_obj_set_layout(mode_card, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(mode_card, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(mode_card, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     applyCardStyle(mode_card);
 
     lv_obj_t* mode_title = lv_label_create(mode_card);
-    lv_label_set_text(mode_title, "Current Mode");
+    lv_label_set_text(mode_title, "Keyer Mode");
     lv_obj_add_style(mode_title, getStyleLabelBody(), 0);
 
     radio_mode_label = lv_label_create(mode_card);
-    lv_label_set_text(radio_mode_label, "Summit Keyer");
+    lv_label_set_text(radio_mode_label, radioMode == RADIO_MODE_SUMMIT_KEYER ? "Summit Keyer" : "Radio Keyer");
     lv_obj_set_style_text_font(radio_mode_label, getThemeFonts()->font_title, 0);
     lv_obj_set_style_text_color(radio_mode_label, LV_COLOR_ACCENT_CYAN, 0);
 
-    // Settings display
+    // Settings display row - WPM, Key Type, Tone
     lv_obj_t* settings_card = lv_obj_create(screen);
-    lv_obj_set_size(settings_card, SCREEN_WIDTH - 40, 60);
-    lv_obj_set_pos(settings_card, 20, HEADER_HEIGHT + 110);
+    lv_obj_set_size(settings_card, SCREEN_WIDTH - 40, 50);
+    lv_obj_set_pos(settings_card, 20, HEADER_HEIGHT + 90);
     lv_obj_set_layout(settings_card, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(settings_card, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(settings_card, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(settings_card, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     applyCardStyle(settings_card);
 
-    // WPM
+    // WPM display
     lv_obj_t* wpm_container = lv_obj_create(settings_card);
     lv_obj_set_size(wpm_container, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_layout(wpm_container, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(wpm_container, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(wpm_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_bg_opa(wpm_container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(wpm_container, 0, 0);
     lv_obj_set_style_pad_all(wpm_container, 0, 0);
-
-    lv_obj_t* wpm_title = lv_label_create(wpm_container);
-    lv_label_set_text(wpm_title, "Speed");
-    lv_obj_set_style_text_color(wpm_title, LV_COLOR_TEXT_SECONDARY, 0);
-    lv_obj_set_style_text_font(wpm_title, getThemeFonts()->font_small, 0);
+    lv_obj_clear_flag(wpm_container, LV_OBJ_FLAG_SCROLLABLE);
 
     radio_wpm_label = lv_label_create(wpm_container);
-    lv_label_set_text(radio_wpm_label, "20 WPM");
+    lv_label_set_text_fmt(radio_wpm_label, "%d WPM", cwSpeed);
     lv_obj_set_style_text_color(radio_wpm_label, LV_COLOR_ACCENT_CYAN, 0);
-    lv_obj_set_style_text_font(radio_wpm_label, getThemeFonts()->font_input, 0);
+    lv_obj_set_style_text_font(radio_wpm_label, getThemeFonts()->font_body, 0);
 
-    // Status
+    // Key Type display
+    lv_obj_t* keytype_container = lv_obj_create(settings_card);
+    lv_obj_set_size(keytype_container, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(keytype_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(keytype_container, 0, 0);
+    lv_obj_set_style_pad_all(keytype_container, 0, 0);
+    lv_obj_clear_flag(keytype_container, LV_OBJ_FLAG_SCROLLABLE);
+
+    radio_keytype_label = lv_label_create(keytype_container);
+    lv_label_set_text(radio_keytype_label, getKeyTypeString(cwKeyType));
+    lv_obj_set_style_text_color(radio_keytype_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_text_font(radio_keytype_label, getThemeFonts()->font_body, 0);
+
+    // Tone display
+    lv_obj_t* tone_container = lv_obj_create(settings_card);
+    lv_obj_set_size(tone_container, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(tone_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(tone_container, 0, 0);
+    lv_obj_set_style_pad_all(tone_container, 0, 0);
+    lv_obj_clear_flag(tone_container, LV_OBJ_FLAG_SCROLLABLE);
+
+    radio_tone_label = lv_label_create(tone_container);
+    lv_label_set_text_fmt(radio_tone_label, "%d Hz", cwTone);
+    lv_obj_set_style_text_color(radio_tone_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_text_font(radio_tone_label, getThemeFonts()->font_body, 0);
+
+    // Status text
     radio_status_label = lv_label_create(screen);
     lv_label_set_text(radio_status_label, "Ready - Use paddle to key radio");
     lv_obj_add_style(radio_status_label, getStyleLabelBody(), 0);
-    lv_obj_align(radio_status_label, LV_ALIGN_CENTER, 0, 50);
+    lv_obj_set_pos(radio_status_label, 20, HEADER_HEIGHT + 150);
+
+    // Action bar container
+    lv_obj_t* action_bar = lv_obj_create(screen);
+    lv_obj_set_size(action_bar, SCREEN_WIDTH - 40, 50);
+    lv_obj_set_pos(action_bar, 20, SCREEN_HEIGHT - FOOTER_HEIGHT - 60);
+    lv_obj_set_layout(action_bar, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(action_bar, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(action_bar, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_opa(action_bar, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(action_bar, 0, 0);
+    lv_obj_set_style_pad_all(action_bar, 0, 0);
+    lv_obj_clear_flag(action_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Mode button
+    radio_btn_mode = lv_obj_create(action_bar);
+    lv_obj_set_size(radio_btn_mode, 120, 40);
+    lv_obj_set_style_bg_color(radio_btn_mode, LV_COLOR_CARD_TEAL, 0);
+    lv_obj_set_style_radius(radio_btn_mode, 8, 0);
+    lv_obj_set_style_border_color(radio_btn_mode, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_border_width(radio_btn_mode, 2, 0);
+    lv_obj_clear_flag(radio_btn_mode, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* mode_btn_lbl = lv_label_create(radio_btn_mode);
+    lv_label_set_text(mode_btn_lbl, "Mode");
+    lv_obj_set_style_text_color(mode_btn_lbl, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_style_text_font(mode_btn_lbl, getThemeFonts()->font_body, 0);
+    lv_obj_center(mode_btn_lbl);
+
+    // Settings button
+    radio_btn_settings = lv_obj_create(action_bar);
+    lv_obj_set_size(radio_btn_settings, 120, 40);
+    lv_obj_set_style_bg_color(radio_btn_settings, LV_COLOR_CARD_TEAL, 0);
+    lv_obj_set_style_radius(radio_btn_settings, 8, 0);
+    lv_obj_set_style_border_color(radio_btn_settings, LV_COLOR_BORDER_SUBTLE, 0);
+    lv_obj_set_style_border_width(radio_btn_settings, 1, 0);
+    lv_obj_clear_flag(radio_btn_settings, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* settings_btn_lbl = lv_label_create(radio_btn_settings);
+    lv_label_set_text(settings_btn_lbl, "Settings");
+    lv_obj_set_style_text_color(settings_btn_lbl, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_style_text_font(settings_btn_lbl, getThemeFonts()->font_body, 0);
+    lv_obj_center(settings_btn_lbl);
+
+    // Memories button
+    radio_btn_memories = lv_obj_create(action_bar);
+    lv_obj_set_size(radio_btn_memories, 120, 40);
+    lv_obj_set_style_bg_color(radio_btn_memories, LV_COLOR_CARD_TEAL, 0);
+    lv_obj_set_style_radius(radio_btn_memories, 8, 0);
+    lv_obj_set_style_border_color(radio_btn_memories, LV_COLOR_BORDER_SUBTLE, 0);
+    lv_obj_set_style_border_width(radio_btn_memories, 1, 0);
+    lv_obj_clear_flag(radio_btn_memories, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* memories_btn_lbl = lv_label_create(radio_btn_memories);
+    lv_label_set_text(memories_btn_lbl, "Memories");
+    lv_obj_set_style_text_color(memories_btn_lbl, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_style_text_font(memories_btn_lbl, getThemeFonts()->font_body, 0);
+    lv_obj_center(memories_btn_lbl);
+
+    // Reset action bar focus state
+    radio_action_focus = 0;
 
     // Footer
     lv_obj_t* footer = lv_obj_create(screen);
@@ -126,12 +712,12 @@ lv_obj_t* createRadioOutputScreen() {
     lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* help = lv_label_create(footer);
-    lv_label_set_text(help, "M Toggle Mode   Use paddle to key   ESC Exit");
+    lv_label_set_text(help, "L/R Select   ENTER Activate   ESC Exit");
     lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);
 
-    // Invisible focus container for keyboard input (M for memory, ESC to exit)
+    // Invisible focus container for keyboard input
     lv_obj_t* focus_container = lv_obj_create(screen);
     lv_obj_set_size(focus_container, 1, 1);
     lv_obj_set_pos(focus_container, -10, -10);
@@ -150,6 +736,12 @@ lv_obj_t* createRadioOutputScreen() {
     lv_group_focus_obj(focus_container);
 
     radio_screen = screen;
+
+    // Reset overlay state
+    radio_overlay = NULL;
+    radio_settings_active = false;
+    radio_memories_active = false;
+
     return screen;
 }
 
@@ -169,6 +761,19 @@ void updateRadioStatus(const char* status) {
     if (radio_status_label != NULL) {
         lv_label_set_text(radio_status_label, status);
     }
+}
+
+void cleanupRadioOutputScreen() {
+    closeRadioOverlay();
+    radio_screen = NULL;
+    radio_mode_label = NULL;
+    radio_status_label = NULL;
+    radio_wpm_label = NULL;
+    radio_tone_label = NULL;
+    radio_keytype_label = NULL;
+    radio_btn_mode = NULL;
+    radio_btn_settings = NULL;
+    radio_btn_memories = NULL;
 }
 
 // ============================================
@@ -565,8 +1170,12 @@ static lv_obj_t* bt_hid_status_label = NULL;
 static lv_obj_t* bt_hid_device_name_label = NULL;
 static lv_obj_t* bt_hid_dit_indicator = NULL;
 static lv_obj_t* bt_hid_dah_indicator = NULL;
+static lv_obj_t* bt_hid_keyer_label = NULL;
 
-// Key event callback for BT HID keyboard input (ESC to exit)
+// Forward declaration for keyer mode cycling (defined in ble_hid.h)
+extern void cycleBTHIDKeyerMode(int direction);
+
+// Key event callback for BT HID keyboard input (arrows to change keyer, ESC to exit)
 static void bt_hid_key_event_cb(lv_event_t* e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code != LV_EVENT_KEY) return;
@@ -574,6 +1183,12 @@ static void bt_hid_key_event_cb(lv_event_t* e) {
     uint32_t key = lv_event_get_key(e);
     if (key == LV_KEY_ESC) {
         onLVGLBackNavigation();
+        lv_event_stop_processing(e);
+    } else if (key == LV_KEY_LEFT) {
+        cycleBTHIDKeyerMode(-1);  // Previous keyer mode
+        lv_event_stop_processing(e);
+    } else if (key == LV_KEY_RIGHT) {
+        cycleBTHIDKeyerMode(1);   // Next keyer mode
         lv_event_stop_processing(e);
     }
 }
@@ -597,100 +1212,118 @@ lv_obj_t* createBTHIDScreen() {
     // Status bar (WiFi + battery) on the right side
     createCompactStatusBar(screen);
 
-    // Device name card
-    lv_obj_t* name_card = lv_obj_create(screen);
-    lv_obj_set_size(name_card, SCREEN_WIDTH - 40, 55);
-    lv_obj_set_pos(name_card, 20, HEADER_HEIGHT + 10);
-    applyCardStyle(name_card);
-    lv_obj_clear_flag(name_card, LV_OBJ_FLAG_SCROLLABLE);
+    // === Single Centered Card ===
+    lv_obj_t* card = lv_obj_create(screen);
+    lv_obj_set_size(card, 400, 210);
+    lv_obj_align(card, LV_ALIGN_CENTER, 0, 5);
+    applyCardStyle(card);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_all(card, 15, 0);
 
-    lv_obj_t* name_title = lv_label_create(name_card);
-    lv_label_set_text(name_title, "Device Name:");
-    lv_obj_set_style_text_color(name_title, LV_COLOR_TEXT_SECONDARY, 0);
-    lv_obj_set_style_text_font(name_title, getThemeFonts()->font_small, 0);
-    lv_obj_align(name_title, LV_ALIGN_LEFT_MID, 10, -10);
+    // Row 1: Bluetooth icon + Device name (top, centered)
+    lv_obj_t* name_row = lv_obj_create(card);
+    lv_obj_set_size(name_row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(name_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(name_row, 0, 0);
+    lv_obj_set_style_pad_all(name_row, 0, 0);
+    lv_obj_align(name_row, LV_ALIGN_TOP_MID, 0, 0);
+    lv_obj_clear_flag(name_row, LV_OBJ_FLAG_SCROLLABLE);
 
-    bt_hid_device_name_label = lv_label_create(name_card);
+    lv_obj_t* bt_icon = lv_label_create(name_row);
+    lv_label_set_text(bt_icon, LV_SYMBOL_BLUETOOTH);
+    lv_obj_set_style_text_font(bt_icon, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_color(bt_icon, LV_COLOR_ACCENT_BLUE, 0);
+    lv_obj_align(bt_icon, LV_ALIGN_LEFT_MID, 100, 0);
+
+    bt_hid_device_name_label = lv_label_create(name_row);
     lv_label_set_text(bt_hid_device_name_label, "VAIL-SUMMIT-XXXXXX");
     lv_obj_set_style_text_color(bt_hid_device_name_label, LV_COLOR_ACCENT_CYAN, 0);
-    lv_obj_set_style_text_font(bt_hid_device_name_label, getThemeFonts()->font_input, 0);
-    lv_obj_align(bt_hid_device_name_label, LV_ALIGN_LEFT_MID, 10, 10);
+    lv_obj_set_style_text_font(bt_hid_device_name_label, getThemeFonts()->font_subtitle, 0);
+    lv_obj_align(bt_hid_device_name_label, LV_ALIGN_LEFT_MID, 140, 0);
 
-    // Connection status card
-    lv_obj_t* status_card = lv_obj_create(screen);
-    lv_obj_set_size(status_card, SCREEN_WIDTH - 40, 50);
-    lv_obj_set_pos(status_card, 20, HEADER_HEIGHT + 75);
-    applyCardStyle(status_card);
-    lv_obj_clear_flag(status_card, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t* bt_icon = lv_label_create(status_card);
-    lv_label_set_text(bt_icon, LV_SYMBOL_BLUETOOTH);
-    lv_obj_set_style_text_font(bt_icon, &lv_font_montserrat_24, 0);
-    lv_obj_set_style_text_color(bt_icon, LV_COLOR_ACCENT_BLUE, 0);
-    lv_obj_align(bt_icon, LV_ALIGN_LEFT_MID, 10, 0);
-
-    bt_hid_status_label = lv_label_create(status_card);
+    // Row 2: Connection status (centered, colored)
+    bt_hid_status_label = lv_label_create(card);
     lv_label_set_text(bt_hid_status_label, "Advertising...");
-    lv_obj_add_style(bt_hid_status_label, getStyleLabelSubtitle(), 0);
-    lv_obj_align(bt_hid_status_label, LV_ALIGN_LEFT_MID, 50, 0);
+    lv_obj_set_style_text_font(bt_hid_status_label, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(bt_hid_status_label, LV_COLOR_WARNING, 0);
+    lv_obj_align(bt_hid_status_label, LV_ALIGN_TOP_MID, 0, 35);
 
-    // Key mapping card
-    lv_obj_t* mapping_card = lv_obj_create(screen);
-    lv_obj_set_size(mapping_card, SCREEN_WIDTH - 40, 55);
-    lv_obj_set_pos(mapping_card, 20, HEADER_HEIGHT + 135);
-    applyCardStyle(mapping_card);
-    lv_obj_clear_flag(mapping_card, LV_OBJ_FLAG_SCROLLABLE);
+    // Row 3: Keyer mode selector (< Passthrough >)
+    lv_obj_t* keyer_row = lv_obj_create(card);
+    lv_obj_set_size(keyer_row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(keyer_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(keyer_row, 0, 0);
+    lv_obj_set_style_pad_all(keyer_row, 0, 0);
+    lv_obj_align(keyer_row, LV_ALIGN_TOP_MID, 0, 60);
+    lv_obj_clear_flag(keyer_row, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* mapping_title = lv_label_create(mapping_card);
-    lv_label_set_text(mapping_title, "Key Mapping:");
-    lv_obj_set_style_text_color(mapping_title, LV_COLOR_TEXT_SECONDARY, 0);
-    lv_obj_set_style_text_font(mapping_title, getThemeFonts()->font_small, 0);
-    lv_obj_align(mapping_title, LV_ALIGN_TOP_LEFT, 10, 5);
+    lv_obj_t* keyer_title = lv_label_create(keyer_row);
+    lv_label_set_text(keyer_title, "Keyer:");
+    lv_obj_set_style_text_color(keyer_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_style_text_font(keyer_title, getThemeFonts()->font_body, 0);
+    lv_obj_align(keyer_title, LV_ALIGN_LEFT_MID, 70, 0);
 
-    lv_obj_t* dit_mapping = lv_label_create(mapping_card);
-    lv_label_set_text(dit_mapping, "DIT -> Left Ctrl");
+    bt_hid_keyer_label = lv_label_create(keyer_row);
+    lv_label_set_text(bt_hid_keyer_label, "< Passthrough >");
+    lv_obj_set_style_text_color(bt_hid_keyer_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_text_font(bt_hid_keyer_label, getThemeFonts()->font_subtitle, 0);
+    lv_obj_align(bt_hid_keyer_label, LV_ALIGN_LEFT_MID, 145, 0);
+
+    // Row 4: Key mapping (DIT -> Left Ctrl, DAH -> Right Ctrl)
+    lv_obj_t* mapping_row = lv_obj_create(card);
+    lv_obj_set_size(mapping_row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(mapping_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(mapping_row, 0, 0);
+    lv_obj_set_style_pad_all(mapping_row, 0, 0);
+    lv_obj_align(mapping_row, LV_ALIGN_TOP_MID, 0, 95);
+    lv_obj_clear_flag(mapping_row, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* dit_mapping = lv_label_create(mapping_row);
+    lv_label_set_text(dit_mapping, "DIT " LV_SYMBOL_RIGHT " Left Ctrl");
     lv_obj_set_style_text_color(dit_mapping, LV_COLOR_TEXT_PRIMARY, 0);
-    lv_obj_align(dit_mapping, LV_ALIGN_LEFT_MID, 10, 8);
+    lv_obj_set_style_text_font(dit_mapping, getThemeFonts()->font_small, 0);
+    lv_obj_align(dit_mapping, LV_ALIGN_LEFT_MID, 50, 0);
 
-    lv_obj_t* dah_mapping = lv_label_create(mapping_card);
-    lv_label_set_text(dah_mapping, "DAH -> Right Ctrl");
+    lv_obj_t* dah_mapping = lv_label_create(mapping_row);
+    lv_label_set_text(dah_mapping, "DAH " LV_SYMBOL_RIGHT " Right Ctrl");
     lv_obj_set_style_text_color(dah_mapping, LV_COLOR_TEXT_PRIMARY, 0);
-    lv_obj_align(dah_mapping, LV_ALIGN_LEFT_MID, 200, 8);
+    lv_obj_set_style_text_font(dah_mapping, getThemeFonts()->font_small, 0);
+    lv_obj_align(dah_mapping, LV_ALIGN_LEFT_MID, 220, 0);
 
-    // Paddle indicators section
-    lv_obj_t* indicator_container = lv_obj_create(screen);
-    lv_obj_set_size(indicator_container, SCREEN_WIDTH - 40, 60);
-    lv_obj_set_pos(indicator_container, 20, HEADER_HEIGHT + 200);
-    lv_obj_set_style_bg_opa(indicator_container, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(indicator_container, 0, 0);
-    lv_obj_set_style_pad_all(indicator_container, 0, 0);
-    lv_obj_clear_flag(indicator_container, LV_OBJ_FLAG_SCROLLABLE);
+    // Row 5: Paddle LED indicators at bottom
+    lv_obj_t* indicator_row = lv_obj_create(card);
+    lv_obj_set_size(indicator_row, lv_pct(100), 50);
+    lv_obj_set_style_bg_opa(indicator_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(indicator_row, 0, 0);
+    lv_obj_set_style_pad_all(indicator_row, 0, 0);
+    lv_obj_align(indicator_row, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_clear_flag(indicator_row, LV_OBJ_FLAG_SCROLLABLE);
 
-    // DIT indicator
-    bt_hid_dit_indicator = lv_led_create(indicator_container);
+    // DIT indicator (left side)
+    bt_hid_dit_indicator = lv_led_create(indicator_row);
     lv_led_set_color(bt_hid_dit_indicator, lv_color_hex(0x00FF00));
-    lv_obj_set_size(bt_hid_dit_indicator, 35, 35);
-    lv_obj_align(bt_hid_dit_indicator, LV_ALIGN_LEFT_MID, 60, 0);
+    lv_obj_set_size(bt_hid_dit_indicator, 30, 30);
+    lv_obj_align(bt_hid_dit_indicator, LV_ALIGN_LEFT_MID, 100, 0);
     lv_led_off(bt_hid_dit_indicator);
 
-    lv_obj_t* dit_label = lv_label_create(indicator_container);
+    lv_obj_t* dit_label = lv_label_create(indicator_row);
     lv_label_set_text(dit_label, "DIT");
     lv_obj_set_style_text_color(dit_label, LV_COLOR_TEXT_SECONDARY, 0);
     lv_obj_set_style_text_font(dit_label, getThemeFonts()->font_body, 0);
-    lv_obj_align(dit_label, LV_ALIGN_LEFT_MID, 105, 0);
+    lv_obj_align(dit_label, LV_ALIGN_LEFT_MID, 140, 0);
 
-    // DAH indicator
-    bt_hid_dah_indicator = lv_led_create(indicator_container);
+    // DAH indicator (right side)
+    bt_hid_dah_indicator = lv_led_create(indicator_row);
     lv_led_set_color(bt_hid_dah_indicator, lv_color_hex(0x00FF00));
-    lv_obj_set_size(bt_hid_dah_indicator, 35, 35);
-    lv_obj_align(bt_hid_dah_indicator, LV_ALIGN_RIGHT_MID, -105, 0);
+    lv_obj_set_size(bt_hid_dah_indicator, 30, 30);
+    lv_obj_align(bt_hid_dah_indicator, LV_ALIGN_LEFT_MID, 210, 0);
     lv_led_off(bt_hid_dah_indicator);
 
-    lv_obj_t* dah_label = lv_label_create(indicator_container);
+    lv_obj_t* dah_label = lv_label_create(indicator_row);
     lv_label_set_text(dah_label, "DAH");
     lv_obj_set_style_text_color(dah_label, LV_COLOR_TEXT_SECONDARY, 0);
     lv_obj_set_style_text_font(dah_label, getThemeFonts()->font_body, 0);
-    lv_obj_align(dah_label, LV_ALIGN_RIGHT_MID, -60, 0);
+    lv_obj_align(dah_label, LV_ALIGN_LEFT_MID, 250, 0);
 
     // Footer
     lv_obj_t* footer = lv_obj_create(screen);
@@ -701,12 +1334,12 @@ lv_obj_t* createBTHIDScreen() {
     lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* help = lv_label_create(footer);
-    lv_label_set_text(help, "Pair in system Bluetooth settings   ESC Exit");
-    lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
+    lv_label_set_text(help, LV_SYMBOL_LEFT LV_SYMBOL_RIGHT " Change Keyer    Paddle to key    ESC Exit");
+    lv_obj_set_style_text_color(help, LV_COLOR_TEXT_SECONDARY, 0);
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);
 
-    // Invisible focus container for ESC key handling
+    // Invisible focus container for keyboard handling
     lv_obj_t* focus_container = lv_obj_create(screen);
     lv_obj_set_size(focus_container, 1, 1);
     lv_obj_set_pos(focus_container, -10, -10);
@@ -762,12 +1395,21 @@ void updateBTHIDPaddleIndicators(bool ditPressed, bool dahPressed) {
     }
 }
 
+void updateBTHIDKeyerMode(const char* mode) {
+    if (bt_hid_keyer_label != NULL) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "< %s >", mode);
+        lv_label_set_text(bt_hid_keyer_label, buf);
+    }
+}
+
 void cleanupBTHIDScreen() {
     bt_hid_screen = NULL;
     bt_hid_status_label = NULL;
     bt_hid_device_name_label = NULL;
     bt_hid_dit_indicator = NULL;
     bt_hid_dah_indicator = NULL;
+    bt_hid_keyer_label = NULL;
 }
 
 // ============================================

@@ -96,6 +96,7 @@
 #define LVGL_MODE_LICENSE_SD_ERROR       58
 #define LVGL_MODE_THEME_SETTINGS         59
 #define LVGL_MODE_LICENSE_ALL_STATS      60
+#define LVGL_MODE_SYSTEM_INFO            61
 
 // ============================================
 // Forward declarations from main file
@@ -113,6 +114,7 @@ extern void startVailRepeater(LGFX& tft);
 extern void startKochMethod(LGFX& tft);
 extern void startCWAcademy(LGFX& tft);
 extern void startMorseShooter(LGFX& tft);
+extern void loadShooterPrefs();  // Load shooter settings before showing settings screen
 extern void startMemoryGame(LGFX& tft);
 extern void startRadioOutput(LGFX& tft);
 extern void startCWMemoriesMode(LGFX& tft);
@@ -190,6 +192,7 @@ bool isSettingsModeInt(int mode) {
         case LVGL_MODE_WIFI_SETTINGS:
         case LVGL_MODE_BT_KEYBOARD_SETTINGS:
         case LVGL_MODE_THEME_SETTINGS:
+        case LVGL_MODE_SYSTEM_INFO:
             return true;
         default:
             return false;
@@ -334,8 +337,9 @@ void initializeModeInt(int mode) {
 
         // Game modes
         case LVGL_MODE_MORSE_SHOOTER:
-            Serial.println("[ModeInit] Starting Morse Shooter");
-            startMorseShooter(tft);
+            // Just load preferences, game starts when user presses START on settings screen
+            Serial.println("[ModeInit] Loading Morse Shooter settings");
+            loadShooterPrefs();
             break;
         case LVGL_MODE_MORSE_MEMORY:
             Serial.println("[ModeInit] Starting Memory Game");
@@ -574,6 +578,7 @@ int getParentModeInt(int mode) {
         case LVGL_MODE_WIFI_SUBMENU:
         case LVGL_MODE_GENERAL_SUBMENU:
         case LVGL_MODE_DEVICE_BT_SUBMENU:
+        case LVGL_MODE_SYSTEM_INFO:
             return LVGL_MODE_DEVICE_SETTINGS_MENU;
 
         // WiFi submenu items

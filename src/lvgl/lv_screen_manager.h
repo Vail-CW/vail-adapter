@@ -54,6 +54,12 @@ static void global_esc_handler(lv_event_t* e) {
     lv_event_code_t code = lv_event_get_code(e);
 
     if (code == LV_EVENT_KEY) {
+        // Check if event was already handled by a screen-specific handler
+        // In LVGL v8.3, check the stop_bubbling flag directly
+        if (e->stop_bubbling) {
+            return;
+        }
+
         uint32_t key = lv_event_get_key(e);
         if (key == LV_KEY_ESC) {
             Serial.println("[ScreenManager] ESC pressed");

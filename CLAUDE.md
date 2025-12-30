@@ -489,7 +489,16 @@ For troubleshooting common issues, see **[docs/DEVELOPMENT.md](docs/DEVELOPMENT.
 - **DATE**: Update to current date (YYYY-MM-DD) every build
 - **NAME**: Should remain "VAIL SUMMIT"
 
-Version appears in: Web dashboard, System Info page, Serial output, ADIF exports
+**IMPORTANT: Version Update on Git Push**
+
+Before pushing changes to GitHub, you MUST:
+1. Check the current version in `src/core/config.h`
+2. Ask the user what the new version should be (e.g., "Current version is 0.2-4inch. What should the new version be?")
+3. Update `FIRMWARE_VERSION` to the user-specified version
+4. Update `FIRMWARE_DATE` to today's date
+5. Include the version update in the commit
+
+Version appears in: Boot splash screen, System Info settings, Web dashboard, Serial output, ADIF exports
 
 For firmware build and deployment details, see **[docs/BUILDING.md](docs/BUILDING.md#firmware-updates)**.
 

@@ -78,9 +78,10 @@ static const LVMenuItem settingsMenuItems[] = {
 static const LVMenuItem deviceSettingsMenuItems[] = {
     {LV_SYMBOL_WIFI, "WiFi", 23},              // MODE_WIFI_SUBMENU
     {LV_SYMBOL_SETTINGS, "General", 24},       // MODE_GENERAL_SUBMENU
-    {LV_SYMBOL_BLUETOOTH, "Bluetooth", 54}     // MODE_DEVICE_BT_SUBMENU
+    {LV_SYMBOL_BLUETOOTH, "Bluetooth", 54},    // MODE_DEVICE_BT_SUBMENU
+    {LV_SYMBOL_HOME, "System Info", 61}        // MODE_SYSTEM_INFO
 };
-#define DEVICE_SETTINGS_COUNT 3
+#define DEVICE_SETTINGS_COUNT 4
 
 // WiFi submenu items
 static const LVMenuItem wifiSubmenuItems[] = {
