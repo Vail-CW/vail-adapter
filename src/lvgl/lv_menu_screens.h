@@ -281,11 +281,18 @@ lv_obj_t* createHeader(lv_obj_t* parent, const char* title) {
     lv_obj_align(lbl_title, LV_ALIGN_LEFT_MID, 5, 0);
 
     // WiFi icon - use Montserrat for LVGL symbols
+    // Color indicates connectivity state:
+    //   - Green: Full internet connectivity
+    //   - Orange: WiFi connected but no internet
+    //   - Red: Disconnected
     lv_obj_t* wifi_icon = lv_label_create(header);
     lv_label_set_text(wifi_icon, LV_SYMBOL_WIFI);
     lv_obj_set_style_text_font(wifi_icon, &lv_font_montserrat_20, 0);
-    if (WiFi.status() == WL_CONNECTED) {
+    InternetStatus inetStatus = getInternetStatus();
+    if (inetStatus == INET_CONNECTED) {
         lv_obj_set_style_text_color(wifi_icon, LV_COLOR_SUCCESS, 0);
+    } else if (inetStatus == INET_WIFI_ONLY) {
+        lv_obj_set_style_text_color(wifi_icon, LV_COLOR_WARNING, 0);
     } else {
         lv_obj_set_style_text_color(wifi_icon, LV_COLOR_ERROR, 0);
     }

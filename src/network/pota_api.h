@@ -8,6 +8,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include "internet_check.h"
 
 // ============================================
 // POTA Park Data Structure
@@ -39,9 +40,14 @@ bool lookupPOTAPark(const char* reference, POTAPark& park) {
   park.valid = false;
   strlcpy(park.reference, reference, sizeof(park.reference));
 
-  // Check WiFi
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("POTA API: No WiFi connection");
+  // Check internet connectivity (not just WiFi association)
+  InternetStatus inetStatus = getInternetStatus();
+  if (inetStatus != INET_CONNECTED) {
+    if (inetStatus == INET_WIFI_ONLY) {
+      Serial.println("POTA API: WiFi connected but no internet");
+    } else {
+      Serial.println("POTA API: No WiFi connection");
+    }
     return false;
   }
 

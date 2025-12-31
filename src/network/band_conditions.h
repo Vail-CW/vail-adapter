@@ -9,6 +9,7 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include "internet_check.h"
 
 // ============================================
 // Band Condition Enums
@@ -278,9 +279,14 @@ bool fetchBandConditions(BandConditionsData& data) {
     data.fetching = true;
     data.valid = false;
 
-    // Check WiFi connection
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("[BandConditions] No WiFi connection");
+    // Check internet connectivity (not just WiFi association)
+    InternetStatus inetStatus = getInternetStatus();
+    if (inetStatus != INET_CONNECTED) {
+        if (inetStatus == INET_WIFI_ONLY) {
+            Serial.println("[BandConditions] WiFi connected but no internet");
+        } else {
+            Serial.println("[BandConditions] No WiFi connection");
+        }
         data.fetching = false;
         return false;
     }

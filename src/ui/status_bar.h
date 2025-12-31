@@ -12,6 +12,7 @@
 #include <Adafruit_MAX1704X.h>
 #include <WiFi.h>
 #include "../core/config.h"
+#include "../network/internet_check.h"
 
 // Forward declarations from main file
 extern LGFX tft;
@@ -76,10 +77,23 @@ void drawBatteryIcon(int x, int y) {
 
 /*
  * Draw WiFi icon with signal strength bars (clean minimal style)
+ * Color indicates connectivity state:
+ *   - Cyan: Full internet connectivity
+ *   - Orange: WiFi connected but no internet
+ *   - Gray: Disconnected
  */
 void drawWiFiIcon(int x, int y) {
-  // Simple WiFi bars (smaller, cleaner)
-  uint16_t barColor = wifiConnected ? COLOR_ACCENT_CYAN : COLOR_TEXT_DISABLED;
+  // Determine color based on internet connectivity state
+  uint16_t barColor;
+  InternetStatus inetStatus = getInternetStatus();
+
+  if (inetStatus == INET_CONNECTED) {
+    barColor = COLOR_ACCENT_CYAN;      // Full connectivity
+  } else if (inetStatus == INET_WIFI_ONLY) {
+    barColor = COLOR_WARNING_PASTEL;   // WiFi but no internet (orange)
+  } else {
+    barColor = COLOR_TEXT_DISABLED;    // Disconnected (gray)
+  }
 
   // Draw 4 signal bars (increasing height)
   tft.fillRect(x, y + 8, 3, 4, barColor);
@@ -108,8 +122,11 @@ void drawStatusIcons() {
  * Update WiFi and battery status from hardware
  */
 void updateStatus() {
-  // Update WiFi status
-  wifiConnected = WiFi.status() == WL_CONNECTED;
+  // Update internet connectivity status (handles timing internally)
+  updateInternetStatus();
+
+  // Update WiFi status based on internet check result
+  wifiConnected = (getInternetStatus() == INET_CONNECTED);
 
   // Read battery voltage and percentage from I2C battery monitor
   float voltage = 3.7; // Default

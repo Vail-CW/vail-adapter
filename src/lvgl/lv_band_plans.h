@@ -61,7 +61,7 @@ void exitBandDetail();
 
 static lv_color_t getLicenseColor(LicenseClass lic, bool user_can_operate) {
     if (user_can_operate) {
-        return LV_COLOR_ACCENT_CYAN;  // User can operate here
+        return lv_color_hex(0xFFD700);  // Gold - User can operate here
     }
     switch (lic) {
         case LICENSE_EXTRA:      return LV_COLOR_SUCCESS;   // Green - Extra only

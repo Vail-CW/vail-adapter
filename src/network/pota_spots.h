@@ -8,6 +8,7 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include "internet_check.h"
 
 // ============================================
 // Configuration
@@ -433,9 +434,14 @@ int filterSpots(const POTASpotsCache& cache, const POTASpotFilter& filter,
  * @return Number of spots fetched, or -1 on error
  */
 int fetchActiveSpots(POTASpotsCache& cache) {
-    // Check WiFi
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("POTA Spots: No WiFi connection");
+    // Check internet connectivity (not just WiFi association)
+    InternetStatus inetStatus = getInternetStatus();
+    if (inetStatus != INET_CONNECTED) {
+        if (inetStatus == INET_WIFI_ONLY) {
+            Serial.println("POTA Spots: WiFi connected but no internet");
+        } else {
+            Serial.println("POTA Spots: No WiFi connection");
+        }
         return -1;
     }
 

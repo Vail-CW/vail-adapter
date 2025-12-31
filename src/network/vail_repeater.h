@@ -19,10 +19,13 @@
 #if VAIL_ENABLED
   #include <WebSocketsClient.h>
   #include <ArduinoJson.h>
+  #include <deque>
 #endif
 
 #include "../core/config.h"
+#include "../core/task_manager.h"  // For dual-core audio API
 #include "../settings/settings_cw.h"
+#include "internet_check.h"
 
 // Default channel - always defined
 String vailChannel = "General";
@@ -30,6 +33,11 @@ String vailChannel = "General";
 // User identification
 String vailCallsign = "GUEST";  // Default callsign (user can configure)
 uint8_t vailTxTone = 72;        // MIDI note 72 = C5 (523 Hz) - default CW tone
+
+// Audio settings
+// When true, all received morse plays at user's local cwTone frequency for consistency
+// When false, received morse plays at sender's TX tone frequency (original behavior)
+#define VAIL_USE_LOCAL_TONE_FOR_RECEIVE true
 
 #if VAIL_ENABLED
 
@@ -53,7 +61,7 @@ int vailPort = 443;  // WSS (secure WebSocket)
 int connectedClients = 0;
 int lastConnectedClients = 0;
 String statusText = "";
-bool needsUIRedraw = false;
+// Note: needsUIRedraw removed - LVGL handles all UI updates via updateVailScreenLVGL()
 unsigned long lastKeepaliveTime = 0;  // Track last keepalive message
 
 // Transmit state
@@ -62,7 +70,9 @@ unsigned long vailTxStartTime = 0;
 bool vailTxToneOn = false;
 unsigned long vailTxElementStart = 0;
 std::vector<uint16_t> vailTxDurations;
-int64_t lastTxTimestamp = 0;  // Track our last transmission to filter echoes
+// Echo filtering: Track recent transmission timestamps to filter echoes
+std::deque<int64_t> recentTxTimestamps;
+const size_t MAX_TX_TIMESTAMPS = 20;
 int64_t vailToneStartTimestamp = 0;  // Timestamp when current tone started
 
 // Keyer state for Vail (similar to practice mode)
@@ -88,6 +98,8 @@ struct VailMessage {
 std::vector<VailMessage> rxQueue;
 unsigned long playbackDelay = 500;  // 500ms delay for network jitter
 int64_t clockSkew = 0;  // Offset to convert millis() to server time
+int clockSkewSamples = 0;  // Number of clock skew samples received
+const float CLOCK_SKEW_ALPHA = 0.3f;  // Exponential moving average weight
 
 // Playback state machine variables
 static bool isPlaying = false;
@@ -223,6 +235,19 @@ void startVailRepeater(LGFX &display) {
 
 // Connect to Vail repeater
 void connectToVail(String channel) {
+  // Check internet connectivity first
+  InternetStatus inetStatus = getInternetStatus();
+  if (inetStatus != INET_CONNECTED) {
+    Serial.println("[Vail] Cannot connect - no internet connectivity");
+    vailState = VAIL_ERROR;
+    if (inetStatus == INET_WIFI_ONLY) {
+      statusText = "WiFi connected but no internet";
+    } else {
+      statusText = "No WiFi connection";
+    }
+    return;
+  }
+
   vailChannel = channel;
   vailState = VAIL_CONNECTING;
   statusText = "Connecting...";
@@ -268,8 +293,8 @@ void disconnectFromVail() {
 
   Serial.println("[Vail] Disconnecting...");
 
-  // Stop any ongoing tone playback
-  stopTone();
+  // Stop any ongoing tone playback (use non-blocking request API)
+  requestStopTone();
 
   // Send disconnect to server
   webSocket.disconnect();
@@ -295,9 +320,11 @@ void disconnectFromVail() {
   // Clear all queues and state to prevent stale data on reconnect
   rxQueue.clear();
   vailTxDurations.clear();
+  recentTxTimestamps.clear();
   chatHistory.clear();
   connectedUsers.clear();
   activeRooms.clear();
+  clockSkewSamples = 0;  // Reset clock sync on disconnect
   vailIsTransmitting = false;
   vailKeyerActive = false;
   vailInSpacing = false;
@@ -314,7 +341,6 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
       Serial.println("[WS] Disconnected");
       vailState = VAIL_DISCONNECTED;
       statusText = "Disconnected";
-      needsUIRedraw = true;
       break;
 
     case WStype_CONNECTED:
@@ -322,7 +348,6 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
         Serial.println("[WS] Connected");
         vailState = VAIL_CONNECTED;
         statusText = "Connected";
-        needsUIRedraw = true;
 
         // Get the URL we connected to
         String url = String((char*)payload);
@@ -375,10 +400,9 @@ void processReceivedMessage(String jsonPayload) {
   msg.clients = doc["Clients"].as<uint16_t>();
   msg.txTone = doc["TxTone"] | 69;  // Default to MIDI note 69 (A4 = 440Hz) if not specified
 
-  // Update client count and trigger UI redraw if changed
+  // Update client count (LVGL will update on next frame)
   if (connectedClients != msg.clients) {
     connectedClients = msg.clients;
-    needsUIRedraw = true;
   }
 
   // Parse Users array (optional - for future UI enhancements)
@@ -444,7 +468,15 @@ void processReceivedMessage(String jsonPayload) {
   JsonArray durations = doc["Duration"];
   if (durations.size() > 0) {
     // Check if this is our own message echoed back (within 2000ms tolerance for network round-trip)
-    if (abs(msg.timestamp - lastTxTimestamp) < 2000) {
+    // Use queue of recent timestamps to handle rapid iambic keying
+    bool isEcho = false;
+    for (int64_t ts : recentTxTimestamps) {
+      if (llabs(msg.timestamp - ts) < 2000) {
+        isEcho = true;
+        break;
+      }
+    }
+    if (isEcho) {
       Serial.println("Ignoring echo of our own transmission");
       return;
     }
@@ -462,15 +494,27 @@ void processReceivedMessage(String jsonPayload) {
     Serial.println(msg.txTone);
   } else {
     // Empty duration = clock sync message
-    // Calculate offset from server time to our millis()
-    clockSkew = msg.timestamp - (int64_t)millis();
+    // Calculate offset from server time to our millis() with exponential moving average
+    int64_t newSkew = msg.timestamp - (int64_t)millis();
+
+    if (clockSkewSamples == 0) {
+      // First sample - use directly
+      clockSkew = newSkew;
+    } else {
+      // Apply exponential moving average for stability
+      clockSkew = (int64_t)(CLOCK_SKEW_ALPHA * newSkew + (1.0f - CLOCK_SKEW_ALPHA) * clockSkew);
+    }
+    clockSkewSamples++;
+
     Serial.print("Clock sync: server=");
     Serial.print((long)msg.timestamp);
     Serial.print(" millis=");
     Serial.print((long)millis());
     Serial.print(" skew=");
     Serial.print((long)clockSkew);
-    Serial.println(" ms");
+    Serial.print(" (samples=");
+    Serial.print(clockSkewSamples);
+    Serial.println(")");
   }
 }
 
@@ -544,8 +588,11 @@ void sendVailMessage(std::vector<uint16_t> durations, int64_t timestamp) {
   Serial.print("): ");
   Serial.println(output);
 
-  // Remember this timestamp to filter out the echo
-  lastTxTimestamp = timestamp;
+  // Remember this timestamp to filter out the echo (use queue for rapid keying)
+  recentTxTimestamps.push_back(timestamp);
+  while (recentTxTimestamps.size() > MAX_TX_TIMESTAMPS) {
+    recentTxTimestamps.pop_front();
+  }
 
   webSocket.sendTXT(output);
 }
@@ -569,12 +616,19 @@ void updateVailRepeater(LGFX &display) {
   playbackMessages();
 
   // Note: UI updates are now handled by LVGL via updateVailScreenLVGL()
-  // The needsUIRedraw flag is no longer used for drawing but can still signal state changes
 }
 
 // Straight key handler for Vail
+// Uses dual-core audio API: requests are non-blocking, audio task handles I2S on Core 0
 void vailStraightKeyHandler() {
   bool ditPressed = (digitalRead(DIT_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
+
+  // Stop any playback before transmitting to prevent audio conflicts
+  if (ditPressed && isPlaying) {
+    requestStopTone();  // Non-blocking - audio task handles stop
+    isPlaying = false;
+    playbackToneFrequency = 0;
+  }
 
   if (!vailIsTransmitting && ditPressed) {
     // Start transmission
@@ -583,14 +637,11 @@ void vailStraightKeyHandler() {
     vailTxToneOn = true;
     vailTxElementStart = millis();
     vailTxDurations.clear();
-    startTone(cwTone);
+    requestStartTone(cwTone);  // Non-blocking - audio task starts tone on Core 0
   }
 
   if (vailIsTransmitting) {
-    // Keep tone playing if key is pressed
-    if (ditPressed) {
-      continueTone(cwTone);
-    }
+    // Audio task handles continuous buffer filling - no need to call continueTone()
 
     // State changed (tone -> silence or silence -> tone)
     if (ditPressed != vailTxToneOn) {
@@ -600,9 +651,9 @@ void vailStraightKeyHandler() {
       vailTxToneOn = ditPressed;
 
       if (ditPressed) {
-        startTone(cwTone);
+        requestStartTone(cwTone);  // Non-blocking tone start
       } else {
-        stopTone();
+        requestStopTone();  // Non-blocking tone stop
       }
     }
 
@@ -613,14 +664,22 @@ void vailStraightKeyHandler() {
       sendVailMessage(vailTxDurations);
       vailIsTransmitting = false;
       vailTxDurations.clear();
-      stopTone();
+      requestStopTone();  // Non-blocking tone stop
     }
   }
 }
 
 // Iambic keyer handler for Vail
+// Uses dual-core audio API: requests are non-blocking, audio task handles I2S on Core 0
 void vailIambicKeyerHandler() {
   unsigned long currentTime = millis();
+
+  // Stop any playback before transmitting to prevent audio conflicts
+  if ((vailDitPressed || vailDahPressed) && isPlaying) {
+    requestStopTone();  // Non-blocking - audio task handles stop
+    isPlaying = false;
+    playbackToneFrequency = 0;
+  }
 
   // If not actively sending or spacing, check for new input
   if (!vailKeyerActive && !vailInSpacing) {
@@ -632,7 +691,7 @@ void vailIambicKeyerHandler() {
       vailInSpacing = false;
       vailElementStartTime = currentTime;
       vailToneStartTimestamp = getCurrentTimestamp();  // Capture when tone starts
-      startTone(cwTone);
+      requestStartTone(cwTone);  // Non-blocking - audio task starts tone on Core 0
 
       // Start new transmission if needed
       if (!vailIsTransmitting) {
@@ -651,7 +710,7 @@ void vailIambicKeyerHandler() {
       vailInSpacing = false;
       vailElementStartTime = currentTime;
       vailToneStartTimestamp = getCurrentTimestamp();  // Capture when tone starts
-      startTone(cwTone);
+      requestStartTone(cwTone);  // Non-blocking - audio task starts tone on Core 0
 
       // Start new transmission if needed
       if (!vailIsTransmitting) {
@@ -672,8 +731,8 @@ void vailIambicKeyerHandler() {
   else if (vailKeyerActive && !vailInSpacing) {
     unsigned long elementDuration = vailSendingDit ? vailDitDuration : (vailDitDuration * 3);
 
-    // Keep tone playing during element send
-    continueTone(cwTone);
+    // Audio task handles continuous buffer filling - no need to call continueTone()
+    // This is the key change: removing the blocking continueTone() call that was causing distortion
 
     // Continuously check for paddle input during element send
     if (vailDitPressed && vailDahPressed) {
@@ -696,7 +755,7 @@ void vailIambicKeyerHandler() {
       sendVailMessage({(uint16_t)elementDuration}, vailToneStartTimestamp);
 
       // Element complete, turn off tone and start spacing
-      stopTone();
+      requestStopTone();  // Non-blocking - audio task handles stop
       vailKeyerActive = false;
       vailSendingDit = false;
       vailSendingDah = false;
@@ -750,12 +809,13 @@ void updateVailPaddles() {
 }
 
 // Playback received messages (non-blocking)
+// Uses dual-core audio API: all audio requests are non-blocking, handled by Core 0
 void playbackMessages() {
-  // Don't play if transmitting
-  if (vailIsTransmitting) {
+  // Don't play if transmitting - transmission has audio priority
+  if (vailIsTransmitting || vailKeyerActive) {
     if (isPlaying) {
       // Stop playback if we started transmitting
-      stopTone();
+      requestStopTone();  // Non-blocking - audio task handles stop
       isPlaying = false;
       playbackToneFrequency = 0;
     }
@@ -764,10 +824,8 @@ void playbackMessages() {
 
   if (rxQueue.empty() && !isPlaying) return;
 
-  // Keep the audio buffer filled while playing a tone
-  if (isPlaying && playbackToneFrequency > 0) {
-    continueTone(playbackToneFrequency);
-  }
+  // Audio task handles continuous buffer filling automatically
+  // No need for continueTone() calls from UI loop - this was causing the distortion!
 
   int64_t now = getCurrentTimestamp();
 
@@ -797,9 +855,13 @@ void playbackMessages() {
       if (msg.durations.size() > 0) {
         Serial.print("First element duration: ");
         Serial.println(msg.durations[0]);
-        // Play at sender's TX tone frequency
-        playbackToneFrequency = midiNoteToFrequency(msg.txTone);
-        startTone(playbackToneFrequency);  // First element is always a tone
+        // Play at local cwTone (consistent experience) or sender's TX tone
+        #if VAIL_USE_LOCAL_TONE_FOR_RECEIVE
+          playbackToneFrequency = cwTone;
+        #else
+          playbackToneFrequency = midiNoteToFrequency(msg.txTone);
+        #endif
+        requestStartTone(playbackToneFrequency);  // Non-blocking - audio task starts tone
       }
     }
   }
@@ -816,7 +878,7 @@ void playbackMessages() {
 
       if (playbackIndex >= msg.durations.size()) {
         // Message complete
-        stopTone();
+        requestStopTone();  // Non-blocking - audio task handles stop
         isPlaying = false;
         playbackIndex = 0;
         playbackToneFrequency = 0;
@@ -833,15 +895,19 @@ void playbackMessages() {
         Serial.print("ms ");
 
         if (playbackIndex % 2 == 0) {
-          // Even index = tone (play at sender's frequency)
+          // Even index = tone
           Serial.println("TONE");
-          playbackToneFrequency = midiNoteToFrequency(msg.txTone);
-          startTone(playbackToneFrequency);
+          #if VAIL_USE_LOCAL_TONE_FOR_RECEIVE
+            playbackToneFrequency = cwTone;
+          #else
+            playbackToneFrequency = midiNoteToFrequency(msg.txTone);
+          #endif
+          requestStartTone(playbackToneFrequency);  // Non-blocking - audio task starts tone
         } else {
           // Odd index = silence
           Serial.println("SILENCE");
           playbackToneFrequency = 0;
-          stopTone();
+          requestStopTone();  // Non-blocking - audio task handles stop
         }
       }
     }
@@ -1194,7 +1260,6 @@ int handleVailInput(char key, LGFX &display) {
       cwSpeed--;
       vailDitDuration = DIT_DURATION(cwSpeed);
       saveCWSettings();
-      needsUIRedraw = true;
       beep(TONE_MENU_NAV, BEEP_SHORT);
     }
     return 0;
@@ -1205,7 +1270,6 @@ int handleVailInput(char key, LGFX &display) {
       cwSpeed++;
       vailDitDuration = DIT_DURATION(cwSpeed);
       saveCWSettings();
-      needsUIRedraw = true;
       beep(TONE_MENU_NAV, BEEP_SHORT);
     }
     return 0;
@@ -1243,13 +1307,9 @@ void addChatMessage(String callsign, String message) {
   Serial.print(": ");
   Serial.println(message);
 
-  // Set notification if not in chat mode
+  // Set notification if not in chat mode (LVGL will update on next frame)
   if (!vailChatMode) {
     hasUnreadMessages = true;
-    needsUIRedraw = true;  // Redraw vail info to show notification
-  } else {
-    // Redraw if in chat mode
-    needsUIRedraw = true;
   }
 }
 
@@ -1402,7 +1462,7 @@ int handleRoomSelectionInput(char key, LGFX &display) {
 
       // Disconnect and reconnect to new room
       disconnectFromVail();
-      delay(100);
+      delay(250);  // Allow time for clean disconnect before reconnecting
       connectToVail(selectedRoom);
 
       // Return to vail info
@@ -1502,7 +1562,7 @@ int handleRoomInputInput(char key, LGFX &display) {
 
       // Disconnect and reconnect to new room
       disconnectFromVail();
-      delay(100);
+      delay(250);  // Allow time for clean disconnect before reconnecting
       connectToVail(roomInput);
 
       // Return to vail info

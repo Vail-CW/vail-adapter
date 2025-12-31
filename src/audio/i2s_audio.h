@@ -227,10 +227,15 @@ void startTone(int frequency) {
     return;
   }
 
-  if (!tone_playing || current_frequency != frequency) {
-    phase = 0.0;  // Reset phase when starting new tone or changing frequency
+  // Only reset phase when frequency actually changes (not when restarting same tone)
+  // This prevents clicks when rapidly starting/stopping at the same frequency
+  if (current_frequency != frequency) {
+    phase = 0.0;  // Reset phase only on frequency change
     current_frequency = frequency;
     Serial.printf("Starting tone: %d Hz\n", frequency);
+  } else if (!tone_playing) {
+    // Restarting same frequency - don't reset phase to avoid click
+    Serial.printf("Resuming tone: %d Hz\n", frequency);
   }
 
   tone_playing = true;
@@ -279,16 +284,42 @@ void continueTone(int frequency) {
 }
 
 /*
- * Stop the currently playing tone
+ * Stop the currently playing tone with optional fade-out to prevent clicks
  */
 void stopTone() {
   if (!i2s_initialized) {
     return;
   }
 
+  // Generate a short fade-out ramp to prevent click (about 2ms at 44100 Hz)
+  if (tone_playing && current_frequency > 0) {
+    int16_t ramp_buffer[I2S_BUFFER_SIZE];
+    float phase_increment = 2.0 * PI * current_frequency / I2S_SAMPLE_RATE;
+    float volume_scale = audio_volume / 100.0;
+    int ramp_samples = I2S_BUFFER_SIZE / 4;  // Fade over ~2ms
+
+    for (int i = 0; i < I2S_BUFFER_SIZE / 2; i++) {
+      // Calculate fade factor (1.0 -> 0.0 over ramp_samples)
+      float fade = (i < ramp_samples) ? (1.0f - (float)i / ramp_samples) : 0.0f;
+      int16_t sample = (int16_t)(sin(phase) * I2S_BASE_AMPLITUDE * volume_scale * fade);
+
+      ramp_buffer[i * 2] = sample;       // Left
+      ramp_buffer[i * 2 + 1] = sample;   // Right
+
+      phase += phase_increment;
+      if (phase >= 2.0 * PI) {
+        phase -= 2.0 * PI;
+      }
+    }
+
+    size_t bytes_written;
+    i2s_write(I2S_NUM, ramp_buffer, I2S_BUFFER_SIZE * sizeof(int16_t), &bytes_written, 10);
+  }
+
   tone_playing = false;
-  phase = 0.0;  // Reset phase
-  current_frequency = 0;
+  // Don't reset phase or frequency here - preserve for potential restart at same freq
+  // phase = 0.0;
+  // current_frequency = 0;
 
   // Write silence to clear the buffer
   int16_t silence[I2S_BUFFER_SIZE] = {0};

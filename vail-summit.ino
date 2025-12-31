@@ -304,6 +304,14 @@ void setup() {
 
   autoConnectWiFi();
   Serial.println("WiFi initialized");
+
+  // Force initial internet connectivity check after WiFi connects
+  if (WiFi.status() == WL_CONNECTED) {
+    forceInternetCheck();
+    updateInternetStatus();  // Run first check immediately
+    Serial.printf("Internet status: %s\n", getInternetStatusString());
+  }
+
   setSplashStage(4);  // "Configuring WiFi..."
   // NOTE: OTA server starts on-demand when entering firmware update menu
 

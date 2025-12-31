@@ -11,6 +11,7 @@
 #include "lv_theme_summit.h"
 #include "lv_screen_manager.h"
 #include "../core/config.h"
+#include "../network/internet_check.h"
 
 // External battery state from status_bar.h
 extern int batteryPercent;
@@ -397,11 +398,18 @@ lv_obj_t* createStatusBar(lv_obj_t* parent) {
  */
 lv_obj_t* createCompactStatusBar(lv_obj_t* parent) {
     // WiFi icon - use Montserrat for LVGL symbols
+    // Color indicates connectivity state:
+    //   - Green: Full internet connectivity
+    //   - Orange: WiFi connected but no internet
+    //   - Red: Disconnected
     lv_obj_t* wifi_icon = lv_label_create(parent);
     lv_label_set_text(wifi_icon, LV_SYMBOL_WIFI);
     lv_obj_set_style_text_font(wifi_icon, &lv_font_montserrat_20, 0);
-    if (WiFi.status() == WL_CONNECTED) {
+    InternetStatus inetStatus = getInternetStatus();
+    if (inetStatus == INET_CONNECTED) {
         lv_obj_set_style_text_color(wifi_icon, LV_COLOR_SUCCESS, 0);
+    } else if (inetStatus == INET_WIFI_ONLY) {
+        lv_obj_set_style_text_color(wifi_icon, LV_COLOR_WARNING, 0);
     } else {
         lv_obj_set_style_text_color(wifi_icon, LV_COLOR_ERROR, 0);
     }
