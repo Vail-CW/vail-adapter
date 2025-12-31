@@ -341,6 +341,9 @@ static const int hear_it_mode_count = 5;
 static lv_timer_t* hear_it_pending_timer = NULL;
 static lv_timer_t* hear_it_start_timer = NULL;
 
+// Forward declarations for timer callbacks
+static void hear_it_skip_timer_cb(lv_timer_t* timer);
+
 // Track which settings widget is currently focused (0=mode, 1=speed, 2=length, 3=button)
 static int hear_it_settings_focus = 0;
 
@@ -450,8 +453,38 @@ static void hear_it_key_event_cb(lv_event_t* e) {
         return;
     } else if (key == LV_KEY_LEFT) {
         legacy_key = KEY_LEFT;  // Replay
-    } else if (key == 0x09) {  // TAB
-        legacy_key = KEY_TAB;  // Skip
+    } else if (key == LV_KEY_RIGHT) {  // RIGHT arrow - Skip to next callsign
+        // Handle skip directly in LVGL (non-blocking)
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+
+        // Cancel any pending timer
+        if (hear_it_pending_timer != NULL) {
+            lv_timer_del(hear_it_pending_timer);
+            hear_it_pending_timer = NULL;
+        }
+
+        // Generate new callsign
+        startNewCallsign();
+
+        // Clear input field
+        if (hear_it_input != NULL) {
+            lv_textarea_set_text(hear_it_input, "");
+        }
+
+        // Update prompt to show "Get Ready..."
+        if (hear_it_prompt != NULL) {
+            lv_label_set_text(hear_it_prompt, "Skipped - Get Ready...");
+            lv_obj_set_style_text_color(hear_it_prompt, LV_COLOR_WARNING, 0);
+        }
+
+        // Clear any result text
+        if (hear_it_result != NULL) {
+            lv_label_set_text(hear_it_result, "");
+        }
+
+        // Use timer to start playback (non-blocking, allows UI to update)
+        hear_it_pending_timer = lv_timer_create(hear_it_skip_timer_cb, 500, NULL);
+        return;  // Don't route to legacy handler
     } else if (key == LV_KEY_BACKSPACE) {
         return;  // Let LVGL handle backspace
     } else if (key >= 32 && key <= 126) {
@@ -590,6 +623,21 @@ static void hear_it_incorrect_timer_cb(lv_timer_t* timer) {
     lv_timer_del(timer);
 }
 
+// Timer callback for skip action - play new callsign after brief delay
+static void hear_it_skip_timer_cb(lv_timer_t* timer) {
+    Serial.println("[HearIt] Skip timer fired - playing new callsign");
+    hear_it_pending_timer = NULL;  // Clear reference before delete
+    lv_timer_del(timer);
+
+    playCurrentCallsign();
+
+    // Update prompt after playback starts
+    if (hear_it_prompt != NULL) {
+        lv_label_set_text(hear_it_prompt, "Type what you hear:");
+        lv_obj_set_style_text_color(hear_it_prompt, LV_COLOR_TEXT_SECONDARY, 0);
+    }
+}
+
 // Schedule next callsign after feedback delay (called from legacy handler)
 void scheduleHearItNextCallsign(bool wasCorrect) {
     // Cancel any existing pending timer
@@ -702,6 +750,7 @@ static void hear_it_settings_key_handler(lv_event_t* e) {
         // Stop all playing morse code and pending timers
         cancelHearItTimers();
         onLVGLBackNavigation();
+        lv_event_stop_processing(e);  // Prevent global ESC handler from also firing
         return;
     }
 
@@ -880,8 +929,8 @@ lv_obj_t* createHearItTypeItScreen() {
     lv_obj_set_pos(hear_it_settings_container, 20, HEADER_HEIGHT + 5);
     lv_obj_set_layout(hear_it_settings_container, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(hear_it_settings_container, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(hear_it_settings_container, 10, 0);
-    lv_obj_set_style_pad_all(hear_it_settings_container, 12, 0);
+    lv_obj_set_style_pad_row(hear_it_settings_container, 6, 0);
+    lv_obj_set_style_pad_all(hear_it_settings_container, 8, 0);
     applyCardStyle(hear_it_settings_container);
 
     // Create an invisible focus container to receive all key events
@@ -916,7 +965,7 @@ lv_obj_t* createHearItTypeItScreen() {
     lv_obj_set_flex_align(hear_it_mode_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_bg_opa(hear_it_mode_row, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(hear_it_mode_row, 0, 0);
-    lv_obj_set_style_pad_all(hear_it_mode_row, 8, 0);
+    lv_obj_set_style_pad_all(hear_it_mode_row, 4, 0);
     lv_obj_set_style_radius(hear_it_mode_row, 6, 0);
     lv_obj_clear_flag(hear_it_mode_row, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -935,10 +984,10 @@ lv_obj_t* createHearItTypeItScreen() {
     lv_obj_set_size(hear_it_speed_row, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_layout(hear_it_speed_row, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(hear_it_speed_row, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(hear_it_speed_row, 8, 0);
+    lv_obj_set_style_pad_row(hear_it_speed_row, 4, 0);
     lv_obj_set_style_bg_opa(hear_it_speed_row, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(hear_it_speed_row, 0, 0);
-    lv_obj_set_style_pad_all(hear_it_speed_row, 8, 0);
+    lv_obj_set_style_pad_all(hear_it_speed_row, 4, 0);
     lv_obj_set_style_radius(hear_it_speed_row, 6, 0);
     lv_obj_clear_flag(hear_it_speed_row, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -960,13 +1009,15 @@ lv_obj_t* createHearItTypeItScreen() {
     lv_label_set_text_fmt(hear_it_speed_value, "%d", tempSettings.wpm);
     lv_obj_set_style_text_color(hear_it_speed_value, LV_COLOR_ACCENT_CYAN, 0);
 
-    // Speed slider - inside speed container
+    // Speed slider - inside speed container (compact size)
     hear_it_speed_slider = lv_slider_create(hear_it_speed_row);
     lv_obj_set_width(hear_it_speed_slider, lv_pct(100));
-    lv_obj_set_style_min_height(hear_it_speed_slider, 20, 0);
+    lv_obj_set_height(hear_it_speed_slider, 8);
     lv_slider_set_range(hear_it_speed_slider, 10, 40);
     lv_slider_set_value(hear_it_speed_slider, tempSettings.wpm, LV_ANIM_OFF);
     applySliderStyle(hear_it_speed_slider);
+    // Make knob smaller for compact look
+    lv_obj_set_style_pad_all(hear_it_speed_slider, 4, LV_PART_KNOB);
     // Don't add to nav group - focus container handles all keys
 
     // Group Length container (wraps header and slider for focus styling)
@@ -974,10 +1025,10 @@ lv_obj_t* createHearItTypeItScreen() {
     lv_obj_set_size(hear_it_length_row, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_layout(hear_it_length_row, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(hear_it_length_row, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(hear_it_length_row, 8, 0);
+    lv_obj_set_style_pad_row(hear_it_length_row, 4, 0);
     lv_obj_set_style_bg_opa(hear_it_length_row, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(hear_it_length_row, 0, 0);
-    lv_obj_set_style_pad_all(hear_it_length_row, 8, 0);
+    lv_obj_set_style_pad_all(hear_it_length_row, 4, 0);
     lv_obj_set_style_radius(hear_it_length_row, 6, 0);
     lv_obj_clear_flag(hear_it_length_row, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -999,19 +1050,21 @@ lv_obj_t* createHearItTypeItScreen() {
     lv_label_set_text_fmt(hear_it_length_value, "%d", tempSettings.groupLength);
     lv_obj_set_style_text_color(hear_it_length_value, LV_COLOR_ACCENT_CYAN, 0);
 
-    // Group Length slider - inside length container
+    // Group Length slider - inside length container (compact size)
     hear_it_length_slider = lv_slider_create(hear_it_length_row);
     lv_obj_set_width(hear_it_length_slider, lv_pct(100));
-    lv_obj_set_style_min_height(hear_it_length_slider, 20, 0);
+    lv_obj_set_height(hear_it_length_slider, 8);
     lv_slider_set_range(hear_it_length_slider, 1, 10);
     lv_slider_set_value(hear_it_length_slider, tempSettings.groupLength, LV_ANIM_OFF);
     applySliderStyle(hear_it_length_slider);
+    // Make knob smaller for compact look
+    lv_obj_set_style_pad_all(hear_it_length_slider, 4, LV_PART_KNOB);
     lv_obj_add_event_cb(hear_it_length_slider, hear_it_length_slider_cb, LV_EVENT_VALUE_CHANGED, NULL);
     // Don't add to nav group - focus container handles all keys
 
     // Start Training button
     hear_it_start_btn = lv_btn_create(hear_it_settings_container);
-    lv_obj_set_size(hear_it_start_btn, lv_pct(100), 50);
+    lv_obj_set_size(hear_it_start_btn, lv_pct(100), 40);
     lv_obj_set_style_bg_color(hear_it_start_btn, LV_COLOR_CARD_TEAL, 0);
     lv_obj_set_style_bg_color(hear_it_start_btn, LV_COLOR_CARD_TEAL, LV_STATE_FOCUSED);
     lv_obj_set_style_radius(hear_it_start_btn, 8, 0);
@@ -1037,7 +1090,8 @@ lv_obj_t* createHearItTypeItScreen() {
     // ========================================
     hear_it_training_container = lv_obj_create(screen);
     lv_obj_set_size(hear_it_training_container, SCREEN_WIDTH - 40, 180);
-    lv_obj_center(hear_it_training_container);
+    // Position below score label (centered horizontally, offset down from center)
+    lv_obj_align(hear_it_training_container, LV_ALIGN_CENTER, 0, 15);
     lv_obj_set_layout(hear_it_training_container, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(hear_it_training_container, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(hear_it_training_container, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);

@@ -13,8 +13,8 @@
 // Configuration
 // ============================================
 
-#define MAX_POTA_SPOTS 50           // Maximum spots to store (memory constraint)
-#define POTA_SPOTS_TIMEOUT 10000    // API timeout in ms
+#define MAX_POTA_SPOTS 200          // Maximum spots to store (PSRAM allows more)
+#define POTA_SPOTS_TIMEOUT 15000    // API timeout in ms (increased for larger responses)
 #define POTA_REFRESH_INTERVAL 60000 // Auto-refresh interval in ms
 
 // ============================================
@@ -55,21 +55,91 @@ struct POTASpotFilter {
 // ============================================
 
 struct POTASpotsCache {
-    POTASpot spots[MAX_POTA_SPOTS];
+    POTASpot* spots;              // Pointer to spots array (allocated in PSRAM)
     int count;                    // Number of spots in cache
+    int maxSpots;                 // Allocated capacity
     unsigned long fetchTime;      // millis() when last fetched
     bool valid;                   // Data is valid
     bool fetching;                // Currently fetching
+    bool initialized;             // PSRAM allocation done
 };
 
 // Global cache instance
+// Using static since this header is only included in one translation unit chain
 static POTASpotsCache potaSpotsCache = {
-    {},     // spots
-    0,      // count
-    0,      // fetchTime
-    false,  // valid
-    false   // fetching
+    nullptr, // spots (will be allocated in PSRAM)
+    0,       // count
+    0,       // maxSpots
+    0,       // fetchTime
+    false,   // valid
+    false,   // fetching
+    false    // initialized
 };
+
+// ============================================
+// PSRAM Allocation
+// ============================================
+
+/**
+ * Initialize POTA spots cache in PSRAM
+ * Returns true if successful, false if PSRAM not available (falls back to heap)
+ */
+bool initPOTASpotsCache() {
+    if (potaSpotsCache.initialized) {
+        return true;  // Already initialized
+    }
+
+    size_t spotSize = sizeof(POTASpot);
+    size_t totalSize = spotSize * MAX_POTA_SPOTS;
+
+    Serial.printf("POTA Spots: Allocating cache for %d spots (%d bytes each, %d total)\n",
+                  MAX_POTA_SPOTS, spotSize, totalSize);
+
+    // Try PSRAM first
+    if (psramFound()) {
+        potaSpotsCache.spots = (POTASpot*)ps_malloc(totalSize);
+        if (potaSpotsCache.spots) {
+            Serial.printf("POTA Spots: Allocated %d bytes in PSRAM\n", totalSize);
+            potaSpotsCache.maxSpots = MAX_POTA_SPOTS;
+            potaSpotsCache.initialized = true;
+            // Zero out the memory
+            memset(potaSpotsCache.spots, 0, totalSize);
+            return true;
+        }
+        Serial.println("POTA Spots: PSRAM allocation failed, trying heap...");
+    }
+
+    // Fall back to regular heap with smaller size
+    int heapSpots = 50;  // Conservative limit for heap
+    size_t heapSize = spotSize * heapSpots;
+
+    potaSpotsCache.spots = (POTASpot*)malloc(heapSize);
+    if (potaSpotsCache.spots) {
+        Serial.printf("POTA Spots: Allocated %d bytes in heap (limit: %d spots)\n", heapSize, heapSpots);
+        potaSpotsCache.maxSpots = heapSpots;
+        potaSpotsCache.initialized = true;
+        memset(potaSpotsCache.spots, 0, heapSize);
+        return true;
+    }
+
+    Serial.println("POTA Spots: ERROR - Failed to allocate cache!");
+    potaSpotsCache.maxSpots = 0;
+    return false;
+}
+
+/**
+ * Free POTA spots cache memory
+ */
+void freePOTASpotsCache() {
+    if (potaSpotsCache.spots) {
+        free(potaSpotsCache.spots);
+        potaSpotsCache.spots = nullptr;
+    }
+    potaSpotsCache.count = 0;
+    potaSpotsCache.maxSpots = 0;
+    potaSpotsCache.initialized = false;
+    potaSpotsCache.valid = false;
+}
 
 // Global filter instance
 static POTASpotFilter potaSpotFilter = {
@@ -339,6 +409,11 @@ int filterSpots(const POTASpotsCache& cache, const POTASpotFilter& filter,
                 int* indices, int maxResults) {
     int count = 0;
 
+    // Safety check
+    if (!cache.spots || !cache.initialized || cache.count == 0) {
+        return 0;
+    }
+
     for (int i = 0; i < cache.count && count < maxResults; i++) {
         if (spotMatchesFilter(cache.spots[i], filter)) {
             indices[count++] = i;
@@ -364,10 +439,25 @@ int fetchActiveSpots(POTASpotsCache& cache) {
         return -1;
     }
 
+    // Initialize cache if not already done
+    if (!cache.initialized) {
+        if (!initPOTASpotsCache()) {
+            Serial.println("POTA Spots: Failed to initialize cache");
+            return -1;
+        }
+    }
+
+    // Verify we have a valid spots array
+    if (!cache.spots || cache.maxSpots == 0) {
+        Serial.println("POTA Spots: Cache not properly allocated");
+        return -1;
+    }
+
     cache.fetching = true;
 
     Serial.println("POTA Spots: Fetching active spots...");
-    Serial.printf("POTA Spots: Free heap before fetch: %d\n", ESP.getFreeHeap());
+    Serial.printf("POTA Spots: Free heap: %d, PSRAM free: %d\n", ESP.getFreeHeap(), ESP.getFreePsram());
+    Serial.printf("POTA Spots: Cache can hold up to %d spots\n", cache.maxSpots);
 
     HTTPClient http;
     http.begin("https://api.pota.app/spot/activator");
@@ -387,7 +477,11 @@ int fetchActiveSpots(POTASpotsCache& cache) {
     int contentLength = http.getSize();
     Serial.printf("POTA Spots: Content-Length: %d\n", contentLength);
 
-    if (contentLength > 0 && ESP.getFreeHeap() < (contentLength + 32768)) {
+    // Use PSRAM for large responses if available
+    size_t requiredMem = contentLength + 65536;  // Response + JSON buffer headroom
+    bool havePsram = psramFound() && ESP.getFreePsram() > requiredMem;
+
+    if (!havePsram && contentLength > 0 && ESP.getFreeHeap() < requiredMem) {
         Serial.println("POTA Spots: Not enough memory for response!");
         http.end();
         cache.fetching = false;
@@ -400,32 +494,47 @@ int fetchActiveSpots(POTASpotsCache& cache) {
     Serial.printf("POTA Spots: Received %d bytes\n", payload.length());
     Serial.printf("POTA Spots: Free heap after receive: %d\n", ESP.getFreeHeap());
 
-    // Parse JSON array - use smaller buffer, we only need first 50 spots
-    // Each spot is ~500 bytes in JSON, so 50 spots = ~25KB max
-    DynamicJsonDocument doc(32768);  // 32KB should be sufficient
+    // Use larger JSON buffer for more spots
+    // Each spot is ~500 bytes in JSON, so 200 spots = ~100KB
+    // Allocate in PSRAM if available
+    size_t jsonBufferSize = 131072;  // 128KB for ~200 spots
+    DynamicJsonDocument* doc;
 
-    DeserializationError error = deserializeJson(doc, payload);
+    if (psramFound()) {
+        // Allocate JSON document in PSRAM
+        doc = new (ps_malloc(sizeof(DynamicJsonDocument))) DynamicJsonDocument(jsonBufferSize);
+        Serial.printf("POTA Spots: JSON buffer allocated in PSRAM (%d bytes)\n", jsonBufferSize);
+    } else {
+        // Fall back to heap with smaller buffer
+        jsonBufferSize = 32768;  // 32KB for ~50 spots
+        doc = new DynamicJsonDocument(jsonBufferSize);
+        Serial.printf("POTA Spots: JSON buffer allocated in heap (%d bytes)\n", jsonBufferSize);
+    }
+
+    DeserializationError error = deserializeJson(*doc, payload);
 
     // Free the payload string ASAP to recover memory
     payload = String();
 
     if (error) {
         Serial.printf("POTA Spots: JSON parse error - %s\n", error.c_str());
+        delete doc;
         cache.fetching = false;
         return -1;
     }
 
     Serial.printf("POTA Spots: Free heap after parse: %d\n", ESP.getFreeHeap());
 
-    JsonArray spotsArray = doc.as<JsonArray>();
+    JsonArray spotsArray = doc->as<JsonArray>();
+    Serial.printf("POTA Spots: API returned %d spots\n", spotsArray.size());
 
     // Clear cache
     cache.count = 0;
 
     // Parse each spot
     for (JsonObject spotObj : spotsArray) {
-        if (cache.count >= MAX_POTA_SPOTS) {
-            Serial.printf("POTA Spots: Cache full at %d spots\n", MAX_POTA_SPOTS);
+        if (cache.count >= cache.maxSpots) {
+            Serial.printf("POTA Spots: Cache full at %d spots\n", cache.maxSpots);
             break;
         }
 
@@ -468,11 +577,15 @@ int fetchActiveSpots(POTASpotsCache& cache) {
         cache.count++;
     }
 
+    // Free JSON document
+    delete doc;
+
     cache.fetchTime = millis();
     cache.valid = true;
     cache.fetching = false;
 
     Serial.printf("POTA Spots: Loaded %d spots\n", cache.count);
+    Serial.printf("POTA Spots: Free heap after cleanup: %d, PSRAM free: %d\n", ESP.getFreeHeap(), ESP.getFreePsram());
 
     return cache.count;
 }

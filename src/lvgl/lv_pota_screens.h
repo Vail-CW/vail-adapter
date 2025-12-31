@@ -34,7 +34,8 @@ extern void setCurrentModeFromInt(int mode);
 static lv_obj_t* pota_screen = NULL;
 static lv_obj_t* pota_spots_table = NULL;
 static lv_obj_t* pota_loading_bar = NULL;
-static lv_obj_t* pota_loading_label = NULL;
+static lv_obj_t* pota_loading_label = NULL;      // Loading container
+static lv_obj_t* pota_loading_text = NULL;       // Loading text label inside container
 static lv_obj_t* pota_updated_label = NULL;
 static lv_obj_t* pota_filter_label = NULL;
 static lv_obj_t* pota_count_label = NULL;
@@ -55,13 +56,15 @@ static int pota_spots_scroll_pos = 0;
 static int pota_spots_selected_row = 0;
 static bool pota_is_loading = false;
 
-// Filtered spots indices
-static int filteredSpotIndices[MAX_POTA_SPOTS];
+// Filtered spots indices (dynamically allocated alongside spots cache)
+static int* filteredSpotIndices = NULL;
 static int filteredSpotCount = 0;
+static bool filteredIndicesInitialized = false;
 
 // Auto-refresh timer
 static lv_timer_t* pota_refresh_timer = NULL;
 static lv_timer_t* pota_timestamp_timer = NULL;
+static lv_timer_t* pota_autoload_timer = NULL;
 
 // ============================================
 // Forward Declarations
@@ -92,8 +95,15 @@ static void pota_timestamp_cb(lv_timer_t* timer) {
 }
 
 void startPOTATimers() {
-    // Stop existing timers
-    cleanupPOTAScreen();
+    // Stop existing timers only (don't clear screen pointers)
+    if (pota_refresh_timer) {
+        lv_timer_del(pota_refresh_timer);
+        pota_refresh_timer = NULL;
+    }
+    if (pota_timestamp_timer) {
+        lv_timer_del(pota_timestamp_timer);
+        pota_timestamp_timer = NULL;
+    }
 
     // Start auto-refresh timer (60 seconds)
     pota_refresh_timer = lv_timer_create(pota_auto_refresh_cb, POTA_REFRESH_INTERVAL, NULL);
@@ -111,10 +121,15 @@ void cleanupPOTAScreen() {
         lv_timer_del(pota_timestamp_timer);
         pota_timestamp_timer = NULL;
     }
+    if (pota_autoload_timer) {
+        lv_timer_del(pota_autoload_timer);
+        pota_autoload_timer = NULL;
+    }
     pota_screen = NULL;
     pota_spots_table = NULL;
     pota_loading_bar = NULL;
     pota_loading_label = NULL;
+    pota_loading_text = NULL;
     pota_updated_label = NULL;
     pota_filter_label = NULL;
     pota_count_label = NULL;
@@ -160,13 +175,42 @@ void updatePOTATimestampLabel() {
     lv_label_set_text(pota_updated_label, buf);
 }
 
+// Initialize filtered indices array (call after spots cache is initialized)
+bool initFilteredIndices() {
+    if (filteredIndicesInitialized && filteredSpotIndices != NULL) {
+        return true;
+    }
+
+    size_t size = sizeof(int) * MAX_POTA_SPOTS;
+    filteredSpotIndices = (int*)malloc(size);
+    if (filteredSpotIndices) {
+        memset(filteredSpotIndices, 0, size);
+        filteredIndicesInitialized = true;
+        return true;
+    }
+
+    Serial.println("[POTA] ERROR: Failed to allocate filtered indices!");
+    return false;
+}
+
 void updateFilteredSpots() {
-    Serial.printf("[POTA] updateFilteredSpots: cache has %d spots, filter active=%d\n",
-                  potaSpotsCache.count, potaSpotFilter.active);
+    // Safety check - ensure cache is valid
+    if (!potaSpotsCache.spots || !potaSpotsCache.initialized) {
+        filteredSpotCount = 0;
+        return;
+    }
+
+    // Initialize filtered indices if needed
+    if (!filteredIndicesInitialized || !filteredSpotIndices) {
+        if (!initFilteredIndices()) {
+            filteredSpotCount = 0;
+            return;
+        }
+    }
 
     if (potaSpotFilter.active) {
         filteredSpotCount = filterSpots(potaSpotsCache, potaSpotFilter,
-                                         filteredSpotIndices, MAX_POTA_SPOTS);
+                                         filteredSpotIndices, potaSpotsCache.maxSpots);
     } else {
         // No filter - show all spots
         filteredSpotCount = potaSpotsCache.count;
@@ -174,17 +218,14 @@ void updateFilteredSpots() {
             filteredSpotIndices[i] = i;
         }
     }
-    Serial.printf("[POTA] updateFilteredSpots: filteredSpotCount=%d\n", filteredSpotCount);
 }
 
 void updateFilterLabel() {
     if (!pota_filter_label) {
-        Serial.println("[POTA] updateFilterLabel: label is NULL");
         return;
     }
 
     if (!lv_obj_is_valid(pota_filter_label)) {
-        Serial.println("[POTA] updateFilterLabel: label invalid");
         pota_filter_label = NULL;
         return;
     }
@@ -342,56 +383,38 @@ static void pota_menu_key_handler(lv_event_t* e) {
 
 static void pota_spots_key_handler(lv_event_t* e);
 
+
 void refreshPOTASpotsDisplay() {
-    Serial.println("[POTA] refreshPOTASpotsDisplay start");
-
-    if (!pota_spots_table) {
-        Serial.println("[POTA] No table, returning");
-        return;
-    }
-
-    // Verify table is still valid
-    if (!lv_obj_is_valid(pota_spots_table)) {
-        Serial.println("[POTA] Table object invalid!");
+    if (!pota_spots_table || !lv_obj_is_valid(pota_spots_table)) {
         pota_spots_table = NULL;
         return;
     }
 
     // Update filtered list
-    Serial.println("[POTA] Updating filters...");
     updateFilteredSpots();
-
-    Serial.println("[POTA] Updating filter label...");
     updateFilterLabel();
-
-    Serial.println("[POTA] Updating count label...");
     updateCountLabel();
 
-    // Clear table
-    Serial.println("[POTA] Clearing table...");
-    lv_table_set_row_cnt(pota_spots_table, 0);
-
     if (filteredSpotCount == 0) {
-        Serial.println("[POTA] No spots, showing empty message");
+        // Show "No spots" message
         lv_table_set_row_cnt(pota_spots_table, 1);
         lv_table_set_cell_value(pota_spots_table, 0, 0, "No spots found");
+        lv_table_set_cell_value(pota_spots_table, 0, 1, "");
+        lv_table_set_cell_value(pota_spots_table, 0, 2, "");
+        lv_table_set_cell_value(pota_spots_table, 0, 3, "");
         updatePOTATimestampLabel();
-        Serial.println("[POTA] refreshPOTASpotsDisplay done (empty)");
         return;
     }
 
-    Serial.printf("[POTA] Populating table with %d spots...\n", filteredSpotCount);
-
-    // Set row count
+    // Set row count (data only - header is separate)
     lv_table_set_row_cnt(pota_spots_table, filteredSpotCount);
 
-    // Populate rows
+    // Populate data rows (starting at row 0)
     for (int i = 0; i < filteredSpotCount; i++) {
         int spotIdx = filteredSpotIndices[i];
 
         // Bounds check
         if (spotIdx < 0 || spotIdx >= potaSpotsCache.count) {
-            Serial.printf("[POTA] Invalid spot index %d (cache has %d)\n", spotIdx, potaSpotsCache.count);
             continue;
         }
 
@@ -415,37 +438,37 @@ void refreshPOTASpotsDisplay() {
         lv_table_set_cell_value(pota_spots_table, i, 3, age);
     }
 
-    Serial.println("[POTA] Updating timestamp label...");
     updatePOTATimestampLabel();
 
     // Reset selection if out of bounds
     if (pota_spots_selected_row >= filteredSpotCount) {
         pota_spots_selected_row = filteredSpotCount > 0 ? filteredSpotCount - 1 : 0;
     }
-
-    Serial.println("[POTA] refreshPOTASpotsDisplay done");
 }
 
-void showSpotsLoadingState(bool loading) {
-    Serial.printf("[POTA] showSpotsLoadingState: %s\n", loading ? "true" : "false");
+void showSpotsLoadingState(bool loading, const char* message = NULL, lv_color_t color = LV_COLOR_TEXT_PRIMARY) {
     pota_is_loading = loading;
 
-    if (pota_loading_bar && lv_obj_is_valid(pota_loading_bar)) {
-        if (loading) {
-            lv_obj_clear_flag(pota_loading_bar, LV_OBJ_FLAG_HIDDEN);
-            lv_bar_set_value(pota_loading_bar, 50, LV_ANIM_ON);
-        } else {
-            lv_obj_add_flag(pota_loading_bar, LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-
+    // Show/hide loading container in the table area
     if (pota_loading_label && lv_obj_is_valid(pota_loading_label)) {
         if (loading) {
             lv_obj_clear_flag(pota_loading_label, LV_OBJ_FLAG_HIDDEN);
-            lv_label_set_text(pota_loading_label, "Loading spots...");
-            lv_obj_set_style_text_color(pota_loading_label, LV_COLOR_TEXT_SECONDARY, 0);
+            // Update text message if provided
+            if (message && pota_loading_text && lv_obj_is_valid(pota_loading_text)) {
+                lv_label_set_text(pota_loading_text, message);
+                lv_obj_set_style_text_color(pota_loading_text, color, 0);
+            }
         } else {
             lv_obj_add_flag(pota_loading_label, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    // Hide table while loading to show loading message clearly
+    if (pota_spots_table && lv_obj_is_valid(pota_spots_table)) {
+        if (loading) {
+            lv_obj_add_flag(pota_spots_table, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_clear_flag(pota_spots_table, LV_OBJ_FLAG_HIDDEN);
         }
     }
 }
@@ -499,64 +522,145 @@ lv_obj_t* createPOTAActiveSpotsScreen() {
     lv_obj_set_pos(pota_filter_label, 15, HEADER_HEIGHT + 2);
     lv_obj_add_flag(pota_filter_label, LV_OBJ_FLAG_HIDDEN);
 
-    // Calculate content Y based on filter visibility
-    int content_y = HEADER_HEIGHT + 5;
-    int content_height = SCREEN_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - 30;
+    // ========================================
+    // Fixed Header Row (separate from table)
+    // ========================================
+    int header_row_y = HEADER_HEIGHT + 8;
+    int header_row_height = 28;
 
+    // Header background bar
+    lv_obj_t* header_bar = lv_obj_create(screen);
+    lv_obj_set_size(header_bar, SCREEN_WIDTH - 20, header_row_height);
+    lv_obj_set_pos(header_bar, 10, header_row_y);
+    lv_obj_set_style_bg_color(header_bar, getThemeColors()->bg_layer2, 0);
+    lv_obj_set_style_bg_opa(header_bar, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(header_bar, 0, 0);
+    lv_obj_set_style_radius(header_bar, 0, 0);
+    lv_obj_set_style_pad_all(header_bar, 0, 0);
+    lv_obj_clear_flag(header_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Header labels - match table column positions
+    lv_obj_t* h1 = lv_label_create(header_bar);
+    lv_label_set_text(h1, "CALL");
+    lv_obj_set_style_text_font(h1, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(h1, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_pos(h1, 8, 5);
+
+    lv_obj_t* h2 = lv_label_create(header_bar);
+    lv_label_set_text(h2, "PARK");
+    lv_obj_set_style_text_font(h2, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(h2, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_pos(h2, 98, 5);
+
+    lv_obj_t* h3 = lv_label_create(header_bar);
+    lv_label_set_text(h3, "FREQ / MODE");
+    lv_obj_set_style_text_font(h3, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(h3, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_pos(h3, 198, 5);
+
+    lv_obj_t* h4 = lv_label_create(header_bar);
+    lv_label_set_text(h4, "AGE");
+    lv_obj_set_style_text_font(h4, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(h4, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_pos(h4, 358, 5);
+
+    // ========================================
+    // Table (data only, no header row)
+    // ========================================
+    int table_y = header_row_y + header_row_height + 2;
+    int table_height = SCREEN_HEIGHT - table_y - FOOTER_HEIGHT - 25;
+
+    Serial.printf("[POTA] Layout: header_y=%d, table_y=%d, table_h=%d\n", header_row_y, table_y, table_height);
     Serial.println("[POTA] Creating table...");
 
-    // Spots table
     pota_spots_table = lv_table_create(screen);
     if (!pota_spots_table) {
         Serial.println("[POTA] ERROR: Failed to create table!");
-        return screen;  // Return partial screen
+        return screen;
     }
-    lv_obj_set_size(pota_spots_table, SCREEN_WIDTH - 20, content_height);
-    lv_obj_set_pos(pota_spots_table, 10, content_y);
+    lv_obj_set_size(pota_spots_table, SCREEN_WIDTH - 20, table_height);
+    lv_obj_set_pos(pota_spots_table, 10, table_y);
 
     // Table styling
     lv_obj_set_style_bg_color(pota_spots_table, getThemeColors()->bg_deep, 0);
     lv_obj_set_style_bg_opa(pota_spots_table, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(pota_spots_table, 1, 0);
-    lv_obj_set_style_border_color(pota_spots_table, getThemeColors()->bg_layer2, 0);
-    lv_obj_set_style_pad_all(pota_spots_table, 4, 0);
+    lv_obj_set_style_border_width(pota_spots_table, 0, 0);
+    lv_obj_set_style_pad_all(pota_spots_table, 0, 0);
 
     // Cell styling
     lv_obj_set_style_text_font(pota_spots_table, &lv_font_montserrat_14, LV_PART_ITEMS);
     lv_obj_set_style_text_color(pota_spots_table, LV_COLOR_TEXT_PRIMARY, LV_PART_ITEMS);
     lv_obj_set_style_bg_color(pota_spots_table, getThemeColors()->bg_deep, LV_PART_ITEMS);
+    lv_obj_set_style_bg_opa(pota_spots_table, LV_OPA_COVER, LV_PART_ITEMS);
     lv_obj_set_style_pad_top(pota_spots_table, 6, LV_PART_ITEMS);
     lv_obj_set_style_pad_bottom(pota_spots_table, 6, LV_PART_ITEMS);
+    lv_obj_set_style_pad_left(pota_spots_table, 4, LV_PART_ITEMS);
 
     // Selected row styling
     lv_obj_set_style_bg_color(pota_spots_table, LV_COLOR_ACCENT_CYAN, LV_PART_ITEMS | LV_STATE_PRESSED);
     lv_obj_set_style_text_color(pota_spots_table, getThemeColors()->text_on_accent, LV_PART_ITEMS | LV_STATE_PRESSED);
 
-    // Set column widths
+    // Set column widths to match header
     lv_table_set_col_cnt(pota_spots_table, 4);
     lv_table_set_col_width(pota_spots_table, 0, 90);   // Callsign
     lv_table_set_col_width(pota_spots_table, 1, 100);  // Reference
     lv_table_set_col_width(pota_spots_table, 2, 150);  // Freq+Mode
     lv_table_set_col_width(pota_spots_table, 3, 80);   // Age
 
+    // Initialize with empty row
+    lv_table_set_row_cnt(pota_spots_table, 1);
+    lv_table_set_cell_value(pota_spots_table, 0, 0, "");
+    lv_table_set_cell_value(pota_spots_table, 0, 1, "");
+    lv_table_set_cell_value(pota_spots_table, 0, 2, "");
+    lv_table_set_cell_value(pota_spots_table, 0, 3, "");
+
     Serial.println("[POTA] Table created successfully");
 
-    // Loading bar (centered, hidden initially)
-    pota_loading_bar = lv_bar_create(screen);
-    lv_obj_set_size(pota_loading_bar, 200, 10);
-    lv_obj_align(pota_loading_bar, LV_ALIGN_CENTER, 0, -20);
-    lv_bar_set_range(pota_loading_bar, 0, 100);
-    lv_obj_set_style_bg_color(pota_loading_bar, getThemeColors()->bg_layer2, 0);
-    lv_obj_set_style_bg_color(pota_loading_bar, LV_COLOR_ACCENT_CYAN, LV_PART_INDICATOR);
-    lv_obj_add_flag(pota_loading_bar, LV_OBJ_FLAG_HIDDEN);
+    // Make table navigable and add key handler
+    lv_obj_add_flag(pota_spots_table, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(pota_spots_table, pota_spots_key_handler, LV_EVENT_KEY, NULL);
+    addNavigableWidget(pota_spots_table);
 
-    // Loading label (hidden initially)
-    pota_loading_label = lv_label_create(screen);
-    lv_label_set_text(pota_loading_label, "Loading spots...");
-    lv_obj_set_style_text_font(pota_loading_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(pota_loading_label, LV_COLOR_TEXT_SECONDARY, 0);
-    lv_obj_align(pota_loading_label, LV_ALIGN_CENTER, 0, 10);
-    lv_obj_add_flag(pota_loading_label, LV_OBJ_FLAG_HIDDEN);
+    // ========================================
+    // Loading Indicator (with spinner)
+    // ========================================
+    int loading_center_y = table_y + (table_height / 2) - 50;
+
+    lv_obj_t* loading_container = lv_obj_create(screen);
+    lv_obj_set_size(loading_container, 280, 100);
+    lv_obj_set_pos(loading_container, (SCREEN_WIDTH - 280) / 2, loading_center_y);
+    lv_obj_set_style_bg_color(loading_container, getThemeColors()->bg_layer2, 0);
+    lv_obj_set_style_bg_opa(loading_container, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(loading_container, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_border_width(loading_container, 2, 0);
+    lv_obj_set_style_radius(loading_container, 8, 0);
+    lv_obj_clear_flag(loading_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(loading_container, LV_OBJ_FLAG_HIDDEN);
+
+    // Spinner at top of loading container
+    lv_obj_t* spinner = lv_spinner_create(loading_container, 1000, 60);
+    lv_obj_set_size(spinner, 40, 40);
+    lv_obj_align(spinner, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_set_style_arc_color(spinner, LV_COLOR_ACCENT_CYAN, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(spinner, getThemeColors()->bg_deep, LV_PART_MAIN);
+    lv_obj_set_style_arc_width(spinner, 4, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_width(spinner, 4, LV_PART_MAIN);
+
+    // Loading text below spinner
+    pota_loading_text = lv_label_create(loading_container);
+    lv_label_set_text(pota_loading_text, "Loading POTA spots...");
+    lv_obj_set_style_text_font(pota_loading_text, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(pota_loading_text, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align(pota_loading_text, LV_ALIGN_BOTTOM_MID, 0, -12);
+
+    // Store container as loading label for show/hide
+    pota_loading_label = loading_container;
+
+    // Move loading container to front so it shows above table
+    lv_obj_move_foreground(loading_container);
+
+    // Loading bar not used anymore
+    pota_loading_bar = NULL;
 
     // Timestamp label
     pota_updated_label = lv_label_create(screen);
@@ -580,23 +684,15 @@ lv_obj_t* createPOTAActiveSpotsScreen() {
     lv_obj_set_style_text_color(footer_text, LV_COLOR_TEXT_TERTIARY, 0);
     lv_obj_align(footer_text, LV_ALIGN_CENTER, 0, 0);
 
-    // Key receiver (invisible)
-    lv_obj_t* key_receiver = lv_obj_create(screen);
-    lv_obj_set_size(key_receiver, 1, 1);
-    lv_obj_set_pos(key_receiver, -10, -10);
-    lv_obj_set_style_bg_opa(key_receiver, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(key_receiver, 0, 0);
-    lv_obj_add_flag(key_receiver, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(key_receiver, pota_spots_key_handler, LV_EVENT_KEY, NULL);
-    addNavigableWidget(key_receiver);
-
     Serial.println("[POTA] UI complete, initializing data display...");
 
-    // Initialize with empty state - don't call updateFilteredSpots/refreshPOTASpotsDisplay
-    // as they may have issues. Just set initial empty table state directly.
+    // Initialize table with 1 empty row (LVGL tables need at least 1 row)
     if (pota_spots_table) {
         lv_table_set_row_cnt(pota_spots_table, 1);
-        lv_table_set_cell_value(pota_spots_table, 0, 0, "Press R to load spots");
+        lv_table_set_cell_value(pota_spots_table, 0, 0, "");
+        lv_table_set_cell_value(pota_spots_table, 0, 1, "");
+        lv_table_set_cell_value(pota_spots_table, 0, 2, "");
+        lv_table_set_cell_value(pota_spots_table, 0, 3, "");
     }
 
     Serial.println("[POTA] Active Spots screen ready");
@@ -614,7 +710,7 @@ static void pota_spots_key_handler(lv_event_t* e) {
 
         if (!pota_is_loading) {
             Serial.println("[POTA] Starting fetch...");
-            showSpotsLoadingState(true);
+            showSpotsLoadingState(true, "Loading POTA spots...", LV_COLOR_TEXT_PRIMARY);
             lv_timer_handler();  // Force UI update
 
             Serial.printf("[POTA] Free heap before fetch: %d\n", ESP.getFreeHeap());
@@ -630,14 +726,10 @@ static void pota_spots_key_handler(lv_event_t* e) {
                 beep(1000, 100);  // Success
             } else {
                 Serial.println("[POTA] Fetch failed, showing error");
-                if (pota_loading_label && lv_obj_is_valid(pota_loading_label)) {
-                    lv_obj_clear_flag(pota_loading_label, LV_OBJ_FLAG_HIDDEN);
-                    if (WiFi.status() != WL_CONNECTED) {
-                        lv_label_set_text(pota_loading_label, "WiFi not connected!");
-                    } else {
-                        lv_label_set_text(pota_loading_label, "Failed to load. Press R to retry.");
-                    }
-                    lv_obj_set_style_text_color(pota_loading_label, LV_COLOR_ERROR, 0);
+                if (WiFi.status() != WL_CONNECTED) {
+                    showSpotsLoadingState(true, "WiFi not connected!", LV_COLOR_ERROR);
+                } else {
+                    showSpotsLoadingState(true, "Failed to load. Press R to retry.", LV_COLOR_ERROR);
                 }
                 beep(400, 200);  // Error
             }
@@ -659,7 +751,6 @@ static void pota_spots_key_handler(lv_event_t* e) {
     if (key == LV_KEY_UP || key == LV_KEY_PREV) {
         if (pota_spots_selected_row > 0) {
             pota_spots_selected_row--;
-            // Scroll table if needed
             lv_coord_t row_h = 30;  // Approximate row height
             lv_obj_scroll_to_y(pota_spots_table, pota_spots_selected_row * row_h, LV_ANIM_ON);
         }
@@ -683,6 +774,13 @@ static void pota_spots_key_handler(lv_event_t* e) {
             selectedSpotIndex = filteredSpotIndices[pota_spots_selected_row];
             onLVGLMenuSelect(POTA_MODE_SPOT_DETAIL);
         }
+        lv_event_stop_processing(e);
+        return;
+    }
+
+    // ESC - Go back
+    if (key == LV_KEY_ESC) {
+        onLVGLBackNavigation();
         lv_event_stop_processing(e);
         return;
     }
@@ -910,6 +1008,11 @@ lv_obj_t* createPOTASpotDetailScreen() {
 
     updateDetailContent();
 
+    // Make content area navigable and add key handler
+    lv_obj_add_flag(pota_detail_content, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(pota_detail_content, pota_detail_key_handler, LV_EVENT_KEY, NULL);
+    addNavigableWidget(pota_detail_content);
+
     // LOG QSO button
     lv_obj_t* log_btn = lv_btn_create(screen);
     lv_obj_set_size(log_btn, 150, 40);
@@ -939,16 +1042,6 @@ lv_obj_t* createPOTASpotDetailScreen() {
     lv_obj_set_style_text_font(footer_text, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(footer_text, LV_COLOR_TEXT_TERTIARY, 0);
     lv_obj_align(footer_text, LV_ALIGN_CENTER, 0, 0);
-
-    // Key receiver
-    lv_obj_t* key_receiver = lv_obj_create(screen);
-    lv_obj_set_size(key_receiver, 1, 1);
-    lv_obj_set_pos(key_receiver, -10, -10);
-    lv_obj_set_style_bg_opa(key_receiver, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(key_receiver, 0, 0);
-    lv_obj_add_flag(key_receiver, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(key_receiver, pota_detail_key_handler, LV_EVENT_KEY, NULL);
-    addNavigableWidget(key_receiver);
 
     return screen;
 }
@@ -1012,6 +1105,13 @@ static void pota_detail_key_handler(lv_event_t* e) {
             // Navigate to QSO Logger
             onLVGLMenuSelect(37);  // LVGL_MODE_QSO_LOG_ENTRY
         }
+        lv_event_stop_processing(e);
+        return;
+    }
+
+    // ESC - Go back
+    if (key == LV_KEY_ESC) {
+        onLVGLBackNavigation();
         lv_event_stop_processing(e);
         return;
     }
@@ -1221,6 +1321,11 @@ lv_obj_t* createPOTAFilterScreen() {
     lv_obj_set_style_text_color(clear_lbl, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(clear_lbl);
 
+    // Make card navigable and add key handler
+    lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(card, pota_filter_key_handler, LV_EVENT_KEY, NULL);
+    addNavigableWidget(card);
+
     // Footer
     lv_obj_t* footer = lv_obj_create(screen);
     lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
@@ -1235,16 +1340,6 @@ lv_obj_t* createPOTAFilterScreen() {
     lv_obj_set_style_text_font(footer_text, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(footer_text, LV_COLOR_TEXT_TERTIARY, 0);
     lv_obj_align(footer_text, LV_ALIGN_CENTER, 0, 0);
-
-    // Key receiver
-    lv_obj_t* key_receiver = lv_obj_create(screen);
-    lv_obj_set_size(key_receiver, 1, 1);
-    lv_obj_set_pos(key_receiver, -10, -10);
-    lv_obj_set_style_bg_opa(key_receiver, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(key_receiver, 0, 0);
-    lv_obj_add_flag(key_receiver, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(key_receiver, pota_filter_key_handler, LV_EVENT_KEY, NULL);
-    addNavigableWidget(key_receiver);
 
     // Initialize display
     updateFilterRowStyles();
@@ -1356,6 +1451,13 @@ static void pota_filter_key_handler(lv_event_t* e) {
         lv_event_stop_processing(e);
         return;
     }
+
+    // ESC - Go back
+    if (key == LV_KEY_ESC) {
+        onLVGLBackNavigation();
+        lv_event_stop_processing(e);
+        return;
+    }
 }
 
 // ============================================
@@ -1383,15 +1485,61 @@ lv_obj_t* createPOTAScreenForMode(int mode) {
 // Start POTA Mode
 // ============================================
 
+static void pota_autoload_cb(lv_timer_t* timer) {
+    // Delete the one-shot timer
+    if (pota_autoload_timer) {
+        lv_timer_del(pota_autoload_timer);
+        pota_autoload_timer = NULL;
+    }
+
+    // Only proceed if we're still on the active spots screen
+    if (getCurrentModeAsInt() != POTA_MODE_ACTIVE_SPOTS) {
+        return;
+    }
+
+    // Check if we already have valid cached data
+    if (potaSpotsCache.valid && potaSpotsCache.count > 0) {
+        Serial.println("[POTA] Using cached spots data");
+        refreshPOTASpotsDisplay();
+        return;
+    }
+
+    // No valid cache - fetch new data
+    if (!pota_is_loading && WiFi.status() == WL_CONNECTED) {
+        Serial.println("[POTA] Auto-loading spots...");
+        showSpotsLoadingState(true, "Loading POTA spots...", LV_COLOR_TEXT_PRIMARY);
+        lv_timer_handler();  // Force UI update to show loading
+
+        int result = fetchActiveSpots(potaSpotsCache);
+        showSpotsLoadingState(false);
+
+        if (result >= 0) {
+            Serial.printf("[POTA] Auto-load success: %d spots\n", potaSpotsCache.count);
+            refreshPOTASpotsDisplay();
+        } else {
+            Serial.println("[POTA] Auto-load failed");
+            showSpotsLoadingState(true, "Failed to load. Press R to retry.", LV_COLOR_ERROR);
+        }
+    } else if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("[POTA] No WiFi - skipping auto-load");
+        showSpotsLoadingState(true, "WiFi not connected. Press R when connected.", LV_COLOR_WARNING);
+    }
+}
+
 void startPOTAActiveSpots(LGFX& display) {
     Serial.println("[POTA] startPOTAActiveSpots called");
 
-    // Start timers
+    // Start refresh/timestamp timers
     startPOTATimers();
 
-    // Don't auto-fetch on screen load - user can press R to refresh
-    // This avoids potential crashes from large API responses
-    Serial.println("[POTA] Ready - press R to load spots");
+    // Schedule auto-load after a brief delay to let screen render first
+    if (pota_autoload_timer) {
+        lv_timer_del(pota_autoload_timer);
+    }
+    pota_autoload_timer = lv_timer_create(pota_autoload_cb, 200, NULL);  // 200ms delay
+    lv_timer_set_repeat_count(pota_autoload_timer, 1);  // One-shot
+
+    Serial.println("[POTA] Auto-load scheduled");
 }
 
 #endif // LV_POTA_SCREENS_H

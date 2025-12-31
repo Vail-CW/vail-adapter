@@ -18,7 +18,9 @@
 
 #define MAX_FALLING_LETTERS 5
 #define GAME_UPDATE_INTERVAL 1000  // ms between game updates (1 second)
-// GROUND_Y now defined in config.h (scaled for 4" display)
+// Game ground level for LVGL layout (canvas is 240px tall, starts at y=40)
+// Letters hit ground when y >= 200 in game coords (y=240 on screen, above bottom HUD)
+#define GAME_GROUND_Y 200
 #define MAX_LIVES 3               // Lives (letters that can hit ground)
 
 // ============================================
@@ -432,8 +434,8 @@ void updateFallingLetters() {
                          (int)fallingLetters[i].x,
                          (int)fallingLetters[i].y + 40, true);
 
-      // Check if letter hit the ground
-      if (fallingLetters[i].y >= GROUND_Y - 20) {
+      // Check if letter hit the ground (GAME_GROUND_Y = 200 for LVGL layout)
+      if (fallingLetters[i].y >= GAME_GROUND_Y) {
         fallingLetters[i].active = false;
         updateShooterLetter(i, ' ', 0, 0, false);  // Hide letter
         gameLives--;
@@ -519,9 +521,8 @@ bool checkMorseShoot(LGFX& tft) {
         saveShooterHighScore();
       }
 
-      // Clear decoded text
-      shooterDecodedText = "";
-      updateShooterDecoded("");  // Update LVGL
+      // Keep decoded text visible until next input starts
+      // (cleared in updateMorseInputFast when paddle is pressed)
       return true;
     }
   }
@@ -543,6 +544,13 @@ void updateMorseInputFast(LGFX& tft) {
   unsigned long now = millis();
   MorseTiming timing(cwSpeed);
   bool toneOn = isTonePlaying();
+
+  // Clear previous hit text when starting new input
+  // This keeps successful hit visible until user starts keying next character
+  if ((morseInput.ditPressed || morseInput.dahPressed) && shooterDecodedText.length() > 0 && !morseInput.keyerActive) {
+    shooterDecodedText = "";
+    updateShooterDecoded("");
+  }
 
   // Check for decoder timeout (flush if no activity for word gap duration)
   // Using word gap (7 dits) instead of character gap (3 dits) for more forgiving timing
@@ -1008,10 +1016,10 @@ void updateMorseShooterVisuals(LGFX& tft) {
     return;
   }
 
-  // FREEZE screen completely during any keying activity or if decoded text exists
+  // FREEZE screen only during active keying (not when decoded text exists)
+  // This allows physics/ground collision to continue while hit text is displayed
   bool isKeying = morseInput.keyerActive || morseInput.inSpacing ||
-                  morseInput.ditPressed || morseInput.dahPressed ||
-                  shooterDecodedText.length() > 0;
+                  morseInput.ditPressed || morseInput.dahPressed;
 
   if (isKeying) {
     return;

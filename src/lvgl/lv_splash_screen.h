@@ -16,9 +16,9 @@
 // Splash Screen Layout
 // ============================================
 
-#define SPLASH_LOGO_Y       30      // Top of mountain logo
-#define SPLASH_TITLE_Y      200     // "VAIL SUMMIT" text position
-#define SPLASH_BAR_Y        260     // Progress bar Y position
+#define SPLASH_LOGO_Y       15      // Top of mountain logo
+#define SPLASH_TITLE_Y      185     // "VAIL SUMMIT" text position
+#define SPLASH_BAR_Y        265     // Progress bar Y position (moved down for version text clearance)
 #define SPLASH_BAR_WIDTH    300
 #define SPLASH_BAR_HEIGHT   16
 

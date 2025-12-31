@@ -280,10 +280,10 @@ lv_obj_t* createHeader(lv_obj_t* parent, const char* title) {
     lv_obj_set_style_text_color(lbl_title, LV_COLOR_TEXT_PRIMARY, 0);
     lv_obj_align(lbl_title, LV_ALIGN_LEFT_MID, 5, 0);
 
-    // WiFi icon - theme font includes symbols
+    // WiFi icon - use Montserrat for LVGL symbols
     lv_obj_t* wifi_icon = lv_label_create(header);
     lv_label_set_text(wifi_icon, LV_SYMBOL_WIFI);
-    lv_obj_set_style_text_font(wifi_icon, getThemeFonts()->font_title, 0);
+    lv_obj_set_style_text_font(wifi_icon, &lv_font_montserrat_20, 0);
     if (WiFi.status() == WL_CONNECTED) {
         lv_obj_set_style_text_color(wifi_icon, LV_COLOR_SUCCESS, 0);
     } else {
@@ -291,9 +291,9 @@ lv_obj_t* createHeader(lv_obj_t* parent, const char* title) {
     }
     lv_obj_align(wifi_icon, LV_ALIGN_RIGHT_MID, -50, 0);
 
-    // Battery icon - theme font includes symbols
+    // Battery icon - use Montserrat for LVGL symbols
     lv_obj_t* batt_icon = lv_label_create(header);
-    lv_obj_set_style_text_font(batt_icon, getThemeFonts()->font_title, 0);
+    lv_obj_set_style_text_font(batt_icon, &lv_font_montserrat_20, 0);
     lv_obj_align(batt_icon, LV_ALIGN_RIGHT_MID, -10, 0);
 
     if (batteryPercent > 80) {
@@ -374,10 +374,10 @@ lv_obj_t* createMenuScreen(const char* title, const LVMenuItem* items, int item_
         lv_obj_clear_flag(col, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_clear_flag(col, LV_OBJ_FLAG_SCROLLABLE);
 
-        // Icon (use symbol or letter) - theme fonts now include LVGL symbols
+        // Icon (use symbol) - always use Montserrat for LVGL symbols
         lv_obj_t* icon = lv_label_create(col);
         lv_label_set_text(icon, items[i].icon);
-        lv_obj_set_style_text_font(icon, getThemeFonts()->font_title, 0);
+        lv_obj_set_style_text_font(icon, &lv_font_montserrat_24, 0);  // Montserrat has LVGL symbols
         lv_obj_set_style_text_color(icon, LV_COLOR_TEXT_PRIMARY, 0);
 
         // Text - use theme font for menu labels
