@@ -1664,7 +1664,7 @@ static void updateVailFooter() {
         lv_label_set_text(vail_footer_label, "UP Rooms  DN Chat  S Speed  T Tone  K Key  U Users");
     } else {
         // Chat View footer
-        lv_label_set_text(vail_footer_label, "UP Info  ENTER Send  C Clear  ESC Exit");
+        lv_label_set_text(vail_footer_label, "UP Info  ENTER Send  ESC Exit");
     }
 }
 
@@ -1926,15 +1926,6 @@ static void vail_key_event_cb(lv_event_t* e) {
                             }
                         }
                     }
-                    break;
-                case 'c':
-                case 'C':
-                    // Clear chat display
-                    if (vail_chat_textarea != NULL) {
-                        lv_textarea_set_text(vail_chat_textarea, "");
-                        vail_last_chat_count = chatHistory.size();
-                    }
-                    beep(TONE_MENU_NAV, BEEP_SHORT);
                     break;
                 default:
                     // Add character to chat input
@@ -2669,7 +2660,7 @@ lv_obj_t* createVailRepeaterScreen() {
     lv_obj_align(chat_room_label, LV_ALIGN_LEFT_MID, 15, 0);
 
     // Chat textarea (history)
-    int chat_area_height = content_height - 26 - 40;  // Header and input box
+    int chat_area_height = content_height - 28 - 42;  // Header (28) and input box (36 + 6 padding)
     vail_chat_textarea = lv_textarea_create(vail_chat_panel);
     lv_obj_set_size(vail_chat_textarea, SCREEN_WIDTH - 20, chat_area_height);
     lv_obj_set_pos(vail_chat_textarea, 10, 28);
@@ -2940,6 +2931,9 @@ extern String frequencyToBand(float freq);
 extern String getDefaultRST(const char* mode);
 extern void formatCurrentDateTime(char* dateOut, char* timeOut);
 
+// Forward declaration for confirmation screen (defined later in file)
+lv_obj_t* createQSOSaveConfirmScreen(const QSO& savedQso);
+
 // Get current date/time string
 static void getCurrentDateTimeStrings(char* dateOut, char* timeOut) {
     // Use formatCurrentDateTime from qso_logger_validation.h
@@ -3028,6 +3022,7 @@ static void qso_entry_key_cb(lv_event_t* e) {
     if (key == LV_KEY_ESC) {
         qso_entry_navigating = true;
         lv_event_stop_processing(e);
+        lv_event_stop_bubbling(e);  // Prevent global_esc_handler from also firing
         onLVGLBackNavigation();
         return;
     }
@@ -3118,9 +3113,10 @@ static void qso_entry_key_cb(lv_event_t* e) {
         // Save QSO
         if (saveQSO(qso)) {
             beep(1000, 100);  // Success
-            qso_entry_navigating = true;
             lv_event_stop_processing(e);
-            onLVGLBackNavigation();
+            // Show confirmation screen with saved QSO summary
+            lv_obj_t* confirmScreen = createQSOSaveConfirmScreen(qso);
+            loadScreen(confirmScreen, SCREEN_ANIM_FADE);
         } else {
             // Save failed - SD card may have been removed
             beep(400, 200);  // Error beep
@@ -3243,6 +3239,12 @@ lv_obj_t* createQSOLogEntryScreen() {
     lv_obj_set_style_border_width(qso_mode_row, 1, 0);
     lv_obj_set_style_border_color(qso_mode_row, LV_COLOR_BORDER_SUBTLE, 0);
     lv_obj_set_style_pad_all(qso_mode_row, 5, 0);
+    // Add focus styling - cyan border and slight glow when focused
+    lv_obj_set_style_border_color(qso_mode_row, LV_COLOR_ACCENT_CYAN, LV_STATE_FOCUSED);
+    lv_obj_set_style_border_width(qso_mode_row, 2, LV_STATE_FOCUSED);
+    lv_obj_set_style_outline_color(qso_mode_row, LV_COLOR_ACCENT_CYAN, LV_STATE_FOCUSED);
+    lv_obj_set_style_outline_width(qso_mode_row, 2, LV_STATE_FOCUSED);
+    lv_obj_set_style_outline_opa(qso_mode_row, LV_OPA_50, LV_STATE_FOCUSED);
     lv_obj_clear_flag(qso_mode_row, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(qso_mode_row, LV_OBJ_FLAG_CLICKABLE);
     addNavigableWidget(qso_mode_row);
@@ -3485,6 +3487,190 @@ lv_obj_t* createQSOLogEntryScreen() {
     }
 
     qso_entry_screen = screen;
+    return screen;
+}
+
+// ============================================
+// QSO Save Confirmation Screen
+// Shows summary of saved QSO with options
+// ============================================
+
+// Static variables for the saved QSO data (used by confirmation screen)
+static QSO qso_saved_qso;
+static bool qso_confirm_ready = false;  // Prevent immediate button activation
+static unsigned long qso_confirm_show_time = 0;  // Time when screen was shown
+
+// Forward declaration for getTotalLogs
+extern int getTotalLogs();
+
+// Key event callback for confirmation screen
+static void qso_confirm_key_event_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+    if (key == LV_KEY_ESC) {
+        // Exit to QSO Logger menu
+        lv_event_stop_processing(e);
+        lv_event_stop_bubbling(e);
+        onLVGLBackNavigation();
+    } else if (key == LV_KEY_LEFT || key == LV_KEY_RIGHT) {
+        // Navigate between buttons using left/right arrows
+        lv_group_t* group = getLVGLInputGroup();
+        if (group) {
+            if (key == LV_KEY_LEFT) {
+                lv_group_focus_prev(group);
+            } else {
+                lv_group_focus_next(group);
+            }
+            lv_event_stop_bubbling(e);
+        }
+    }
+}
+
+// Button event callback for Log Another
+static void qso_confirm_log_another_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_CLICKED) return;
+
+    // Ignore clicks within 300ms of screen showing (prevents ENTER key leak-through)
+    if (millis() - qso_confirm_show_time < 300) return;
+
+    beep(800, 50);
+    // Create new QSO entry screen
+    lv_obj_t* entryScreen = createQSOLogEntryScreen();
+    loadScreen(entryScreen, SCREEN_ANIM_SLIDE_LEFT);
+}
+
+// Button event callback for Exit
+static void qso_confirm_exit_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_CLICKED) return;
+
+    // Ignore clicks within 300ms of screen showing (prevents ENTER key leak-through)
+    if (millis() - qso_confirm_show_time < 300) return;
+
+    beep(800, 50);
+    // Navigate back to QSO Logger menu
+    onLVGLBackNavigation();
+}
+
+lv_obj_t* createQSOSaveConfirmScreen(const QSO& savedQso) {
+    clearNavigationGroup();
+
+    // Store the saved QSO for display
+    memcpy(&qso_saved_qso, &savedQso, sizeof(QSO));
+
+    // Record when the screen was shown to prevent immediate button activation
+    qso_confirm_show_time = millis();
+
+    lv_obj_t* screen = createScreen();
+    applyScreenStyle(screen);
+
+    // Title bar
+    lv_obj_t* title_bar = lv_obj_create(screen);
+    lv_obj_set_size(title_bar, SCREEN_WIDTH, HEADER_HEIGHT);
+    lv_obj_set_pos(title_bar, 0, 0);
+    lv_obj_add_style(title_bar, getStyleStatusBar(), 0);
+    lv_obj_clear_flag(title_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* title = lv_label_create(title_bar);
+    lv_label_set_text(title, LV_SYMBOL_OK " QSO SAVED!");
+    lv_obj_set_style_text_color(title, LV_COLOR_SUCCESS, 0);
+    lv_obj_add_style(title, getStyleLabelTitle(), 0);
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 15, 0);
+
+    createCompactStatusBar(screen);
+
+    // Content container - centered
+    lv_obj_t* content = lv_obj_create(screen);
+    lv_obj_set_size(content, SCREEN_WIDTH - 40, SCREEN_HEIGHT - HEADER_HEIGHT - 80);
+    lv_obj_align(content, LV_ALIGN_TOP_MID, 0, HEADER_HEIGHT + 10);
+    lv_obj_set_style_bg_color(content, LV_COLOR_BG_LAYER2, 0);
+    lv_obj_set_style_bg_opa(content, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(content, 1, 0);
+    lv_obj_set_style_border_color(content, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_radius(content, 8, 0);
+    lv_obj_set_style_pad_all(content, 15, 0);
+    lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+
+    // QSO Summary
+    // Callsign - large and prominent
+    lv_obj_t* callsign_label = lv_label_create(content);
+    lv_label_set_text_fmt(callsign_label, "%s", qso_saved_qso.callsign);
+    lv_obj_set_style_text_font(callsign_label, getThemeFonts()->font_large, 0);
+    lv_obj_set_style_text_color(callsign_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_align(callsign_label, LV_ALIGN_TOP_MID, 0, 0);
+
+    // Frequency and Band
+    lv_obj_t* freq_label = lv_label_create(content);
+    lv_label_set_text_fmt(freq_label, "%.3f MHz (%s)", qso_saved_qso.frequency, qso_saved_qso.band);
+    lv_obj_set_style_text_color(freq_label, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align(freq_label, LV_ALIGN_TOP_MID, 0, 35);
+
+    // Mode
+    lv_obj_t* mode_label = lv_label_create(content);
+    lv_label_set_text_fmt(mode_label, "Mode: %s", qso_saved_qso.mode);
+    lv_obj_set_style_text_color(mode_label, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(mode_label, LV_ALIGN_TOP_MID, 0, 60);
+
+    // RST
+    lv_obj_t* rst_label = lv_label_create(content);
+    lv_label_set_text_fmt(rst_label, "RST: %s / %s", qso_saved_qso.rst_sent, qso_saved_qso.rst_rcvd);
+    lv_obj_set_style_text_color(rst_label, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(rst_label, LV_ALIGN_TOP_MID, 0, 85);
+
+    // Total logs count
+    lv_obj_t* total_label = lv_label_create(content);
+    lv_label_set_text_fmt(total_label, "Total QSOs logged: %d", getTotalLogs());
+    lv_obj_set_style_text_color(total_label, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_style_text_font(total_label, getThemeFonts()->font_small, 0);
+    lv_obj_align(total_label, LV_ALIGN_BOTTOM_MID, 0, 0);
+
+    // Button row at bottom
+    lv_obj_t* btn_row = lv_obj_create(screen);
+    lv_obj_set_size(btn_row, SCREEN_WIDTH - 40, 50);
+    lv_obj_align(btn_row, LV_ALIGN_BOTTOM_MID, 0, -15);
+    lv_obj_set_layout(btn_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(btn_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(btn_row, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_opa(btn_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(btn_row, 0, 0);
+    lv_obj_set_style_pad_all(btn_row, 0, 0);
+    lv_obj_clear_flag(btn_row, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Log Another button
+    lv_obj_t* btn_another = lv_btn_create(btn_row);
+    lv_obj_set_size(btn_another, 180, 40);
+    lv_obj_add_style(btn_another, getStyleMenuCard(), 0);
+    lv_obj_add_style(btn_another, getStyleMenuCardFocused(), LV_STATE_FOCUSED);
+    lv_obj_add_event_cb(btn_another, qso_confirm_log_another_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(btn_another, qso_confirm_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(btn_another);
+
+    lv_obj_t* btn_another_label = lv_label_create(btn_another);
+    lv_label_set_text(btn_another_label, "Log Another");
+    lv_obj_center(btn_another_label);
+
+    // Exit button
+    lv_obj_t* btn_exit = lv_btn_create(btn_row);
+    lv_obj_set_size(btn_exit, 180, 40);
+    lv_obj_add_style(btn_exit, getStyleMenuCard(), 0);
+    lv_obj_add_style(btn_exit, getStyleMenuCardFocused(), LV_STATE_FOCUSED);
+    lv_obj_add_event_cb(btn_exit, qso_confirm_exit_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(btn_exit, qso_confirm_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(btn_exit);
+
+    lv_obj_t* btn_exit_label = lv_label_create(btn_exit);
+    lv_label_set_text(btn_exit_label, "Exit");
+    lv_obj_center(btn_exit_label);
+
+    // Focus the "Log Another" button by default
+    lv_group_t* group = getLVGLInputGroup();
+    if (group) {
+        lv_group_focus_obj(btn_another);
+    }
+
     return screen;
 }
 
@@ -4510,14 +4696,17 @@ lv_obj_t* createQSOStatisticsScreen() {
 static lv_obj_t* view_logs_screen = NULL;
 static lv_obj_t* view_logs_focus_container = NULL;
 static lv_obj_t* view_logs_list_container = NULL;
-static lv_obj_t* view_logs_detail_overlay = NULL;
 static lv_obj_t* view_logs_count_label = NULL;
 static lv_obj_t** view_logs_rows = NULL;
 static int view_logs_row_count = 0;
 static int view_logs_selected = 0;
 static int view_logs_scroll_offset = 0;
-static bool view_logs_detail_mode = false;
-static bool view_logs_delete_confirm = false;
+
+// QSO Detail - index of currently viewed QSO
+static int qso_detail_index = -1;
+
+// Deferred popup creation (avoid stack overflow in callbacks)
+static int qso_pending_detail_index = -1;  // -1 = no pending, >=0 = show popup for this index
 
 #define VIEW_LOGS_MAX_VISIBLE 6
 #define VIEW_LOGS_ROW_HEIGHT 40
@@ -4527,6 +4716,10 @@ extern ViewState viewState;
 extern void loadQSOsForView();
 extern void freeQSOsFromView();
 extern bool deleteCurrentQSO();
+
+// Forward declarations for detail screen
+static void qso_detail_key_cb(lv_event_t* e);
+lv_obj_t* createQSODetailScreen(int qsoIndex);
 
 // Update row visual styling based on selection
 static void updateViewLogsRowStyles() {
@@ -4549,243 +4742,193 @@ static void updateViewLogsRowStyles() {
 // Rebuild the visible rows based on scroll offset
 static void rebuildViewLogsList();
 
-// Show detail overlay for selected QSO
-static void showQSODetailOverlay() {
-    if (viewState.selectedIndex < 0 || viewState.selectedIndex >= viewState.totalQSOs) return;
+// ============================================
+// QSO Detail Popup (Modal overlay on list screen)
+// ============================================
 
-    QSO& qso = viewState.qsos[viewState.selectedIndex];
-    view_logs_detail_mode = true;
-    view_logs_delete_confirm = false;
+// Static buffer for formatted strings (avoids stack allocation)
+static char qso_detail_fmt_buf[256];
 
-    // Create semi-transparent overlay
-    view_logs_detail_overlay = lv_obj_create(view_logs_screen);
-    lv_obj_set_size(view_logs_detail_overlay, SCREEN_WIDTH, SCREEN_HEIGHT);
-    lv_obj_set_pos(view_logs_detail_overlay, 0, 0);
-    lv_obj_set_style_bg_color(view_logs_detail_overlay, lv_color_black(), 0);
-    lv_obj_set_style_bg_opa(view_logs_detail_overlay, LV_OPA_50, 0);
-    lv_obj_clear_flag(view_logs_detail_overlay, LV_OBJ_FLAG_SCROLLABLE);
+// QSO detail popup object (modal on top of list screen)
+static lv_obj_t* qso_detail_popup = NULL;
 
-    // Detail card
-    lv_obj_t* card = lv_obj_create(view_logs_detail_overlay);
-    lv_obj_set_size(card, 380, 220);
-    lv_obj_align(card, LV_ALIGN_CENTER, 0, 0);
-    applyCardStyle(card);
-    lv_obj_set_style_pad_all(card, 15, 0);
-    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+// Forward declarations
+static void qso_popup_key_cb(lv_event_t* e);
+static void qso_delete_msgbox_cb(lv_event_t* e);
 
-    // Title
-    lv_obj_t* title = lv_label_create(card);
-    lv_label_set_text(title, "QSO DETAILS");
-    lv_obj_set_style_text_color(title, LV_COLOR_ACCENT_CYAN, 0);
-    lv_obj_set_style_text_font(title, getThemeFonts()->font_subtitle, 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
+// Show QSO detail as a popup modal on the current screen
+void showQSODetailPopup(int qsoIndex) {
+    // Validate input
+    if (qsoIndex < 0 || qsoIndex >= viewState.totalQSOs || viewState.qsos == nullptr) {
+        return;
+    }
 
-    // Callsign (large)
-    lv_obj_t* callsign_label = lv_label_create(card);
-    lv_label_set_text(callsign_label, qso.callsign);
-    lv_obj_set_style_text_color(callsign_label, LV_COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(callsign_label, getThemeFonts()->font_large, 0);
-    lv_obj_align(callsign_label, LV_ALIGN_TOP_LEFT, 0, 30);
+    qso_detail_index = qsoIndex;
+    QSO& qso = viewState.qsos[qsoIndex];
 
-    // Date/Time
-    char dateTimeStr[32];
-    if (strlen(qso.date) >= 8) {
-        snprintf(dateTimeStr, sizeof(dateTimeStr), "%c%c%c%c-%c%c-%c%c",
-                 qso.date[0], qso.date[1], qso.date[2], qso.date[3],
-                 qso.date[4], qso.date[5], qso.date[6], qso.date[7]);
+    // Close any existing popup
+    if (qso_detail_popup != NULL) {
+        lv_obj_del(qso_detail_popup);
+        qso_detail_popup = NULL;
+    }
+
+    // Get current screen
+    lv_obj_t* scr = lv_scr_act();
+    if (scr == NULL) return;
+
+    // Create container with basic styling (no fonts yet)
+    qso_detail_popup = lv_obj_create(scr);
+    if (qso_detail_popup == NULL) return;
+
+    lv_obj_set_size(qso_detail_popup, 400, 220);
+    lv_obj_center(qso_detail_popup);
+
+    // Container styling
+    lv_obj_set_style_bg_color(qso_detail_popup, lv_color_hex(0x1A1A2E), 0);
+    lv_obj_set_style_bg_opa(qso_detail_popup, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(qso_detail_popup, lv_color_hex(0x00D4AA), 0);
+    lv_obj_set_style_border_width(qso_detail_popup, 2, 0);
+    lv_obj_set_style_radius(qso_detail_popup, 8, 0);
+    lv_obj_set_style_pad_all(qso_detail_popup, 15, 0);
+    lv_obj_clear_flag(qso_detail_popup, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Build text in a static buffer using snprintf (not LVGL formatting)
+    static char popup_text[512];
+    snprintf(popup_text, sizeof(popup_text),
+        "Callsign: %s\n"
+        "Date: %s  Time: %s\n"
+        "Freq: %.3f MHz  Band: %s\n"
+        "Mode: %s\n"
+        "RST Sent: %s  Rcvd: %s\n"
+        "\n[D] Delete  [ESC] Close",
+        qso.callsign,
+        qso.date, qso.time_on,
+        qso.frequency, qso.band,
+        qso.mode,
+        qso.rst_sent, qso.rst_rcvd
+    );
+
+    // Create label with QSO content
+    lv_obj_t* content = lv_label_create(qso_detail_popup);
+    lv_label_set_text(content, popup_text);
+    lv_obj_set_style_text_color(content, lv_color_hex(0xE8E8F0), 0);
+
+    // Add key handler
+    lv_obj_add_event_cb(qso_detail_popup, qso_popup_key_cb, LV_EVENT_KEY, NULL);
+
+    // Make focusable and add to group
+    lv_obj_add_flag(qso_detail_popup, LV_OBJ_FLAG_CLICKABLE);
+    lv_group_t* group = getLVGLInputGroup();
+    if (group) {
+        lv_group_add_obj(group, qso_detail_popup);
+        lv_group_focus_obj(qso_detail_popup);
+    }
+}
+
+// Close the QSO detail popup
+void closeQSODetailPopup() {
+    if (qso_detail_popup != NULL) {
+        // Remove from group before deleting
+        lv_group_t* group = getLVGLInputGroup();
+        if (group) {
+            lv_group_remove_obj(qso_detail_popup);
+        }
+        lv_obj_del(qso_detail_popup);
+        qso_detail_popup = NULL;
+    }
+    qso_detail_index = -1;
+}
+
+// Key handler for QSO detail popup
+static void qso_popup_key_cb(lv_event_t* e) {
+    if (lv_event_get_code(e) != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+
+    if (key == LV_KEY_ESC) {
+        closeQSODetailPopup();
+        lv_event_stop_bubbling(e);
+        return;
+    }
+
+    if (key == 'D' || key == 'd') {
+        // Show delete confirmation
+        if (qso_detail_index >= 0 && qso_detail_index < viewState.totalQSOs) {
+            const QSO* qso = &viewState.qsos[qso_detail_index];
+            snprintf(qso_detail_fmt_buf, sizeof(qso_detail_fmt_buf),
+                     "Delete %s?", qso->callsign);
+
+            static const char* btns[] = {"Yes", "No", ""};
+            lv_obj_t* mbox = lv_msgbox_create(NULL, "Delete QSO", qso_detail_fmt_buf, btns, false);
+            lv_obj_center(mbox);
+            lv_obj_add_event_cb(mbox, qso_delete_msgbox_cb, LV_EVENT_VALUE_CHANGED, NULL);
+        }
+        lv_event_stop_bubbling(e);
+        return;
+    }
+
+    lv_event_stop_bubbling(e);
+}
+
+// Delete confirmation message box callback
+static void qso_delete_msgbox_cb(lv_event_t* e) {
+    lv_obj_t* mbox = lv_event_get_current_target(e);
+    const char* btn_text = lv_msgbox_get_active_btn_text(mbox);
+
+    if (btn_text && strcmp(btn_text, "Yes") == 0) {
+        // Perform delete
+        viewState.selectedIndex = qso_detail_index;
+        bool success = deleteCurrentQSO();
+
+        // Close both the msgbox and the detail popup
+        lv_msgbox_close(mbox);
+        closeQSODetailPopup();
+
+        if (success) {
+            beep(1000, 100);  // Success beep
+
+            // Reload QSO list and rebuild the display
+            freeQSOsFromView();
+            loadQSOsForView();
+
+            // Adjust selection if needed
+            if (view_logs_selected >= viewState.totalQSOs) {
+                view_logs_selected = viewState.totalQSOs - 1;
+            }
+            if (view_logs_selected < 0) view_logs_selected = 0;
+            view_logs_scroll_offset = 0;
+
+            // Update the title count and rebuild list
+            if (view_logs_count_label) {
+                lv_label_set_text_fmt(view_logs_count_label, "VIEW LOGS (%d)", viewState.totalQSOs);
+            }
+            rebuildViewLogsList();
+        } else {
+            beep(600, 200);   // Error beep
+        }
     } else {
-        strlcpy(dateTimeStr, qso.date, sizeof(dateTimeStr));
+        // Cancel - just close msgbox (keep popup open)
+        lv_msgbox_close(mbox);
     }
-    if (strlen(qso.time_on) >= 4) {
-        char timeStr[16];
-        snprintf(timeStr, sizeof(timeStr), " %c%c:%c%c UTC",
-                 qso.time_on[0], qso.time_on[1], qso.time_on[2], qso.time_on[3]);
-        strlcat(dateTimeStr, timeStr, sizeof(dateTimeStr));
-    }
-
-    lv_obj_t* datetime_label = lv_label_create(card);
-    lv_label_set_text_fmt(datetime_label, "Date: %s", dateTimeStr);
-    lv_obj_set_style_text_font(datetime_label, getThemeFonts()->font_small, 0);
-    lv_obj_align(datetime_label, LV_ALIGN_TOP_LEFT, 0, 60);
-
-    // Frequency/Band
-    lv_obj_t* freq_label = lv_label_create(card);
-    lv_label_set_text_fmt(freq_label, "Freq: %.3f MHz (%s)", qso.frequency, qso.band);
-    lv_obj_set_style_text_font(freq_label, getThemeFonts()->font_small, 0);
-    lv_obj_align(freq_label, LV_ALIGN_TOP_LEFT, 0, 78);
-
-    // Mode
-    lv_obj_t* mode_label = lv_label_create(card);
-    lv_label_set_text_fmt(mode_label, "Mode: %s", qso.mode);
-    lv_obj_set_style_text_font(mode_label, getThemeFonts()->font_small, 0);
-    lv_obj_align(mode_label, LV_ALIGN_TOP_LEFT, 0, 96);
-
-    // RST
-    lv_obj_t* rst_label = lv_label_create(card);
-    lv_label_set_text_fmt(rst_label, "RST: %s / %s", qso.rst_sent, qso.rst_rcvd);
-    lv_obj_set_style_text_font(rst_label, getThemeFonts()->font_small, 0);
-    lv_obj_align(rst_label, LV_ALIGN_TOP_LEFT, 0, 114);
-
-    // My Grid (if set)
-    int yOffset = 132;
-    if (strlen(qso.my_gridsquare) > 0) {
-        lv_obj_t* grid_label = lv_label_create(card);
-        lv_label_set_text_fmt(grid_label, "My Grid: %s", qso.my_gridsquare);
-        lv_obj_set_style_text_font(grid_label, getThemeFonts()->font_small, 0);
-        lv_obj_align(grid_label, LV_ALIGN_TOP_LEFT, 0, yOffset);
-        yOffset += 18;
-    }
-
-    // My POTA (if set)
-    if (strlen(qso.my_pota_ref) > 0) {
-        lv_obj_t* pota_label = lv_label_create(card);
-        lv_label_set_text_fmt(pota_label, "My POTA: %s", qso.my_pota_ref);
-        lv_obj_set_style_text_font(pota_label, getThemeFonts()->font_small, 0);
-        lv_obj_align(pota_label, LV_ALIGN_TOP_LEFT, 0, yOffset);
-        yOffset += 18;
-    }
-
-    // Notes (if set)
-    if (strlen(qso.notes) > 0) {
-        lv_obj_t* notes_label = lv_label_create(card);
-        lv_label_set_text_fmt(notes_label, "Notes: %s", qso.notes);
-        lv_obj_set_style_text_font(notes_label, getThemeFonts()->font_small, 0);
-        lv_obj_set_style_text_color(notes_label, LV_COLOR_TEXT_SECONDARY, 0);
-        lv_obj_set_width(notes_label, 350);
-        lv_label_set_long_mode(notes_label, LV_LABEL_LONG_WRAP);
-        lv_obj_align(notes_label, LV_ALIGN_TOP_LEFT, 0, yOffset);
-    }
-
-    // Footer in card
-    lv_obj_t* card_footer = lv_label_create(card);
-    lv_label_set_text(card_footer, "D Delete   ESC Close");
-    lv_obj_set_style_text_color(card_footer, LV_COLOR_WARNING, 0);
-    lv_obj_set_style_text_font(card_footer, getThemeFonts()->font_small, 0);
-    lv_obj_align(card_footer, LV_ALIGN_BOTTOM_MID, 0, 0);
 }
 
-// Show delete confirmation in overlay
-static void showDeleteConfirmation() {
-    view_logs_delete_confirm = true;
-
-    // Clear the overlay content and recreate for delete confirmation
-    lv_obj_clean(view_logs_detail_overlay);
-
-    QSO& qso = viewState.qsos[viewState.selectedIndex];
-
-    // Confirmation card
-    lv_obj_t* card = lv_obj_create(view_logs_detail_overlay);
-    lv_obj_set_size(card, 320, 160);
-    lv_obj_align(card, LV_ALIGN_CENTER, 0, 0);
-    lv_obj_set_style_bg_color(card, lv_color_hex(0x300A0A), 0);
-    lv_obj_set_style_border_color(card, LV_COLOR_ERROR, 0);
-    lv_obj_set_style_border_width(card, 2, 0);
-    lv_obj_set_style_radius(card, 12, 0);
-    lv_obj_set_style_pad_all(card, 20, 0);
-    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Warning title
-    lv_obj_t* title = lv_label_create(card);
-    lv_label_set_text(title, "DELETE QSO?");
-    lv_obj_set_style_text_color(title, LV_COLOR_ERROR, 0);
-    lv_obj_set_style_text_font(title, getThemeFonts()->font_subtitle, 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
-
-    // QSO info
-    char dateStr[12];
-    formatDateShort(qso.date, dateStr, sizeof(dateStr));
-    lv_obj_t* info = lv_label_create(card);
-    lv_label_set_text_fmt(info, "%s - %s", qso.callsign, dateStr);
-    lv_obj_set_style_text_color(info, LV_COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_style_text_font(info, getThemeFonts()->font_body, 0);
-    lv_obj_align(info, LV_ALIGN_CENTER, 0, -10);
-
-    // Warning
-    lv_obj_t* warning = lv_label_create(card);
-    lv_label_set_text(warning, "This cannot be undone!");
-    lv_obj_set_style_text_color(warning, LV_COLOR_TEXT_SECONDARY, 0);
-    lv_obj_set_style_text_font(warning, getThemeFonts()->font_small, 0);
-    lv_obj_align(warning, LV_ALIGN_CENTER, 0, 15);
-
-    // Footer
-    lv_obj_t* footer = lv_label_create(card);
-    lv_label_set_text(footer, "Y = Confirm   N = Cancel");
-    lv_obj_set_style_text_color(footer, LV_COLOR_WARNING, 0);
-    lv_obj_set_style_text_font(footer, getThemeFonts()->font_small, 0);
-    lv_obj_align(footer, LV_ALIGN_BOTTOM_MID, 0, 0);
-}
-
-// Close the detail overlay
-static void closeDetailOverlay() {
-    if (view_logs_detail_overlay != NULL) {
-        lv_obj_del(view_logs_detail_overlay);
-        view_logs_detail_overlay = NULL;
+// Process any pending QSO detail popup (call from main loop)
+void processQSOViewLogsPending() {
+    if (qso_pending_detail_index >= 0) {
+        int idx = qso_pending_detail_index;
+        qso_pending_detail_index = -1;  // Clear flag first
+        showQSODetailPopup(idx);
     }
-    view_logs_detail_mode = false;
-    view_logs_delete_confirm = false;
 }
 
-// Key event handler for view logs
+// Key event handler for view logs (list screen only - detail is separate screen)
 static void view_logs_key_cb(lv_event_t* e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code != LV_EVENT_KEY) return;
 
     uint32_t key = lv_event_get_key(e);
 
-    // Handle delete confirmation mode
-    if (view_logs_delete_confirm) {
-        if (key == 'Y' || key == 'y') {
-            viewState.selectedIndex = view_logs_selected;
-            if (deleteCurrentQSO()) {
-                // Reload QSOs
-                freeQSOsFromView();
-                loadQSOsForView();
-
-                // Adjust selection
-                if (view_logs_selected >= viewState.totalQSOs) {
-                    view_logs_selected = viewState.totalQSOs - 1;
-                }
-                if (view_logs_selected < 0) view_logs_selected = 0;
-
-                closeDetailOverlay();
-                rebuildViewLogsList();
-                lv_label_set_text_fmt(view_logs_count_label, "VIEW LOGS (%d)", viewState.totalQSOs);
-                beep(1000, 100);  // Success
-            } else {
-                closeDetailOverlay();
-                beep(600, 200);  // Error
-            }
-            lv_event_stop_bubbling(e);
-            return;
-        }
-        if (key == 'N' || key == 'n' || key == LV_KEY_ESC) {
-            // Go back to detail view
-            closeDetailOverlay();
-            showQSODetailOverlay();
-            lv_event_stop_bubbling(e);
-            return;
-        }
-        lv_event_stop_bubbling(e);
-        return;
-    }
-
-    // Handle detail view mode
-    if (view_logs_detail_mode) {
-        if (key == LV_KEY_ESC) {
-            closeDetailOverlay();
-            lv_event_stop_bubbling(e);
-            return;
-        }
-        if (key == 'D' || key == 'd') {
-            showDeleteConfirmation();
-            lv_event_stop_bubbling(e);
-            return;
-        }
-        lv_event_stop_bubbling(e);
-        return;
-    }
-
-    // List view navigation
+    // ESC - go back to QSO logger menu
     if (key == LV_KEY_ESC) {
         freeQSOsFromView();
         if (view_logs_rows != NULL) {
@@ -4798,6 +4941,7 @@ static void view_logs_key_cb(lv_event_t* e) {
         return;
     }
 
+    // Up arrow - move selection up
     if (key == LV_KEY_UP || key == LV_KEY_PREV) {
         if (view_logs_selected > 0) {
             view_logs_selected--;
@@ -4813,6 +4957,7 @@ static void view_logs_key_cb(lv_event_t* e) {
         return;
     }
 
+    // Down arrow - move selection down
     if (key == LV_KEY_DOWN || key == LV_KEY_NEXT) {
         if (view_logs_selected < viewState.totalQSOs - 1) {
             view_logs_selected++;
@@ -4828,10 +4973,11 @@ static void view_logs_key_cb(lv_event_t* e) {
         return;
     }
 
+    // Enter - defer screen creation to avoid stack overflow in callback
     if (key == LV_KEY_ENTER) {
-        if (viewState.totalQSOs > 0) {
-            viewState.selectedIndex = view_logs_selected;
-            showQSODetailOverlay();
+        if (viewState.totalQSOs > 0 && viewState.qsos != nullptr) {
+            // Set flag for deferred creation in main loop
+            qso_pending_detail_index = view_logs_selected;
         }
         lv_event_stop_bubbling(e);
         return;
@@ -4908,14 +5054,16 @@ lv_obj_t* createQSOViewLogsScreen() {
     lv_obj_t* screen = createScreen();
     applyScreenStyle(screen);
 
+    // Set screen reference early so overlay creation works
+    view_logs_screen = screen;
+
     // Initialize state
     view_logs_selected = 0;
     view_logs_scroll_offset = 0;
-    view_logs_detail_mode = false;
-    view_logs_delete_confirm = false;
-    view_logs_detail_overlay = NULL;
     view_logs_rows = NULL;
     view_logs_row_count = 0;
+    qso_detail_index = -1;
+    qso_pending_detail_index = -1;
 
     // Load QSOs from storage
     loadQSOsForView();
@@ -4988,7 +5136,6 @@ lv_obj_t* createQSOViewLogsScreen() {
         lv_group_set_editing(group, true);
     }
 
-    view_logs_screen = screen;
     return screen;
 }
 

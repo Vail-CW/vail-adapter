@@ -492,8 +492,8 @@ void generateDailyADIF(const char* date) {
     adifContent += qsoToADIFRecord(qso);
   }
 
-  // Write ADIF file
-  File adifFile = SD.open(adifPath, FILE_WRITE);
+  // Write ADIF file (use "w" mode to truncate)
+  File adifFile = SD.open(adifPath, "w");
   if (!adifFile) {
     Serial.println("Failed to create ADIF file");
     return;
@@ -554,8 +554,8 @@ void generateMasterADIF() {
   }
   root.close();
 
-  // Write master ADIF file
-  File adifFile = SD.open(MASTER_ADIF_FILE, FILE_WRITE);
+  // Write master ADIF file (use "w" mode to truncate)
+  File adifFile = SD.open(MASTER_ADIF_FILE, "w");
   if (!adifFile) {
     Serial.println("Failed to create master ADIF file");
     return;
@@ -631,8 +631,8 @@ bool saveQSO(const QSO& qso) {
   JsonObject newLog = logs.add<JsonObject>();
   qsoToJson(qso, newLog);
 
-  // Write back to file
-  File file = SD.open(filename, FILE_WRITE);
+  // Write back to file (use "w" mode to truncate and overwrite)
+  File file = SD.open(filename, "w");
   if (!file) {
     Serial.println("Failed to open log file for writing");
     return false;

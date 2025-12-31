@@ -307,6 +307,7 @@ extern HearItStats sessionStats;
 extern String currentCallsign;
 extern bool hearItUseLVGL;
 extern void saveHearItSettings();
+extern String getCWASessionChars(int session);
 extern void startNewCallsign();
 extern void playCurrentCallsign();
 
@@ -331,6 +332,8 @@ static lv_obj_t* hear_it_mode_value = NULL;   // Mode display label (replaces dr
 static lv_obj_t* hear_it_length_row = NULL;   // Length row container for focus styling
 static lv_obj_t* hear_it_length_slider = NULL;
 static lv_obj_t* hear_it_length_value = NULL;
+static lv_obj_t* hear_it_chars_row = NULL;    // Characters row for Custom mode
+static lv_obj_t* hear_it_chars_value = NULL;  // Characters count/preset display
 static lv_obj_t* hear_it_start_btn = NULL;
 
 // Mode names for display
@@ -344,8 +347,17 @@ static lv_timer_t* hear_it_start_timer = NULL;
 // Forward declarations for timer callbacks
 static void hear_it_skip_timer_cb(lv_timer_t* timer);
 
-// Track which settings widget is currently focused (0=mode, 1=speed, 2=length, 3=button)
+// Track which settings widget is currently focused (0=mode, 1=speed, 2=length, 3=chars, 4=button)
+// Note: chars row (focus=3) is only visible in Custom mode
 static int hear_it_settings_focus = 0;
+
+// Preset picker modal widgets and state
+static lv_obj_t* hear_it_preset_modal = NULL;
+static lv_obj_t* hear_it_preset_list = NULL;
+static int hear_it_preset_selection = 0;      // 0=Koch, 1=CWA, 2=All, 3=Cancel
+static bool hear_it_in_submenu = false;       // True when in Koch/CWA lesson picker
+static int hear_it_submenu_selection = 0;     // Selection within submenu
+static const int PRESET_MENU_ITEMS = 5;       // Main menu items count (Koch, CWA, All, Select, Cancel)
 
 // Focus container for settings navigation (invisible widget that receives key events)
 static lv_obj_t* hear_it_focus_container = NULL;
@@ -362,12 +374,22 @@ static void hear_it_update_focus();
 // Defined in training_hear_it_type_it.h
 extern String getHearItSettingsString();
 
-// Update footer based on current state
+// Update footer based on current state and focus position
 void updateHearItFooter() {
     if (hear_it_footer_help == NULL) return;
 
     if (currentHearItState == HEAR_IT_STATE_SETTINGS) {
-        lv_label_set_text(hear_it_footer_help, "UP/DN Navigate   L/R Adjust   ENTER Start   ESC Back");
+        // Context-aware footer based on focus position
+        if (hear_it_settings_focus == 3 && tempSettings.mode == MODE_CUSTOM_CHARS) {
+            // Characters row focused
+            lv_label_set_text(hear_it_footer_help, "UP/DN Navigate   L/R Edit Characters   ESC Back");
+        } else if (hear_it_settings_focus == 4) {
+            // Start button focused
+            lv_label_set_text(hear_it_footer_help, "UP/DN Navigate   ENTER Start Training   ESC Back");
+        } else {
+            // Mode, Speed, or Length row focused
+            lv_label_set_text(hear_it_footer_help, "UP/DN Navigate   L/R Adjust   ESC Back");
+        }
     } else {
         lv_label_set_text(hear_it_footer_help, FOOTER_TRAINING_ACTIVE);
     }
@@ -597,11 +619,16 @@ void cleanupHearItTypeItScreen() {
     hear_it_length_row = NULL;
     hear_it_length_slider = NULL;
     hear_it_length_value = NULL;
+    hear_it_chars_row = NULL;
+    hear_it_chars_value = NULL;
     hear_it_speed_row = NULL;
     hear_it_speed_slider = NULL;
     hear_it_speed_value = NULL;
     hear_it_start_btn = NULL;
     hear_it_focus_container = NULL;
+    hear_it_preset_modal = NULL;
+    hear_it_preset_list = NULL;
+    hear_it_in_submenu = false;
 }
 
 // Timer callback for correct answer - play next callsign after feedback delay
@@ -668,6 +695,475 @@ static void hear_it_update_mode_display() {
     }
 }
 
+// Update characters row display - shows char count or preset name
+static void hear_it_update_chars_display() {
+    if (hear_it_chars_value == NULL) return;
+
+    int count = tempSettings.customChars.length();
+    if (tempSettings.presetType == PRESET_KOCH) {
+        lv_label_set_text_fmt(hear_it_chars_value, "< Koch L%d (%d) >",
+                              tempSettings.presetLesson, count);
+    } else if (tempSettings.presetType == PRESET_CWA) {
+        lv_label_set_text_fmt(hear_it_chars_value, "< CWA S%d (%d) >",
+                              tempSettings.presetLesson, count);
+    } else {
+        lv_label_set_text_fmt(hear_it_chars_value, "< %d chars >", count);
+    }
+}
+
+// Show/hide characters row based on mode
+static void hear_it_update_chars_visibility() {
+    if (hear_it_chars_row == NULL) return;
+
+    if (tempSettings.mode == MODE_CUSTOM_CHARS) {
+        lv_obj_clear_flag(hear_it_chars_row, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(hear_it_chars_row, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+// ============================================
+// PRESET PICKER MODAL
+// ============================================
+
+// Forward declarations for preset picker
+static void closeHearItPresetPicker();
+static void updatePresetPickerDisplay();
+
+// Menu item labels
+static const char* preset_main_menu[] = {"Koch Method (1-44)", "CW Academy (1-10)", "All Characters (36)", "Select Characters...", "Cancel"};
+static const int KOCH_TOTAL = 44;
+static const int CWA_TOTAL = 10;
+
+// Character grid state
+static bool hear_it_in_char_grid = false;
+static bool hear_it_char_selected[36];  // A-Z (26) + 0-9 (10)
+static int hear_it_grid_cursor = 0;
+
+// External reference to Koch sequence
+extern const char KOCH_SEQUENCE[];
+
+// Get Koch characters for a lesson (returns count)
+static String getKochCharsForLesson(int lesson) {
+    String chars = "";
+    for (int i = 0; i < lesson && i < KOCH_TOTAL; i++) {
+        char ch = KOCH_SEQUENCE[i];
+        // Only include alphanumeric (skip space, comma, ?, /)
+        if ((ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')) {
+            chars += ch;
+        }
+    }
+    return chars;
+}
+
+// Apply Koch preset and update tempSettings
+static void applyKochPresetToTemp(int lesson) {
+    tempSettings.customChars = getKochCharsForLesson(lesson);
+    tempSettings.presetType = PRESET_KOCH;
+    tempSettings.presetLesson = lesson;
+}
+
+// Apply CWA preset and update tempSettings
+static void applyCWAPresetToTemp(int session) {
+    tempSettings.customChars = getCWASessionChars(session);
+    tempSettings.presetType = PRESET_CWA;
+    tempSettings.presetLesson = session;
+}
+
+// Apply all characters preset
+static void applyAllCharsPreset() {
+    tempSettings.customChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    tempSettings.presetType = PRESET_NONE;
+    tempSettings.presetLesson = 0;
+}
+
+// Key handler for preset picker modal
+static void hear_it_preset_key_handler(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+
+    // Handle ESC - close modal or go back from submenu/grid
+    if (key == LV_KEY_ESC) {
+        if (hear_it_in_char_grid) {
+            // Apply character selections and close grid
+            tempSettings.customChars = "";
+            for (int i = 0; i < 36; i++) {
+                if (hear_it_char_selected[i]) {
+                    char ch = (i < 26) ? ('A' + i) : ('0' + i - 26);
+                    tempSettings.customChars += ch;
+                }
+            }
+            // Ensure at least one character is selected
+            if (tempSettings.customChars.length() == 0) {
+                tempSettings.customChars = "A";
+                hear_it_char_selected[0] = true;
+            }
+            tempSettings.presetType = PRESET_NONE;  // Manual selection = no preset
+            hear_it_in_char_grid = false;
+            closeHearItPresetPicker();
+            hear_it_update_chars_display();
+        } else if (hear_it_in_submenu) {
+            // Go back to main menu
+            hear_it_in_submenu = false;
+            hear_it_preset_selection = 0;
+            updatePresetPickerDisplay();
+        } else {
+            // Close modal without applying
+            closeHearItPresetPicker();
+        }
+        lv_event_stop_processing(e);
+        return;
+    }
+
+    // Handle character grid navigation (6x6 grid)
+    if (hear_it_in_char_grid) {
+        if (key == LV_KEY_UP) {
+            if (hear_it_grid_cursor >= 6) {
+                hear_it_grid_cursor -= 6;
+                updatePresetPickerDisplay();
+            }
+        } else if (key == LV_KEY_DOWN) {
+            if (hear_it_grid_cursor < 30) {
+                hear_it_grid_cursor += 6;
+                updatePresetPickerDisplay();
+            }
+        } else if (key == LV_KEY_LEFT) {
+            if (hear_it_grid_cursor > 0) {
+                hear_it_grid_cursor--;
+                updatePresetPickerDisplay();
+            }
+        } else if (key == LV_KEY_RIGHT) {
+            if (hear_it_grid_cursor < 35) {
+                hear_it_grid_cursor++;
+                updatePresetPickerDisplay();
+            }
+        }
+        // Note: ENTER handled below
+        if (key != LV_KEY_ENTER) return;
+    }
+
+    // Get max items based on current menu (not used for char grid)
+    int maxItems;
+    if (hear_it_in_submenu) {
+        maxItems = (hear_it_preset_selection == 0) ? KOCH_TOTAL + 1 : CWA_TOTAL + 1;  // +1 for Back
+    } else {
+        maxItems = PRESET_MENU_ITEMS;
+    }
+
+    // Handle UP/DOWN navigation (main menu and submenus)
+    if (key == LV_KEY_UP) {
+        if (hear_it_in_submenu) {
+            if (hear_it_submenu_selection > 0) {
+                hear_it_submenu_selection--;
+                updatePresetPickerDisplay();
+            }
+        } else {
+            if (hear_it_preset_selection > 0) {
+                hear_it_preset_selection--;
+                updatePresetPickerDisplay();
+            }
+        }
+        return;
+    }
+    if (key == LV_KEY_DOWN) {
+        if (hear_it_in_submenu) {
+            if (hear_it_submenu_selection < maxItems - 1) {
+                hear_it_submenu_selection++;
+                updatePresetPickerDisplay();
+            }
+        } else {
+            if (hear_it_preset_selection < maxItems - 1) {
+                hear_it_preset_selection++;
+                updatePresetPickerDisplay();
+            }
+        }
+        return;
+    }
+
+    // Handle ENTER - select item
+    if (key == LV_KEY_ENTER) {
+        if (hear_it_in_submenu) {
+            int submenuMax = (hear_it_preset_selection == 0) ? KOCH_TOTAL : CWA_TOTAL;
+            if (hear_it_submenu_selection == submenuMax) {
+                // "Back" selected - return to main menu
+                hear_it_in_submenu = false;
+                updatePresetPickerDisplay();
+            } else {
+                // Apply preset
+                if (hear_it_preset_selection == 0) {
+                    // Koch lesson (1-based)
+                    applyKochPresetToTemp(hear_it_submenu_selection + 1);
+                } else {
+                    // CWA session (1-based)
+                    applyCWAPresetToTemp(hear_it_submenu_selection + 1);
+                }
+                closeHearItPresetPicker();
+                hear_it_update_chars_display();
+            }
+        } else if (hear_it_in_char_grid) {
+            // Toggle character selection
+            hear_it_char_selected[hear_it_grid_cursor] = !hear_it_char_selected[hear_it_grid_cursor];
+            updatePresetPickerDisplay();
+        } else {
+            switch (hear_it_preset_selection) {
+                case 0:  // Koch Method
+                case 1:  // CW Academy
+                    hear_it_in_submenu = true;
+                    hear_it_submenu_selection = 0;
+                    updatePresetPickerDisplay();
+                    break;
+                case 2:  // All Characters
+                    applyAllCharsPreset();
+                    closeHearItPresetPicker();
+                    hear_it_update_chars_display();
+                    break;
+                case 3:  // Select Characters...
+                    // Initialize grid from current tempSettings
+                    for (int i = 0; i < 36; i++) {
+                        char ch = (i < 26) ? ('A' + i) : ('0' + i - 26);
+                        hear_it_char_selected[i] = (tempSettings.customChars.indexOf(ch) >= 0);
+                    }
+                    hear_it_grid_cursor = 0;
+                    hear_it_in_char_grid = true;
+                    updatePresetPickerDisplay();
+                    break;
+                case 4:  // Cancel
+                    closeHearItPresetPicker();
+                    break;
+            }
+        }
+        return;
+    }
+}
+
+// Update the preset picker display
+static void updatePresetPickerDisplay() {
+    if (hear_it_preset_list == NULL) return;
+
+    // Clear existing children
+    lv_obj_clean(hear_it_preset_list);
+
+    if (hear_it_in_char_grid) {
+        // Show character grid (6x6 layout)
+        // Count selected characters
+        int selectedCount = 0;
+        for (int i = 0; i < 36; i++) {
+            if (hear_it_char_selected[i]) selectedCount++;
+        }
+
+        // Title showing count
+        lv_obj_t* title = lv_label_create(hear_it_preset_list);
+        lv_label_set_text_fmt(title, "Selected: %d   (ENTER toggle, ESC done)", selectedCount);
+        lv_obj_set_style_text_color(title, LV_COLOR_TEXT_SECONDARY, 0);
+        lv_obj_set_width(title, lv_pct(100));
+        lv_obj_set_style_pad_bottom(title, 8, 0);
+
+        // Create 6 rows of 6 characters each
+        for (int row = 0; row < 6; row++) {
+            lv_obj_t* row_obj = lv_obj_create(hear_it_preset_list);
+            lv_obj_set_size(row_obj, lv_pct(100), LV_SIZE_CONTENT);
+            lv_obj_set_layout(row_obj, LV_LAYOUT_FLEX);
+            lv_obj_set_flex_flow(row_obj, LV_FLEX_FLOW_ROW);
+            lv_obj_set_flex_align(row_obj, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+            lv_obj_set_style_bg_opa(row_obj, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(row_obj, 0, 0);
+            lv_obj_set_style_pad_all(row_obj, 2, 0);
+
+            for (int col = 0; col < 6; col++) {
+                int idx = row * 6 + col;
+                char ch = (idx < 26) ? ('A' + idx) : ('0' + idx - 26);
+
+                lv_obj_t* cell = lv_label_create(row_obj);
+                char cell_text[4];
+                snprintf(cell_text, sizeof(cell_text), "%c", ch);
+                lv_label_set_text(cell, cell_text);
+
+                bool isSelected = hear_it_char_selected[idx];
+                bool isCursor = (idx == hear_it_grid_cursor);
+
+                // Style: cursor highlight and selection checkbox visual
+                if (isCursor) {
+                    lv_obj_set_style_bg_color(cell, LV_COLOR_ACCENT_CYAN, 0);
+                    lv_obj_set_style_bg_opa(cell, LV_OPA_COVER, 0);
+                    lv_obj_set_style_text_color(cell, LV_COLOR_BG_DEEP, 0);
+                } else if (isSelected) {
+                    lv_obj_set_style_bg_color(cell, LV_COLOR_CARD_TEAL, 0);
+                    lv_obj_set_style_bg_opa(cell, LV_OPA_COVER, 0);
+                    lv_obj_set_style_text_color(cell, LV_COLOR_ACCENT_CYAN, 0);
+                } else {
+                    lv_obj_set_style_bg_opa(cell, LV_OPA_TRANSP, 0);
+                    lv_obj_set_style_text_color(cell, LV_COLOR_TEXT_SECONDARY, 0);
+                }
+
+                lv_obj_set_style_pad_all(cell, 6, 0);
+                lv_obj_set_style_radius(cell, 4, 0);
+                lv_obj_set_style_text_font(cell, getThemeFonts()->font_subtitle, 0);
+            }
+        }
+
+        // Scroll to make cursor row visible
+        // Get the row container for the cursor and scroll to it
+        int cursorRow = hear_it_grid_cursor / 6;
+        // Child 0 is the title, then rows 1-6 are the grid rows
+        uint32_t childIndex = cursorRow + 1;  // +1 for title
+        if (childIndex < lv_obj_get_child_cnt(hear_it_preset_list)) {
+            lv_obj_t* rowObj = lv_obj_get_child(hear_it_preset_list, childIndex);
+            if (rowObj) {
+                lv_obj_scroll_to_view(rowObj, LV_ANIM_OFF);
+            }
+        }
+        return;
+    }
+
+    if (hear_it_in_submenu) {
+        // Show submenu (Koch lessons or CWA sessions)
+        bool isKoch = (hear_it_preset_selection == 0);
+        int count = isKoch ? KOCH_TOTAL : CWA_TOTAL;
+
+        for (int i = 0; i <= count; i++) {  // +1 for Back
+            lv_obj_t* item = lv_label_create(hear_it_preset_list);
+
+            if (i == count) {
+                // Back option
+                lv_label_set_text(item, LV_SYMBOL_LEFT " Back");
+            } else {
+                // Lesson/Session option
+                if (isKoch) {
+                    String chars = getKochCharsForLesson(i + 1);
+                    String label = String(i + 1) + ": " + chars.substring(0, 8);
+                    if (chars.length() > 8) label += "...";
+                    label += " (" + String(chars.length()) + ")";
+                    lv_label_set_text(item, label.c_str());
+                } else {
+                    String chars = getCWASessionChars(i + 1);
+                    String label = "S" + String(i + 1) + ": " + chars.substring(0, 10);
+                    if (chars.length() > 10) label += "...";
+                    label += " (" + String(chars.length()) + ")";
+                    lv_label_set_text(item, label.c_str());
+                }
+            }
+
+            // Style based on selection
+            bool selected = (i == hear_it_submenu_selection);
+            lv_obj_set_style_text_color(item, selected ? LV_COLOR_ACCENT_CYAN : LV_COLOR_TEXT_PRIMARY, 0);
+            lv_obj_set_style_bg_color(item, LV_COLOR_CARD_TEAL, 0);
+            lv_obj_set_style_bg_opa(item, selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+            lv_obj_set_style_pad_all(item, 6, 0);
+            lv_obj_set_width(item, lv_pct(100));
+        }
+    } else {
+        // Show main menu
+        for (int i = 0; i < PRESET_MENU_ITEMS; i++) {
+            lv_obj_t* item = lv_label_create(hear_it_preset_list);
+            lv_label_set_text(item, preset_main_menu[i]);
+
+            // Style based on selection
+            bool selected = (i == hear_it_preset_selection);
+            lv_obj_set_style_text_color(item, selected ? LV_COLOR_ACCENT_CYAN : LV_COLOR_TEXT_PRIMARY, 0);
+            lv_obj_set_style_bg_color(item, LV_COLOR_CARD_TEAL, 0);
+            lv_obj_set_style_bg_opa(item, selected ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+            lv_obj_set_style_pad_all(item, 8, 0);
+            lv_obj_set_width(item, lv_pct(100));
+        }
+    }
+
+    // Scroll to make selection visible
+    lv_obj_scroll_to_y(hear_it_preset_list, hear_it_submenu_selection * 30, LV_ANIM_OFF);
+}
+
+// Show the preset picker modal
+void showHearItPresetPicker() {
+    // Reset selection state
+    hear_it_preset_selection = 0;
+    hear_it_in_submenu = false;
+    hear_it_submenu_selection = 0;
+
+    // Create modal overlay (covers entire screen)
+    hear_it_preset_modal = lv_obj_create(lv_scr_act());
+    lv_obj_set_size(hear_it_preset_modal, SCREEN_WIDTH - 60, SCREEN_HEIGHT - 80);
+    lv_obj_center(hear_it_preset_modal);
+    lv_obj_set_style_bg_color(hear_it_preset_modal, LV_COLOR_BG_LAYER2, 0);
+    lv_obj_set_style_bg_opa(hear_it_preset_modal, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(hear_it_preset_modal, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_border_width(hear_it_preset_modal, 2, 0);
+    lv_obj_set_style_radius(hear_it_preset_modal, 12, 0);
+    lv_obj_set_style_pad_all(hear_it_preset_modal, 12, 0);
+    lv_obj_clear_flag(hear_it_preset_modal, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Title
+    lv_obj_t* title = lv_label_create(hear_it_preset_modal);
+    lv_label_set_text(title, "SELECT CHARACTER SET");
+    lv_obj_add_style(title, getStyleLabelTitle(), 0);
+    lv_obj_set_style_text_color(title, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
+
+    // List container (scrollable)
+    hear_it_preset_list = lv_obj_create(hear_it_preset_modal);
+    lv_obj_set_size(hear_it_preset_list, lv_pct(100), SCREEN_HEIGHT - 140);
+    lv_obj_align(hear_it_preset_list, LV_ALIGN_TOP_MID, 0, 35);
+    lv_obj_set_layout(hear_it_preset_list, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(hear_it_preset_list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(hear_it_preset_list, 2, 0);
+    lv_obj_set_style_bg_opa(hear_it_preset_list, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(hear_it_preset_list, 0, 0);
+    lv_obj_set_style_pad_all(hear_it_preset_list, 4, 0);
+
+    // Populate initial menu
+    updatePresetPickerDisplay();
+
+    // Add key event handler
+    lv_obj_add_event_cb(hear_it_preset_modal, hear_it_preset_key_handler, LV_EVENT_KEY, NULL);
+
+    // Add modal to navigation group and focus it
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_add_obj(group, hear_it_preset_modal);
+        lv_group_focus_obj(hear_it_preset_modal);
+        lv_group_set_editing(group, true);
+    }
+
+    // Make modal clickable to receive focus
+    lv_obj_add_flag(hear_it_preset_modal, LV_OBJ_FLAG_CLICKABLE);
+}
+
+// Close the preset picker modal
+static void closeHearItPresetPicker() {
+    if (hear_it_preset_modal != NULL) {
+        // Remove from nav group first
+        lv_group_t* group = getLVGLInputGroup();
+        if (group != NULL) {
+            lv_group_remove_obj(hear_it_preset_modal);
+        }
+
+        // Clear list pointer before deletion (it's a child of modal)
+        hear_it_preset_list = NULL;
+
+        // Reset modal state before deletion
+        hear_it_in_submenu = false;
+        hear_it_in_char_grid = false;
+
+        // Store modal pointer and clear static before deletion
+        lv_obj_t* modalToDelete = hear_it_preset_modal;
+        hear_it_preset_modal = NULL;
+
+        // Re-focus the settings focus container BEFORE deleting modal
+        // This ensures focus is moved away from the object being deleted
+        if (hear_it_focus_container != NULL && group != NULL) {
+            lv_group_focus_obj(hear_it_focus_container);
+            lv_group_set_editing(group, true);
+        }
+
+        // Use async delete to avoid crash when called from within event handler
+        lv_obj_del_async(modalToDelete);
+    }
+}
+
+// ============================================
+// END PRESET PICKER MODAL
+// ============================================
+
 // Update visual focus indicator
 static void hear_it_update_focus() {
     // Mode row styling (focus == 0)
@@ -727,14 +1223,34 @@ static void hear_it_update_focus() {
         }
     }
 
-    // Button styling (focus == 3)
-    if (hear_it_start_btn) {
+    // Characters row styling (focus == 3) - only visible in Custom mode
+    if (hear_it_chars_row) {
         if (hear_it_settings_focus == 3) {
+            lv_obj_set_style_bg_color(hear_it_chars_row, LV_COLOR_CARD_TEAL, 0);
+            lv_obj_set_style_bg_opa(hear_it_chars_row, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_color(hear_it_chars_row, LV_COLOR_ACCENT_CYAN, 0);
+            lv_obj_set_style_border_width(hear_it_chars_row, 2, 0);
+        } else {
+            lv_obj_set_style_bg_opa(hear_it_chars_row, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(hear_it_chars_row, 0, 0);
+        }
+    }
+    if (hear_it_chars_value) {
+        lv_obj_set_style_text_color(hear_it_chars_value,
+            hear_it_settings_focus == 3 ? LV_COLOR_ACCENT_CYAN : LV_COLOR_TEXT_SECONDARY, 0);
+    }
+
+    // Button styling (focus == 4)
+    if (hear_it_start_btn) {
+        if (hear_it_settings_focus == 4) {
             lv_obj_add_state(hear_it_start_btn, LV_STATE_FOCUSED);
         } else {
             lv_obj_clear_state(hear_it_start_btn, LV_STATE_FOCUSED);
         }
     }
+
+    // Update footer text based on current focus position
+    updateHearItFooter();
 }
 
 // Unified settings key handler - handles all navigation for settings widgets
@@ -749,22 +1265,34 @@ static void hear_it_settings_key_handler(lv_event_t* e) {
     if (key == LV_KEY_ESC) {
         // Stop all playing morse code and pending timers
         cancelHearItTimers();
+        // Save current settings before exiting
+        hearItSettings = tempSettings;
+        saveHearItSettings();
         onLVGLBackNavigation();
         lv_event_stop_processing(e);  // Prevent global ESC handler from also firing
         return;
     }
 
     // Handle UP/DOWN for navigation between settings
+    // Focus positions: 0=mode, 1=speed, 2=length, 3=chars (Custom only), 4=button
     if (key == LV_KEY_UP) {
         if (hear_it_settings_focus > 0) {
             hear_it_settings_focus--;
+            // Skip chars row if not in Custom mode
+            if (hear_it_settings_focus == 3 && tempSettings.mode != MODE_CUSTOM_CHARS) {
+                hear_it_settings_focus--;
+            }
             hear_it_update_focus();
         }
         return;
     }
     if (key == LV_KEY_DOWN) {
-        if (hear_it_settings_focus < 3) {
+        if (hear_it_settings_focus < 4) {
             hear_it_settings_focus++;
+            // Skip chars row if not in Custom mode
+            if (hear_it_settings_focus == 3 && tempSettings.mode != MODE_CUSTOM_CHARS) {
+                hear_it_settings_focus++;
+            }
             hear_it_update_focus();
         }
         return;
@@ -782,6 +1310,7 @@ static void hear_it_settings_key_handler(lv_event_t* e) {
             }
             tempSettings.mode = (HearItMode)mode;
             hear_it_update_mode_display();
+            hear_it_update_chars_visibility();  // Show/hide chars row based on mode
         }
         else if (hear_it_settings_focus == 1 && hear_it_speed_slider) {
             // Speed slider - adjust WPM value
@@ -812,13 +1341,17 @@ static void hear_it_settings_key_handler(lv_event_t* e) {
             lv_slider_set_value(hear_it_length_slider, new_val, LV_ANIM_OFF);
             lv_event_send(hear_it_length_slider, LV_EVENT_VALUE_CHANGED, NULL);
         }
-        // Button (focus == 3) doesn't respond to LEFT/RIGHT
+        else if (hear_it_settings_focus == 3 && tempSettings.mode == MODE_CUSTOM_CHARS) {
+            // Chars row - LEFT/RIGHT opens preset picker (matches arrow visual)
+            showHearItPresetPicker();
+        }
+        // Button (focus == 4) doesn't respond to LEFT/RIGHT
         return;
     }
 
     // Handle ENTER
     if (key == LV_KEY_ENTER) {
-        if (hear_it_settings_focus == 3 && hear_it_start_btn) {
+        if (hear_it_settings_focus == 4 && hear_it_start_btn) {
             // Trigger start button
             lv_event_send(hear_it_start_btn, LV_EVENT_CLICKED, NULL);
         }
@@ -1061,6 +1594,30 @@ lv_obj_t* createHearItTypeItScreen() {
     lv_obj_set_style_pad_all(hear_it_length_slider, 4, LV_PART_KNOB);
     lv_obj_add_event_cb(hear_it_length_slider, hear_it_length_slider_cb, LV_EVENT_VALUE_CHANGED, NULL);
     // Don't add to nav group - focus container handles all keys
+
+    // Characters row (only visible in Custom mode) - simple row like Mode
+    hear_it_chars_row = lv_obj_create(hear_it_settings_container);
+    lv_obj_set_size(hear_it_chars_row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_layout(hear_it_chars_row, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(hear_it_chars_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(hear_it_chars_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_opa(hear_it_chars_row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(hear_it_chars_row, 0, 0);
+    lv_obj_set_style_pad_all(hear_it_chars_row, 4, 0);
+    lv_obj_set_style_radius(hear_it_chars_row, 6, 0);
+    lv_obj_clear_flag(hear_it_chars_row, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* chars_label = lv_label_create(hear_it_chars_row);
+    lv_label_set_text(chars_label, "Characters");
+    lv_obj_add_style(chars_label, getStyleLabelSubtitle(), 0);
+
+    hear_it_chars_value = lv_label_create(hear_it_chars_row);
+    lv_obj_set_style_text_color(hear_it_chars_value, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_style_text_font(hear_it_chars_value, getThemeFonts()->font_subtitle, 0);
+    hear_it_update_chars_display();  // Set initial display text
+
+    // Hide chars row if not in Custom mode initially
+    hear_it_update_chars_visibility();
 
     // Start Training button
     hear_it_start_btn = lv_btn_create(hear_it_settings_container);

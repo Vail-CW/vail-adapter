@@ -107,10 +107,10 @@ void calculateStatistics() {
   DateCount dateCounts[50];  // Track up to 50 different dates
   int dateCountsSize = 0;
 
-  // Open logs directory
-  File root = SD.open("/logs");
+  // Open QSO directory
+  File root = SD.open("/qso");
   if (!root || !root.isDirectory()) {
-    Serial.println("Failed to open /logs directory");
+    Serial.println("Failed to open /qso directory");
     return;
   }
 

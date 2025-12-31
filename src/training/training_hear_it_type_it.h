@@ -118,7 +118,14 @@ bool inStatsMode = false;
 void loadHearItSettings() {
   Preferences prefs;
   prefs.begin("hear_it", true);  // Read-only
-  hearItSettings.mode = (HearItMode)prefs.getInt("mode", MODE_CALLSIGNS);
+
+  // Load mode with bounds checking to prevent invalid enum values
+  int savedMode = prefs.getInt("mode", MODE_CALLSIGNS);
+  if (savedMode < 0 || savedMode > MODE_CUSTOM_CHARS) {
+    savedMode = MODE_CALLSIGNS;  // Default to safe value if out of range
+  }
+  hearItSettings.mode = (HearItMode)savedMode;
+
   hearItSettings.wpm = prefs.getInt("wpm", 15);
   hearItSettings.groupLength = prefs.getInt("length", 1);
   hearItSettings.customChars = prefs.getString("custom", "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");

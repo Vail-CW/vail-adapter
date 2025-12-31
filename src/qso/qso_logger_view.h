@@ -27,7 +27,7 @@ struct ViewState {
   bool deleteConfirm;      // Waiting for delete confirmation
 };
 
-ViewState viewState;
+ViewState viewState = {VIEW_MODE_LIST, 0, 0, 0, nullptr, 0, false};
 
 // Forward declarations
 void loadQSOsForView();
@@ -39,9 +39,9 @@ void loadQSOsForView() {
 
   // First, count total QSOs
   int totalCount = 0;
-  File root = SD.open("/logs");
+  File root = SD.open("/qso");
   if (!root || !root.isDirectory()) {
-    Serial.println("Failed to open /logs directory");
+    Serial.println("Failed to open /qso directory");
     return;
   }
 
@@ -106,16 +106,39 @@ void loadQSOsForView() {
 
   if (totalCount == 0) {
     viewState.totalQSOs = 0;
+    viewState.qsos = nullptr;
     return;
+  }
+
+  // Free any existing allocation before allocating new
+  if (viewState.qsos != nullptr) {
+    delete[] viewState.qsos;
+    viewState.qsos = nullptr;
   }
 
   // Allocate memory for QSOs
   viewState.qsos = new QSO[totalCount];
+  if (viewState.qsos == nullptr) {
+    Serial.println("ERROR: Failed to allocate memory for QSOs");
+    viewState.totalQSOs = 0;
+    return;
+  }
   viewState.totalQSOs = totalCount;
+  Serial.printf("Allocated memory for %d QSOs at %p\n", totalCount, viewState.qsos);
+
+  // Initialize all QSOs to zero
+  memset(viewState.qsos, 0, sizeof(QSO) * totalCount);
 
   // Load QSOs into array
   int qsoIndex = 0;
-  root = SD.open("/logs");
+  root = SD.open("/qso");
+  if (!root || !root.isDirectory()) {
+    Serial.println("ERROR: Failed to reopen /qso directory for loading");
+    delete[] viewState.qsos;
+    viewState.qsos = nullptr;
+    viewState.totalQSOs = 0;
+    return;
+  }
   file = root.openNextFile();
 
   while (file && qsoIndex < totalCount) {

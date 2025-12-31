@@ -409,6 +409,10 @@ void loop() {
   // LVGL reads CardKB directly via its input driver
   lv_timer_handler();
 
+  // Process any pending deferred screen operations
+  // (screen creation is deferred from event callbacks to avoid stack overflow)
+  processQSOViewLogsPending();
+
   // Poll non-blocking WiFi connection state machine
   // This must be called every loop to check connection progress
   if (updateWiFiConnection()) {
