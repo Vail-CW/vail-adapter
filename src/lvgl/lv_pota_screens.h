@@ -38,6 +38,7 @@ static lv_obj_t* pota_loading_label = NULL;      // Loading container
 static lv_obj_t* pota_loading_text = NULL;       // Loading text label inside container
 static lv_obj_t* pota_updated_label = NULL;
 static lv_obj_t* pota_filter_label = NULL;
+static lv_obj_t* pota_filter_container = NULL;   // Filter bar container
 static lv_obj_t* pota_count_label = NULL;
 
 // Detail screen state
@@ -132,6 +133,7 @@ void cleanupPOTAScreen() {
     pota_loading_text = NULL;
     pota_updated_label = NULL;
     pota_filter_label = NULL;
+    pota_filter_container = NULL;
     pota_count_label = NULL;
     pota_detail_content = NULL;
     for (int i = 0; i < 4; i++) pota_detail_tabs[i] = NULL;
@@ -231,15 +233,21 @@ void updateFilterLabel() {
     }
 
     if (!potaSpotFilter.active) {
-        lv_obj_add_flag(pota_filter_label, LV_OBJ_FLAG_HIDDEN);
+        // Hide the container (which also hides the label inside it)
+        if (pota_filter_container && lv_obj_is_valid(pota_filter_container)) {
+            lv_obj_add_flag(pota_filter_container, LV_OBJ_FLAG_HIDDEN);
+        }
         return;
     }
 
     char buf[64];
-    snprintf(buf, sizeof(buf), "BAND: %s  MODE: %s  REGION: %s",
+    snprintf(buf, sizeof(buf), "Filter: %s / %s / %s",
              potaSpotFilter.band, potaSpotFilter.mode, potaSpotFilter.region);
     lv_label_set_text(pota_filter_label, buf);
-    lv_obj_clear_flag(pota_filter_label, LV_OBJ_FLAG_HIDDEN);
+    // Show the container
+    if (pota_filter_container && lv_obj_is_valid(pota_filter_container)) {
+        lv_obj_clear_flag(pota_filter_container, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 void updateCountLabel() {
@@ -300,8 +308,8 @@ lv_obj_t* createPOTAMenuScreen() {
 
     // Content area with menu buttons
     lv_obj_t* content = lv_obj_create(screen);
-    lv_obj_set_size(content, SCREEN_WIDTH - 20, SCREEN_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - 10);
-    lv_obj_set_pos(content, 10, HEADER_HEIGHT + 5);
+    lv_obj_set_size(content, SCREEN_WIDTH - 20, SCREEN_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - 20);
+    lv_obj_set_pos(content, 10, HEADER_HEIGHT + 15);
     lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(content, 0, 0);
     lv_obj_set_layout(content, LV_LAYOUT_FLEX);
@@ -314,7 +322,7 @@ lv_obj_t* createPOTAMenuScreen() {
     // Create menu buttons
     for (int i = 0; i < POTA_MENU_COUNT; i++) {
         lv_obj_t* btn = lv_obj_create(content);
-        lv_obj_set_size(btn, 200, 100);
+        lv_obj_set_size(btn, 200, 85);
         applyCardStyle(btn);
         lv_obj_add_flag(btn, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_user_data(btn, (void*)(intptr_t)potaMenuItems[i].target_mode);
@@ -374,6 +382,21 @@ static void pota_menu_key_handler(lv_event_t* e) {
         int target_mode = (int)(intptr_t)lv_obj_get_user_data(target);
         onLVGLMenuSelect(target_mode);
         lv_event_stop_processing(e);
+        return;
+    }
+
+    // LEFT/RIGHT arrow navigation between menu buttons
+    if (key == LV_KEY_LEFT || key == LV_KEY_RIGHT) {
+        lv_group_t* group = getLVGLInputGroup();
+        if (group) {
+            if (key == LV_KEY_LEFT) {
+                lv_group_focus_prev(group);
+            } else {
+                lv_group_focus_next(group);
+            }
+        }
+        lv_event_stop_processing(e);
+        return;
     }
 }
 
@@ -514,18 +537,31 @@ lv_obj_t* createPOTAActiveSpotsScreen() {
 
     createCompactStatusBar(screen);
 
-    // Filter bar (hidden by default)
-    pota_filter_label = lv_label_create(screen);
+    // Filter bar container (hidden by default, reserves space when visible)
+    int filter_bar_height = 18;
+    pota_filter_container = lv_obj_create(screen);
+    lv_obj_set_size(pota_filter_container, SCREEN_WIDTH - 20, filter_bar_height);
+    lv_obj_set_pos(pota_filter_container, 10, HEADER_HEIGHT + 4);
+    lv_obj_set_style_bg_color(pota_filter_container, getThemeColors()->bg_layer2, 0);
+    lv_obj_set_style_bg_opa(pota_filter_container, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(pota_filter_container, 0, 0);
+    lv_obj_set_style_radius(pota_filter_container, 4, 0);
+    lv_obj_set_style_pad_all(pota_filter_container, 2, 0);
+    lv_obj_clear_flag(pota_filter_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(pota_filter_container, LV_OBJ_FLAG_HIDDEN);
+
+    // Filter label inside container
+    pota_filter_label = lv_label_create(pota_filter_container);
     lv_label_set_text(pota_filter_label, "");
     lv_obj_set_style_text_font(pota_filter_label, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(pota_filter_label, LV_COLOR_WARNING, 0);
-    lv_obj_set_pos(pota_filter_label, 15, HEADER_HEIGHT + 2);
-    lv_obj_add_flag(pota_filter_label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_align(pota_filter_label, LV_ALIGN_LEFT_MID, 5, 0);
 
     // ========================================
     // Fixed Header Row (separate from table)
     // ========================================
-    int header_row_y = HEADER_HEIGHT + 8;
+    // Position depends on whether filter bar is showing - start below it
+    int header_row_y = HEADER_HEIGHT + filter_bar_height + 8;
     int header_row_height = 28;
 
     // Header background bar
@@ -679,7 +715,7 @@ lv_obj_t* createPOTAActiveSpotsScreen() {
     lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* footer_text = lv_label_create(footer);
-    lv_label_set_text(footer_text, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll   ENTER Details   F Filter   R Refresh   ESC Back");
+    lv_label_set_text(footer_text, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll  ENTER Details  F Filter  C Clear  R Refresh  ESC Back");
     lv_obj_set_style_text_font(footer_text, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(footer_text, LV_COLOR_TEXT_TERTIARY, 0);
     lv_obj_align(footer_text, LV_ALIGN_CENTER, 0, 0);
@@ -743,6 +779,17 @@ static void pota_spots_key_handler(lv_event_t* e) {
     // F or f - Filter
     if (key == 'F' || key == 'f') {
         onLVGLMenuSelect(POTA_MODE_FILTERS);
+        lv_event_stop_processing(e);
+        return;
+    }
+
+    // C or c - Clear filter
+    if (key == 'C' || key == 'c') {
+        if (potaSpotFilter.active) {
+            resetSpotFilter();
+            refreshPOTASpotsDisplay();
+            beep(800, 100);
+        }
         lv_event_stop_processing(e);
         return;
     }
@@ -1133,12 +1180,47 @@ void updateFilterRowStyles() {
         if (!filter_rows[i]) continue;
 
         if (i == pota_filter_focus_row) {
-            lv_obj_set_style_bg_color(filter_rows[i], getThemeColors()->card_secondary, 0);
-            lv_obj_set_style_border_color(filter_rows[i], LV_COLOR_ACCENT_CYAN, 0);
-            lv_obj_set_style_border_width(filter_rows[i], 2, 0);
+            // Apply and Clear buttons (rows 3 and 4) need special focus styling
+            if (i == 3) {
+                // Apply button - keep green bg, add cyan border
+                lv_obj_set_style_bg_color(filter_rows[i], LV_COLOR_SUCCESS, 0);
+                lv_obj_set_style_border_color(filter_rows[i], LV_COLOR_ACCENT_CYAN, 0);
+                lv_obj_set_style_border_width(filter_rows[i], 3, 0);
+                lv_obj_set_style_shadow_color(filter_rows[i], LV_COLOR_ACCENT_CYAN, 0);
+                lv_obj_set_style_shadow_width(filter_rows[i], 10, 0);
+                lv_obj_set_style_shadow_opa(filter_rows[i], LV_OPA_50, 0);
+            } else if (i == 4) {
+                // Clear button - keep red bg, add cyan border
+                lv_obj_set_style_bg_color(filter_rows[i], LV_COLOR_ERROR, 0);
+                lv_obj_set_style_border_color(filter_rows[i], LV_COLOR_ACCENT_CYAN, 0);
+                lv_obj_set_style_border_width(filter_rows[i], 3, 0);
+                lv_obj_set_style_shadow_color(filter_rows[i], LV_COLOR_ACCENT_CYAN, 0);
+                lv_obj_set_style_shadow_width(filter_rows[i], 10, 0);
+                lv_obj_set_style_shadow_opa(filter_rows[i], LV_OPA_50, 0);
+            } else {
+                // Filter rows (0-2)
+                lv_obj_set_style_bg_color(filter_rows[i], getThemeColors()->card_secondary, 0);
+                lv_obj_set_style_border_color(filter_rows[i], LV_COLOR_ACCENT_CYAN, 0);
+                lv_obj_set_style_border_width(filter_rows[i], 2, 0);
+                lv_obj_set_style_shadow_width(filter_rows[i], 0, 0);
+            }
         } else {
-            lv_obj_set_style_bg_color(filter_rows[i], getThemeColors()->bg_deep, 0);
-            lv_obj_set_style_border_width(filter_rows[i], 0, 0);
+            // Not focused
+            if (i == 3) {
+                // Apply button unfocused
+                lv_obj_set_style_bg_color(filter_rows[i], LV_COLOR_SUCCESS, 0);
+                lv_obj_set_style_border_width(filter_rows[i], 0, 0);
+                lv_obj_set_style_shadow_width(filter_rows[i], 0, 0);
+            } else if (i == 4) {
+                // Clear button unfocused
+                lv_obj_set_style_bg_color(filter_rows[i], LV_COLOR_ERROR, 0);
+                lv_obj_set_style_border_width(filter_rows[i], 0, 0);
+                lv_obj_set_style_shadow_width(filter_rows[i], 0, 0);
+            } else {
+                // Filter rows unfocused
+                lv_obj_set_style_bg_color(filter_rows[i], getThemeColors()->bg_deep, 0);
+                lv_obj_set_style_border_width(filter_rows[i], 0, 0);
+            }
         }
     }
 }
@@ -1302,7 +1384,7 @@ lv_obj_t* createPOTAFilterScreen() {
     lv_obj_t* apply_lbl = lv_label_create(apply_btn);
     lv_label_set_text(apply_lbl, "APPLY");
     lv_obj_set_style_text_font(apply_lbl, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(apply_lbl, getThemeColors()->text_on_accent, 0);
+    lv_obj_set_style_text_color(apply_lbl, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(apply_lbl);
 
     // Clear button
@@ -1431,8 +1513,8 @@ static void pota_filter_key_handler(lv_event_t* e) {
 
     // ENTER - Apply or Clear
     if (key == LV_KEY_ENTER) {
-        if (pota_filter_focus_row == 3) {
-            // Apply filter
+        if (pota_filter_focus_row <= 3) {
+            // Apply filter (from any filter row or Apply button)
             strcpy(potaSpotFilter.band, bandFilterOptions[pota_filter_band_idx]);
             strcpy(potaSpotFilter.mode, modeFilterOptions[pota_filter_mode_idx]);
             strcpy(potaSpotFilter.region, regionFilterOptions[pota_filter_region_idx]);

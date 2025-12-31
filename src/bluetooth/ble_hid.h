@@ -271,10 +271,27 @@ void startBTHID(LGFX& display) {
   // Start HID services (this starts HID, Device Info, and Battery services)
   btHID.hid->startServices();
 
-  // Set up advertising
-  NimBLEAdvertising* advertising = bleCore.pServer->getAdvertising();
+  // Set up advertising with explicit configuration for Android/Linux compatibility
+  // NimBLE 2.0+ defaults have scan response disabled and no name/TX power advertised
+  NimBLEAdvertising* advertising = NimBLEDevice::getAdvertising();
+
+  // Set HID keyboard appearance
   advertising->setAppearance(HID_KEYBOARD_APPEARANCE);
+
+  // Add HID Service UUID to advertising data
   advertising->addServiceUUID(btHID.hid->getHidService()->getUUID());
+
+  // Enable scan response (OFF by default in NimBLE 2.0+)
+  // Android and Linux rely on scan response data to identify devices
+  advertising->enableScanResponse(true);
+
+  // Set device name explicitly (not advertised by default in NimBLE 2.0+)
+  advertising->setName(getBLEDeviceName().c_str());
+
+  // Set fast advertising intervals for better discovery on mobile platforms
+  // Values in units of 0.625ms (32 = 20ms, 160 = 100ms)
+  advertising->setMinInterval(32);   // 20ms minimum
+  advertising->setMaxInterval(160);  // 100ms maximum
 
   // Start advertising
   startBLEAdvertising("HID Keyboard");

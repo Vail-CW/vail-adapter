@@ -1803,9 +1803,11 @@ void updateLicenseQuizDisplay() {
                     lv_obj_set_style_border_width(license_answer_btns[i], 3, 0);
                 }
             } else {
-                // Normal state - use card style
+                // Normal state - reset all feedback styling to menu card defaults
                 lv_obj_set_style_bg_color(license_answer_btns[i], LV_COLOR_CARD_TEAL, 0);
                 lv_obj_set_style_bg_opa(license_answer_btns[i], LV_OPA_COVER, 0);
+                lv_obj_set_style_border_color(license_answer_btns[i], LV_COLOR_BORDER_SUBTLE, 0);
+                lv_obj_set_style_border_width(license_answer_btns[i], 2, 0);
             }
         }
     }

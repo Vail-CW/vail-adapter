@@ -2372,6 +2372,10 @@ static int qso_entry_mode_index = 0;  // 0=CW, 1=SSB, etc.
 static const char* qso_mode_names[] = {"CW", "SSB", "FM", "AM", "FT8", "FT4", "RTTY", "PSK31"};
 static const int qso_mode_count = 8;
 
+// Focus state for arrow key navigation
+static int qso_entry_focus = 0;  // Current focused field index
+static const int QSO_ENTRY_FIELD_COUNT = 10;  // Total navigable fields
+
 // Forward declarations for QSO operations
 extern Preferences qsoPrefs;
 extern bool saveQSO(const QSO& qso);
@@ -2421,7 +2425,33 @@ static void updateQSOEntryMode() {
     }
 }
 
-// Key handler for mode selector row
+// Update focus to the current field
+static void qso_entry_update_focus() {
+    // Array of all navigable widgets in order
+    lv_obj_t* fields[] = {
+        qso_callsign_input,
+        qso_freq_input,
+        qso_mode_row,
+        qso_rst_sent_input,
+        qso_rst_rcvd_input,
+        qso_date_input,
+        qso_time_input,
+        qso_my_grid_input,
+        qso_my_pota_input,
+        qso_notes_input
+    };
+
+    // Focus the correct widget in LVGL's group
+    lv_group_t* group = getLVGLInputGroup();
+    if (group && qso_entry_focus >= 0 && qso_entry_focus < QSO_ENTRY_FIELD_COUNT) {
+        lv_obj_t* target = fields[qso_entry_focus];
+        if (target != NULL) {
+            lv_group_focus_obj(target);
+        }
+    }
+}
+
+// Key handler for QSO entry form navigation
 static void qso_entry_key_cb(lv_event_t* e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code != LV_EVENT_KEY) return;
@@ -2435,9 +2465,30 @@ static void qso_entry_key_cb(lv_event_t* e) {
         return;
     }
 
-    // LEFT/RIGHT on mode selector
-    lv_obj_t* focused = lv_group_get_focused(getLVGLInputGroup());
-    if (focused == qso_mode_row || lv_obj_get_parent(focused) == qso_mode_row) {
+    // Handle UP - previous field
+    if (key == LV_KEY_UP) {
+        lv_event_stop_bubbling(e);
+        if (qso_entry_focus > 0) {
+            qso_entry_focus--;
+            qso_entry_update_focus();
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+        }
+        return;
+    }
+
+    // Handle DOWN / TAB - next field
+    if (key == LV_KEY_DOWN || key == LV_KEY_NEXT) {
+        lv_event_stop_bubbling(e);
+        if (qso_entry_focus < QSO_ENTRY_FIELD_COUNT - 1) {
+            qso_entry_focus++;
+            qso_entry_update_focus();
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+        }
+        return;
+    }
+
+    // LEFT/RIGHT on mode selector (field index 2)
+    if (qso_entry_focus == 2) {
         if (key == LV_KEY_LEFT) {
             qso_entry_mode_index = (qso_entry_mode_index - 1 + qso_mode_count) % qso_mode_count;
             updateQSOEntryMode();
@@ -2824,6 +2875,16 @@ lv_obj_t* createQSOLogEntryScreen() {
     // Load operator settings (grid, pota) from preferences
     loadOperatorSettingsToForm();
 
+    // Add key handler to all textarea inputs for ENTER/ESC handling
+    // LVGL textareas consume key events, so we must attach our handler to each
+    lv_obj_t* textareas[] = {
+        qso_callsign_input, qso_freq_input, qso_rst_sent_input, qso_rst_rcvd_input,
+        qso_date_input, qso_time_input, qso_my_grid_input, qso_my_pota_input, qso_notes_input
+    };
+    for (int i = 0; i < 9; i++) {
+        lv_obj_add_event_cb(textareas[i], qso_entry_key_cb, LV_EVENT_KEY, NULL);
+    }
+
     // Footer
     lv_obj_t* footer = lv_obj_create(screen);
     lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
@@ -2833,21 +2894,29 @@ lv_obj_t* createQSOLogEntryScreen() {
     lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* help = lv_label_create(footer);
-    lv_label_set_text(help, "TAB Next   L/R Mode   ENTER Save   ESC Cancel");
+    lv_label_set_text(help, LV_SYMBOL_UP LV_SYMBOL_DOWN " Navigate   " LV_SYMBOL_LEFT LV_SYMBOL_RIGHT " Mode   ENTER Save   ESC Cancel");
     lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);
 
-    // Invisible focus container for ENTER/ESC handling
-    qso_entry_focus_container = lv_obj_create(screen);
-    lv_obj_set_size(qso_entry_focus_container, 0, 0);
-    lv_obj_set_style_bg_opa(qso_entry_focus_container, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(qso_entry_focus_container, 0, 0);
-    lv_obj_add_flag(qso_entry_focus_container, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(qso_entry_focus_container, qso_entry_key_cb, LV_EVENT_KEY, NULL);
-
-    // Add the key handler to the mode row specifically
+    // Add key handler to all navigable widgets for UP/DOWN navigation
+    lv_obj_add_event_cb(qso_callsign_input, qso_entry_key_cb, LV_EVENT_KEY, NULL);
+    lv_obj_add_event_cb(qso_freq_input, qso_entry_key_cb, LV_EVENT_KEY, NULL);
     lv_obj_add_event_cb(qso_mode_row, qso_entry_key_cb, LV_EVENT_KEY, NULL);
+    lv_obj_add_event_cb(qso_rst_sent_input, qso_entry_key_cb, LV_EVENT_KEY, NULL);
+    lv_obj_add_event_cb(qso_rst_rcvd_input, qso_entry_key_cb, LV_EVENT_KEY, NULL);
+    lv_obj_add_event_cb(qso_date_input, qso_entry_key_cb, LV_EVENT_KEY, NULL);
+    lv_obj_add_event_cb(qso_time_input, qso_entry_key_cb, LV_EVENT_KEY, NULL);
+    lv_obj_add_event_cb(qso_my_grid_input, qso_entry_key_cb, LV_EVENT_KEY, NULL);
+    lv_obj_add_event_cb(qso_my_pota_input, qso_entry_key_cb, LV_EVENT_KEY, NULL);
+    lv_obj_add_event_cb(qso_notes_input, qso_entry_key_cb, LV_EVENT_KEY, NULL);
+
+    // Reset focus state and focus first field
+    qso_entry_focus = 0;
+    lv_group_t* group = getLVGLInputGroup();
+    if (group) {
+        lv_group_focus_obj(qso_callsign_input);
+    }
 
     qso_entry_screen = screen;
     return screen;

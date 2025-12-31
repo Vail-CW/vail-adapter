@@ -9,8 +9,8 @@
 // ============================================
 // Firmware Version Information
 // ============================================
-#define FIRMWARE_VERSION "0.23"
-#define FIRMWARE_DATE "2025-12-30"  // Update this date each time you build new firmware
+#define FIRMWARE_VERSION "0.24"
+#define FIRMWARE_DATE "2025-12-31"  // Update this date each time you build new firmware
 #define FIRMWARE_NAME "VAIL SUMMIT"
 
 // ============================================

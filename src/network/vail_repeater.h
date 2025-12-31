@@ -89,6 +89,12 @@ std::vector<VailMessage> rxQueue;
 unsigned long playbackDelay = 500;  // 500ms delay for network jitter
 int64_t clockSkew = 0;  // Offset to convert millis() to server time
 
+// Playback state machine variables
+static bool isPlaying = false;
+static size_t playbackIndex = 0;
+static unsigned long playbackElementStart = 0;
+static int playbackToneFrequency = 0;  // Current playback tone frequency
+
 // Chat mode state
 bool vailChatMode = false;  // false = vail info, true = chat view
 bool hasUnreadMessages = false;  // Indicator for new messages
@@ -256,9 +262,49 @@ void connectToVail(String channel) {
 
 // Disconnect from Vail
 void disconnectFromVail() {
+  if (vailState == VAIL_DISCONNECTED) {
+    return;  // Already disconnected
+  }
+
+  Serial.println("[Vail] Disconnecting...");
+
+  // Stop any ongoing tone playback
+  stopTone();
+
+  // Send disconnect to server
   webSocket.disconnect();
+
+  // Wait for disconnect to complete (with timeout)
+  // This ensures the server receives the close frame
+  unsigned long startTime = millis();
+  const unsigned long timeout = 500;  // 500ms timeout
+
+  while (vailState != VAIL_DISCONNECTED && (millis() - startTime) < timeout) {
+    webSocket.loop();  // Process pending WebSocket events
+    delay(10);
+  }
+
+  // Force state to disconnected if timeout occurred
   vailState = VAIL_DISCONNECTED;
   statusText = "Disconnected";
+
+  // Stop any repeater playback
+  isPlaying = false;
+  playbackToneFrequency = 0;
+
+  // Clear all queues and state to prevent stale data on reconnect
+  rxQueue.clear();
+  vailTxDurations.clear();
+  chatHistory.clear();
+  connectedUsers.clear();
+  activeRooms.clear();
+  vailIsTransmitting = false;
+  vailKeyerActive = false;
+  vailInSpacing = false;
+  vailDitMemory = false;
+  vailDahMemory = false;
+
+  Serial.println("[Vail] Disconnected and state cleared");
 }
 
 // WebSocket event handler
@@ -703,12 +749,6 @@ void updateVailPaddles() {
   }
 }
 
-// Playback state machine variables
-static bool isPlaying = false;
-static size_t playbackIndex = 0;
-static unsigned long playbackElementStart = 0;
-static int playbackToneFrequency = 0;  // Current playback tone frequency
-
 // Playback received messages (non-blocking)
 void playbackMessages() {
   // Don't play if transmitting
@@ -1037,7 +1077,7 @@ int handleChatInput(char key, LGFX &display) {
       chatInput = "";
       chatCursorVisible = true;
       chatLastBlink = millis();
-      beep(TONE_SELECT, BEEP_MEDIUM);
+      // No beep - would conflict with repeater audio playback
       drawChatUI(display);
     }
     return 0;
@@ -1047,7 +1087,7 @@ int handleChatInput(char key, LGFX &display) {
     chatInput += key;
     chatCursorVisible = true;
     chatLastBlink = millis();
-    beep(TONE_MENU_NAV, BEEP_SHORT);
+    // No beep - would conflict with repeater audio playback
     drawChatUI(display);
     return 0;
   }
@@ -1458,7 +1498,7 @@ int handleRoomInputInput(char key, LGFX &display) {
   else if (key == KEY_ENTER || key == KEY_ENTER_ALT) {
     // Join custom room
     if (roomInput.length() > 0) {
-      beep(TONE_SELECT, BEEP_MEDIUM);
+      // No beep - would conflict with repeater audio playback
 
       // Disconnect and reconnect to new room
       disconnectFromVail();
@@ -1478,7 +1518,7 @@ int handleRoomInputInput(char key, LGFX &display) {
     roomInput += key;
     roomCursorVisible = true;
     roomLastBlink = millis();
-    beep(TONE_MENU_NAV, BEEP_SHORT);
+    // No beep - would conflict with repeater audio playback
     drawRoomInputUI(display);
     return 0;
   }

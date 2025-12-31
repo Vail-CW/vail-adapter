@@ -821,11 +821,22 @@ const char* getCallsignFromTextarea() {
 static lv_obj_t* web_password_screen = NULL;
 static lv_obj_t* web_password_textarea = NULL;
 static lv_obj_t* web_password_enable_switch = NULL;
+static lv_obj_t* web_password_error_label = NULL;
 
-// Key handler for web password textarea - handles ENTER to save based on switch state
+// Key handler for web password - handles navigation and ENTER to save
 static void web_password_key_handler(lv_event_t* e) {
     if (lv_event_get_code(e) != LV_EVENT_KEY) return;
     uint32_t key = lv_event_get_key(e);
+
+    // Handle navigation between widgets
+    if (key == LV_KEY_PREV || key == LV_KEY_NEXT) {
+        // Hide error when navigating
+        if (web_password_error_label != NULL) {
+            lv_obj_add_flag(web_password_error_label, LV_OBJ_FLAG_HIDDEN);
+        }
+        // Allow default navigation group behavior (don't stop bubbling)
+        return;
+    }
 
     if (key == LV_KEY_ENTER) {
         // Check switch state to determine if protection should be enabled
@@ -848,8 +859,12 @@ static void web_password_key_handler(lv_event_t* e) {
                     Serial.printf("[WebPW] Password saved, auth enabled\n");
                     onLVGLBackNavigation();
                 } else {
-                    // Invalid length - beep error but stay on screen
+                    // Invalid length - show error message
                     beep(TONE_ERROR, BEEP_MEDIUM);
+                    if (web_password_error_label != NULL) {
+                        lv_label_set_text(web_password_error_label, "Must be 8-16 characters");
+                        lv_obj_clear_flag(web_password_error_label, LV_OBJ_FLAG_HIDDEN);
+                    }
                     Serial.println("[WebPW] Invalid password length (need 8-16 chars)");
                 }
             }
@@ -917,6 +932,8 @@ lv_obj_t* createWebPasswordSettingsScreen() {
     }
     lv_obj_add_style(web_password_enable_switch, getStyleSwitch(), 0);
     lv_obj_add_style(web_password_enable_switch, getStyleSwitchChecked(), LV_STATE_CHECKED);
+    // Add key handler to switch for navigation support
+    lv_obj_add_event_cb(web_password_enable_switch, web_password_key_handler, LV_EVENT_KEY, NULL);
     addNavigableWidget(web_password_enable_switch);
 
     // Password label
@@ -939,6 +956,13 @@ lv_obj_t* createWebPasswordSettingsScreen() {
     lv_obj_add_event_cb(web_password_textarea, web_password_key_handler, LV_EVENT_KEY, NULL);
     addNavigableWidget(web_password_textarea);
 
+    // Error message label (hidden by default)
+    web_password_error_label = lv_label_create(content);
+    lv_label_set_text(web_password_error_label, "");
+    lv_obj_set_style_text_color(web_password_error_label, LV_COLOR_ERROR, 0);
+    lv_obj_set_style_text_font(web_password_error_label, getThemeFonts()->font_small, 0);
+    lv_obj_add_flag(web_password_error_label, LV_OBJ_FLAG_HIDDEN);
+
     // Footer
     lv_obj_t* footer = lv_obj_create(screen);
     lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
@@ -948,15 +972,15 @@ lv_obj_t* createWebPasswordSettingsScreen() {
     lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* help = lv_label_create(footer);
-    lv_label_set_text(help, "Toggle switch to enable/disable   ENTER Save   ESC Cancel");
+    lv_label_set_text(help, "UP/DN Navigate   L/R Toggle   ENTER Save   ESC Back");
     lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);
 
     web_password_screen = screen;
 
-    // Auto-focus the password textarea for immediate input
-    focusWidget(web_password_textarea);
+    // Auto-focus the switch first for navigation flow
+    focusWidget(web_password_enable_switch);
 
     return screen;
 }

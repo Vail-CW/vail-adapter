@@ -37,7 +37,6 @@ static BandPlanViewMode bp_view_mode = BP_VIEW_OVERVIEW;
 static int bp_focused_band = 0;
 static int bp_focused_row = 0;       // For detail view
 static int bp_detail_scroll = 0;     // Scroll offset in detail view
-static int bp_control_focus = 0;     // 0 = license, 1 = mode filter
 
 // Band cards in overview
 static lv_obj_t* bp_band_cards[10] = {NULL};
@@ -146,8 +145,9 @@ lv_obj_t* createBandCard(lv_obj_t* parent, int band_index) {
     const BandDefinition* band = getBandByIndex(band_index);
     if (!band) return NULL;
 
+    // Full-width single-column card
     lv_obj_t* card = lv_obj_create(parent);
-    lv_obj_set_size(card, 215, 70);
+    lv_obj_set_size(card, 440, 56);
     lv_obj_set_style_bg_color(card, getThemeColors()->bg_layer2, 0);
     lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(card, 8, 0);
@@ -156,38 +156,38 @@ lv_obj_t* createBandCard(lv_obj_t* parent, int band_index) {
     lv_obj_set_style_pad_all(card, 8, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Band name (short)
+    // Band name (short) - left side
     lv_obj_t* name = lv_label_create(card);
     lv_label_set_text(name, band->short_name);
     lv_obj_set_style_text_font(name, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(name, LV_COLOR_TEXT_PRIMARY, 0);
     lv_obj_set_pos(name, 0, 0);
 
-    // WARC indicator
+    // Frequency range - next to name
+    char freq_buf[32];
+    if (band->start_mhz >= 10.0f) {
+        snprintf(freq_buf, sizeof(freq_buf), "%.2f-%.2f MHz", band->start_mhz, band->end_mhz);
+    } else {
+        snprintf(freq_buf, sizeof(freq_buf), "%.3f-%.3f MHz", band->start_mhz, band->end_mhz);
+    }
+    lv_obj_t* freq = lv_label_create(card);
+    lv_label_set_text(freq, freq_buf);
+    lv_obj_set_style_text_font(freq, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(freq, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_pos(freq, 65, 2);
+
+    // WARC indicator - middle area
     if (band->warc_band) {
         lv_obj_t* warc = lv_label_create(card);
         lv_label_set_text(warc, "WARC");
         lv_obj_set_style_text_font(warc, &lv_font_montserrat_12, 0);
         lv_obj_set_style_text_color(warc, LV_COLOR_WARNING, 0);
-        lv_obj_align(warc, LV_ALIGN_TOP_RIGHT, 0, 2);
+        lv_obj_set_pos(warc, 220, 4);
     }
 
-    // Frequency range
-    char freq_buf[32];
-    if (band->start_mhz >= 10.0f) {
-        snprintf(freq_buf, sizeof(freq_buf), "%.2f-%.2f", band->start_mhz, band->end_mhz);
-    } else {
-        snprintf(freq_buf, sizeof(freq_buf), "%.3f-%.3f", band->start_mhz, band->end_mhz);
-    }
-    lv_obj_t* freq = lv_label_create(card);
-    lv_label_set_text(freq, freq_buf);
-    lv_obj_set_style_text_font(freq, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(freq, LV_COLOR_TEXT_SECONDARY, 0);
-    lv_obj_set_pos(freq, 0, 22);
-
-    // License color bar
-    lv_obj_t* color_bar = createLicenseColorBar(card, band, 195);
-    lv_obj_set_pos(color_bar, 0, 42);
+    // License color bar - bottom, full width
+    lv_obj_t* color_bar = createLicenseColorBar(card, band, 420);
+    lv_obj_set_pos(color_bar, 0, 26);
 
     return card;
 }
@@ -227,35 +227,29 @@ void updateBandPlansOverview() {
         bp_band_cards[i] = NULL;
     }
 
-    // Create 2-column grid of band cards
-    int col = 0;
-    int row = 0;
-    int card_width = 215;
-    int card_height = 70;
-    int h_gap = 10;
-    int v_gap = 8;
-    int start_x = 5;
-    int start_y = 5;
+    // Single-column layout with full-width cards
+    int card_height = 56;
+    int v_gap = 6;
+    int start_x = 0;
+    int start_y = 0;
 
     int band_count = getBandCount();
     for (int i = 0; i < band_count && i < 10; i++) {
         lv_obj_t* card = createBandCard(bp_content, i);
         if (card) {
-            int x = start_x + col * (card_width + h_gap);
-            int y = start_y + row * (card_height + v_gap);
-            lv_obj_set_pos(card, x, y);
+            int y = start_y + i * (card_height + v_gap);
+            lv_obj_set_pos(card, start_x, y);
             bp_band_cards[i] = card;
-        }
-
-        col++;
-        if (col >= 2) {
-            col = 0;
-            row++;
         }
     }
 
-    // Update focus state
+    // Update focus state and scroll to focused band
     updateBandCardFocus();
+
+    // Scroll focused card into view
+    if (bp_band_cards[bp_focused_band]) {
+        lv_obj_scroll_to_view(bp_band_cards[bp_focused_band], LV_ANIM_ON);
+    }
 }
 
 // ============================================
@@ -486,7 +480,7 @@ void exitBandDetail() {
 
     // Update footer
     if (bp_footer_text) {
-        lv_label_set_text(bp_footer_text, LV_SYMBOL_UP LV_SYMBOL_DOWN " Navigate   ENTER Detail   " LV_SYMBOL_LEFT LV_SYMBOL_RIGHT " Filter   ESC Back");
+        lv_label_set_text(bp_footer_text, LV_SYMBOL_UP LV_SYMBOL_DOWN " Navigate   ENTER Detail   L License   M Mode   ESC Back");
     }
 }
 
@@ -501,50 +495,45 @@ static void bp_key_handler(lv_event_t* e) {
     int band_count = getBandCount();
 
     if (bp_view_mode == BP_VIEW_OVERVIEW) {
-        // Overview navigation
+        // Overview navigation - simple UP/DOWN for single-column list
         switch (key) {
             case LV_KEY_UP:
-                if (bp_focused_band >= 2) {
-                    bp_focused_band -= 2;
+                if (bp_focused_band > 0) {
+                    bp_focused_band--;
                     updateBandCardFocus();
+                    // Scroll focused card into view
+                    if (bp_band_cards[bp_focused_band]) {
+                        lv_obj_scroll_to_view(bp_band_cards[bp_focused_band], LV_ANIM_ON);
+                    }
                 }
                 lv_event_stop_processing(e);
                 break;
 
             case LV_KEY_DOWN:
-                if (bp_focused_band + 2 < band_count) {
-                    bp_focused_band += 2;
+                if (bp_focused_band < band_count - 1) {
+                    bp_focused_band++;
                     updateBandCardFocus();
+                    // Scroll focused card into view
+                    if (bp_band_cards[bp_focused_band]) {
+                        lv_obj_scroll_to_view(bp_band_cards[bp_focused_band], LV_ANIM_ON);
+                    }
                 }
                 lv_event_stop_processing(e);
                 break;
 
             case LV_KEY_LEFT:
-                // Cycle license class (when not on rightmost column or when mode filter focused)
-                if (bp_focused_band % 2 == 0) {
-                    // Left column - cycle license
-                    cycleBPLicensePrev();
-                    updateLicenseLabel();
-                    updateBandPlansOverview();
-                } else {
-                    // Move to left column
-                    bp_focused_band--;
-                    updateBandCardFocus();
-                }
+                // Cycle license class backward
+                cycleBPLicensePrev();
+                updateLicenseLabel();
+                updateBandPlansOverview();
                 lv_event_stop_processing(e);
                 break;
 
             case LV_KEY_RIGHT:
-                if (bp_focused_band % 2 == 1 || bp_focused_band == band_count - 1) {
-                    // Right column or last band - cycle mode filter
-                    cycleBPModeFilterNext();
-                    updateModeLabel();
-                    updateBandPlansOverview();
-                } else {
-                    // Move to right column
-                    bp_focused_band++;
-                    updateBandCardFocus();
-                }
+                // Cycle mode filter forward
+                cycleBPModeFilterNext();
+                updateModeLabel();
+                updateBandPlansOverview();
                 lv_event_stop_processing(e);
                 break;
 
@@ -560,7 +549,7 @@ static void bp_key_handler(lv_event_t* e) {
 
             case 'L':
             case 'l':
-                // Quick license cycle
+                // Quick license cycle forward
                 cycleBPLicenseNext();
                 updateLicenseLabel();
                 updateBandPlansOverview();
@@ -569,7 +558,7 @@ static void bp_key_handler(lv_event_t* e) {
 
             case 'M':
             case 'm':
-                // Quick mode filter cycle
+                // Quick mode filter cycle forward
                 cycleBPModeFilterNext();
                 updateModeLabel();
                 updateBandPlansOverview();
@@ -675,7 +664,6 @@ lv_obj_t* createBandPlansScreen() {
     bp_view_mode = BP_VIEW_OVERVIEW;
     bp_focused_band = 0;
     bp_focused_row = 0;
-    bp_control_focus = 0;
 
     // Create screen
     lv_obj_t* screen = createScreen();
@@ -707,33 +695,39 @@ lv_obj_t* createBandPlansScreen() {
     lv_obj_set_style_pad_all(control_row, 0, 0);
     lv_obj_clear_flag(control_row, LV_OBJ_FLAG_SCROLLABLE);
 
-    // License selector
+    // License selector with "L" key hint
     lv_obj_t* lic_container = lv_obj_create(control_row);
-    lv_obj_set_size(lic_container, 200, 28);
+    lv_obj_set_size(lic_container, 210, 28);
     lv_obj_set_pos(lic_container, 0, 0);
     lv_obj_set_style_bg_color(lic_container, getThemeColors()->bg_layer2, 0);
     lv_obj_set_style_bg_opa(lic_container, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(lic_container, 6, 0);
     lv_obj_set_style_border_width(lic_container, 1, 0);
-    lv_obj_set_style_border_color(lic_container, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_border_color(lic_container, getThemeColors()->card_border, 0);
     lv_obj_set_style_pad_all(lic_container, 0, 0);
     lv_obj_clear_flag(lic_container, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* lic_key = lv_label_create(lic_container);
+    lv_label_set_text(lic_key, "[L]");
+    lv_obj_set_style_text_font(lic_key, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(lic_key, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_pos(lic_key, 6, 6);
 
     lv_obj_t* lic_prefix = lv_label_create(lic_container);
     lv_label_set_text(lic_prefix, "License:");
     lv_obj_set_style_text_font(lic_prefix, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(lic_prefix, LV_COLOR_TEXT_SECONDARY, 0);
-    lv_obj_set_pos(lic_prefix, 8, 6);
+    lv_obj_set_pos(lic_prefix, 30, 6);
 
     bp_license_label = lv_label_create(lic_container);
     lv_obj_set_style_text_font(bp_license_label, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(bp_license_label, LV_COLOR_ACCENT_CYAN, 0);
-    lv_obj_set_pos(bp_license_label, 70, 6);
+    lv_obj_set_style_text_color(bp_license_label, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_pos(bp_license_label, 90, 6);
     updateLicenseLabel();
 
-    // Mode filter selector
+    // Mode filter selector with "M" key hint
     lv_obj_t* mode_container = lv_obj_create(control_row);
-    lv_obj_set_size(mode_container, 200, 28);
+    lv_obj_set_size(mode_container, 210, 28);
     lv_obj_set_pos(mode_container, 220, 0);
     lv_obj_set_style_bg_color(mode_container, getThemeColors()->bg_layer2, 0);
     lv_obj_set_style_bg_opa(mode_container, LV_OPA_COVER, 0);
@@ -743,33 +737,35 @@ lv_obj_t* createBandPlansScreen() {
     lv_obj_set_style_pad_all(mode_container, 0, 0);
     lv_obj_clear_flag(mode_container, LV_OBJ_FLAG_SCROLLABLE);
 
+    lv_obj_t* mode_key = lv_label_create(mode_container);
+    lv_label_set_text(mode_key, "[M]");
+    lv_obj_set_style_text_font(mode_key, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(mode_key, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_pos(mode_key, 6, 6);
+
     lv_obj_t* mode_prefix = lv_label_create(mode_container);
     lv_label_set_text(mode_prefix, "Mode:");
     lv_obj_set_style_text_font(mode_prefix, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(mode_prefix, LV_COLOR_TEXT_SECONDARY, 0);
-    lv_obj_set_pos(mode_prefix, 8, 6);
+    lv_obj_set_pos(mode_prefix, 32, 6);
 
     bp_mode_label = lv_label_create(mode_container);
     lv_obj_set_style_text_font(bp_mode_label, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(bp_mode_label, LV_COLOR_TEXT_PRIMARY, 0);
-    lv_obj_set_pos(bp_mode_label, 55, 6);
+    lv_obj_set_pos(bp_mode_label, 72, 6);
     updateModeLabel();
 
-    // Hint for shortcuts
-    lv_obj_t* hint = lv_label_create(control_row);
-    lv_label_set_text(hint, "L/M");
-    lv_obj_set_style_text_font(hint, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(hint, LV_COLOR_TEXT_TERTIARY, 0);
-    lv_obj_set_pos(hint, 430, 6);
-
-    // ===== Content Area =====
+    // ===== Content Area (scrollable) =====
     bp_content = lv_obj_create(screen);
-    lv_obj_set_size(bp_content, SCREEN_WIDTH - 20, 175);
+    lv_obj_set_size(bp_content, SCREEN_WIDTH - 20, 180);
     lv_obj_set_pos(bp_content, 10, HEADER_HEIGHT + 38);
     lv_obj_set_style_bg_opa(bp_content, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(bp_content, 0, 0);
     lv_obj_set_style_pad_all(bp_content, 0, 0);
-    lv_obj_clear_flag(bp_content, LV_OBJ_FLAG_SCROLLABLE);
+    // Enable vertical scrolling for band list
+    lv_obj_add_flag(bp_content, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(bp_content, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(bp_content, LV_SCROLLBAR_MODE_AUTO);
 
     // Populate content
     updateBandPlansOverview();
@@ -785,7 +781,7 @@ lv_obj_t* createBandPlansScreen() {
     lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
 
     bp_footer_text = lv_label_create(footer);
-    lv_label_set_text(bp_footer_text, LV_SYMBOL_UP LV_SYMBOL_DOWN " Navigate   ENTER Detail   " LV_SYMBOL_LEFT LV_SYMBOL_RIGHT " Filter   ESC Back");
+    lv_label_set_text(bp_footer_text, LV_SYMBOL_UP LV_SYMBOL_DOWN " Navigate   ENTER Detail   L License   M Mode   ESC Back");
     lv_obj_set_style_text_font(bp_footer_text, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(bp_footer_text, LV_COLOR_TEXT_TERTIARY, 0);
     lv_obj_align(bp_footer_text, LV_ALIGN_CENTER, 0, 0);
