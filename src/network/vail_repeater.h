@@ -274,7 +274,7 @@ void connectToVail(String channel) {
   webSocket.enableHeartbeat(10000, 5000, 3);
 
   // Set subprotocol using extra headers (WebSocketsClient method)
-  webSocket.setExtraHeaders("Sec-WebSocket-Protocol: json.vail.woozle.org");
+  webSocket.setExtraHeaders("Sec-WebSocket-Protocol: json.vailmorse.com");
 
   // Simple beginSSL - library should handle SSL automatically
   webSocket.beginSSL(vailServer.c_str(), vailPort, path.c_str());
@@ -526,6 +526,7 @@ void sendInitialMessage() {
   doc["Callsign"] = vailCallsign;
   doc["TxTone"] = vailTxTone;
   doc["Private"] = false;  // Public room
+  doc["Decoder"] = false;  // Morse decoder disabled
 
   String output;
   serializeJson(doc, output);
@@ -547,6 +548,8 @@ void sendKeepalive() {
   JsonArray duration = doc.createNestedArray("Duration");  // Empty array
   doc["Callsign"] = vailCallsign;
   doc["TxTone"] = vailTxTone;
+  doc["Private"] = false;  // Public room
+  doc["Decoder"] = false;  // Morse decoder disabled
 
   String output;
   serializeJson(doc, output);
