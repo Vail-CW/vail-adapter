@@ -681,12 +681,16 @@ void continueAfterFeedback() {
 }
 
 // Get progress toward next level (0-100)
+// Progress is based on correct answers needed to advance
+// Need KOCH_MIN_ATTEMPTS correct at KOCH_ACCURACY_THRESHOLD (90%)
+// So effectively need ~MIN_ATTEMPTS correct answers with good accuracy
 int getKochLevelProgress() {
   if (kochProgress.sessionTotal < KOCH_MIN_ATTEMPTS) {
-    // Show progress toward minimum attempts
-    return (kochProgress.sessionTotal * 100) / KOCH_MIN_ATTEMPTS;
+    // Phase 1: Need minimum attempts - show correct answers progress
+    // Use correct answers, not total, so incorrect doesn't increase bar
+    return (kochProgress.sessionCorrect * 100) / KOCH_MIN_ATTEMPTS;
   }
-  // Show accuracy progress toward 90%
+  // Phase 2: Have enough attempts - show accuracy progress toward 90%
   int accuracy = getKochSessionAccuracy();
   if (accuracy >= KOCH_ACCURACY_THRESHOLD) {
     return 100;

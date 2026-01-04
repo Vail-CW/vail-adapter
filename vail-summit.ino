@@ -491,7 +491,8 @@ void loop() {
   }
 
   // Update Vail Master if in practice mode
-  if (currentMode == MODE_VAIL_MASTER_PRACTICE) {
+  // Note: Use LVGL mode constant since that's what's set by mode integration
+  if (currentMode == LVGL_MODE_VAIL_MASTER_PRACTICE) {
     vmUpdateKeyer();
   }
 
@@ -541,5 +542,5 @@ void loop() {
          currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY ||
          currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_WEB_PRACTICE ||
          currentMode == MODE_VAIL_REPEATER || currentMode == MODE_BT_HID ||
-         currentMode == MODE_BT_MIDI || currentMode == MODE_VAIL_MASTER_PRACTICE) ? 1 : 10);
+         currentMode == MODE_BT_MIDI || currentMode == LVGL_MODE_VAIL_MASTER_PRACTICE) ? 1 : 10);
 }

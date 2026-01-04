@@ -15,6 +15,7 @@
 #include <Arduino.h>
 #include <Preferences.h>
 #include "../core/config.h"
+#include "../core/task_manager.h"
 #include "../settings/settings_cw.h"
 #include "../audio/morse_decoder_adaptive.h"
 #include "training_vail_master_data.h"
@@ -509,7 +510,7 @@ void vmEndSession() {
     vmNeedsUIUpdate = true;
 
     // Stop any playing tone
-    stopTone();
+    requestStopTone();  // Non-blocking request to Core 0
 }
 
 // ============================================
@@ -715,9 +716,8 @@ void vmUpdateKeyer() {
         return;
     }
 
-    // Read paddle inputs
-    vmDitPressed = (digitalRead(DIT_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
-    vmDahPressed = (digitalRead(DAH_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DAH_PIN) > TOUCH_THRESHOLD);
+    // Read paddle inputs from audio task (sampled at ~1ms on Core 0)
+    getPaddleState(&vmDitPressed, &vmDahPressed);
 
     // Transition from READY to LISTENING on first key
     if (vmState == VM_STATE_READY && (vmDitPressed || vmDahPressed)) {
@@ -750,37 +750,34 @@ void vmUpdateKeyer() {
 
 void vmStraightKeyHandler() {
     unsigned long currentTime = millis();
-    bool toneOn = isTonePlaying();
 
-    if (vmDitPressed && !toneOn) {
-        // Tone starting
-        if (vmLastToneState == false) {
-            if (vmLastStateChangeTime > 0) {
-                float silenceDuration = currentTime - vmLastStateChangeTime;
-                if (silenceDuration > 0) {
-                    vmDecoder.addTiming(-silenceDuration);
-                }
+    // Use vmLastToneState to track what we've requested (not what's actually playing)
+    // This prevents flooding the request queue with redundant requests
+    if (vmDitPressed && !vmLastToneState) {
+        // Tone starting - only request once
+        if (vmLastStateChangeTime > 0) {
+            float silenceDuration = currentTime - vmLastStateChangeTime;
+            if (silenceDuration > 0) {
+                vmDecoder.addTiming(-silenceDuration);
             }
-            vmLastStateChangeTime = currentTime;
-            vmLastToneState = true;
         }
-        startTone(cwTone);
+        vmLastStateChangeTime = currentTime;
+        vmLastToneState = true;
+        requestStartTone(cwTone);  // Non-blocking request to Core 0
     }
-    else if (vmDitPressed && toneOn) {
-        continueTone(cwTone);
+    else if (vmDitPressed && vmLastToneState) {
+        // Key held - audio task keeps buffer filled, nothing to do
     }
-    else if (!vmDitPressed && toneOn) {
-        // Tone stopping
-        if (vmLastToneState == true) {
-            float toneDuration = currentTime - vmLastStateChangeTime;
-            if (toneDuration > 0) {
-                vmDecoder.addTiming(toneDuration);
-                vmLastElementTime = currentTime;
-            }
-            vmLastStateChangeTime = currentTime;
-            vmLastToneState = false;
+    else if (!vmDitPressed && vmLastToneState) {
+        // Tone stopping - only request once
+        float toneDuration = currentTime - vmLastStateChangeTime;
+        if (toneDuration > 0) {
+            vmDecoder.addTiming(toneDuration);
+            vmLastElementTime = currentTime;
         }
-        stopTone();
+        vmLastStateChangeTime = currentTime;
+        vmLastToneState = false;
+        requestStopTone();  // Non-blocking request to Core 0
     }
 }
 
@@ -790,7 +787,7 @@ void vmIambicKeyerHandler() {
     // If not actively sending or spacing, check for new input
     if (!vmKeyerActive && !vmInSpacing) {
         if (vmDitPressed || vmDitMemory) {
-            // Start sending dit
+            // Start sending dit - only request tone once
             if (vmLastToneState == false) {
                 if (vmLastStateChangeTime > 0) {
                     float silenceDuration = currentTime - vmLastStateChangeTime;
@@ -800,6 +797,7 @@ void vmIambicKeyerHandler() {
                 }
                 vmLastStateChangeTime = currentTime;
                 vmLastToneState = true;
+                requestStartTone(cwTone);  // Non-blocking request to Core 0 - only once!
             }
 
             vmKeyerActive = true;
@@ -807,11 +805,10 @@ void vmIambicKeyerHandler() {
             vmSendingDah = false;
             vmInSpacing = false;
             vmElementStartTime = currentTime;
-            startTone(cwTone);
             vmDitMemory = false;
         }
         else if (vmDahPressed || vmDahMemory) {
-            // Start sending dah
+            // Start sending dah - only request tone once
             if (vmLastToneState == false) {
                 if (vmLastStateChangeTime > 0) {
                     float silenceDuration = currentTime - vmLastStateChangeTime;
@@ -821,6 +818,7 @@ void vmIambicKeyerHandler() {
                 }
                 vmLastStateChangeTime = currentTime;
                 vmLastToneState = true;
+                requestStartTone(cwTone);  // Non-blocking request to Core 0 - only once!
             }
 
             vmKeyerActive = true;
@@ -828,7 +826,6 @@ void vmIambicKeyerHandler() {
             vmSendingDah = true;
             vmInSpacing = false;
             vmElementStartTime = currentTime;
-            startTone(cwTone);
             vmDahMemory = false;
         }
     }
@@ -836,7 +833,7 @@ void vmIambicKeyerHandler() {
     else if (vmKeyerActive && !vmInSpacing) {
         unsigned long elementDuration = vmSendingDit ? vmDitDuration : (vmDitDuration * 3);
 
-        continueTone(cwTone);
+        // No action needed - audio task keeps buffer filled
 
         // Check for paddle input during element (iambic squeeze)
         if (vmDitPressed && vmDahPressed) {
@@ -860,9 +857,9 @@ void vmIambicKeyerHandler() {
                 }
                 vmLastStateChangeTime = currentTime;
                 vmLastToneState = false;
+                requestStopTone();  // Non-blocking request to Core 0 - only once!
             }
 
-            stopTone();
             vmKeyerActive = false;
             vmSendingDit = false;
             vmSendingDah = false;
@@ -905,7 +902,7 @@ void vmClearEcho() {
 }
 
 void vmHandleEsc() {
-    stopTone();
+    requestStopTone();  // Non-blocking request to Core 0
     vmDecoder.flush();
     vmActive = false;
     vmState = VM_STATE_MENU;
