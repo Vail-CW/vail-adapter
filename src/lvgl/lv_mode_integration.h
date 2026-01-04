@@ -105,6 +105,23 @@
 #define LVGL_MODE_POTA_FILTERS           65
 #define LVGL_MODE_POTA_ACTIVATE          66
 
+// Koch Method sub-modes
+#define LVGL_MODE_KOCH_PRACTICE          67
+#define LVGL_MODE_KOCH_SETTINGS          68
+#define LVGL_MODE_KOCH_STATISTICS        69
+
+// Vail Master sub-modes
+#define LVGL_MODE_VAIL_MASTER            70
+#define LVGL_MODE_VAIL_MASTER_PRACTICE   71
+#define LVGL_MODE_VAIL_MASTER_SETTINGS   72
+#define LVGL_MODE_VAIL_MASTER_HISTORY    73
+#define LVGL_MODE_VAIL_MASTER_CHARSET    74
+
+// Koch Method additional sub-modes
+#define LVGL_MODE_KOCH_HELP              75
+#define LVGL_MODE_KOCH_CHAR_REF          76
+#define LVGL_MODE_KOCH_NEW_CHAR          77
+
 // ============================================
 // Forward declarations from main file
 // ============================================
@@ -119,6 +136,7 @@ extern LGFX tft;
 extern void startPracticeMode(LGFX& tft);
 extern void startVailRepeater(LGFX& tft);
 extern void startKochMethod(LGFX& tft);
+extern void initKochPracticeSession();
 extern void startCWAcademy(LGFX& tft);
 extern void startMorseShooter(LGFX& tft);
 extern void loadShooterPrefs();  // Load shooter settings before showing settings screen
@@ -147,6 +165,7 @@ extern void startHearItTypeItMode(LGFX& tft);
 extern void startLicenseQuiz(LGFX& tft, int licenseType);
 extern void startLicenseStats(LGFX& tft);
 extern void updateLicenseQuizDisplay();
+extern void startVailMaster(LGFX& tft);
 
 // Forward declaration for license session
 extern struct LicenseStudySession licenseSession;
@@ -324,6 +343,18 @@ void initializeModeInt(int mode) {
             Serial.println("[ModeInit] Starting Koch Method");
             startKochMethod(tft);
             break;
+        case LVGL_MODE_KOCH_PRACTICE:
+            Serial.println("[ModeInit] Starting Koch Practice");
+            initKochPracticeSession();
+            break;
+        case LVGL_MODE_KOCH_SETTINGS:
+            Serial.println("[ModeInit] Starting Koch Settings");
+            // Settings screen handles its own init
+            break;
+        case LVGL_MODE_KOCH_STATISTICS:
+            Serial.println("[ModeInit] Starting Koch Statistics");
+            // Statistics screen handles its own init
+            break;
         case LVGL_MODE_CW_ACADEMY_TRACK_SELECT:
             Serial.println("[ModeInit] Starting CW Academy");
             startCWAcademy(tft);
@@ -344,6 +375,10 @@ void initializeModeInt(int mode) {
         case LVGL_MODE_HEAR_IT_MENU:
             Serial.println("[ModeInit] Starting Hear It Type It");
             startHearItTypeItMode(tft);
+            break;
+        case LVGL_MODE_VAIL_MASTER:
+            Serial.println("[ModeInit] Starting Vail Master");
+            startVailMaster(tft);
             break;
 
         // Game modes
@@ -612,7 +647,24 @@ int getParentModeInt(int mode) {
         case LVGL_MODE_HEAR_IT_START:
         case LVGL_MODE_KOCH_METHOD:
         case LVGL_MODE_CW_ACADEMY_TRACK_SELECT:
+        case LVGL_MODE_VAIL_MASTER:
             return LVGL_MODE_TRAINING_MENU;
+
+        // Vail Master sub-screens return to Vail Master menu
+        case LVGL_MODE_VAIL_MASTER_PRACTICE:
+        case LVGL_MODE_VAIL_MASTER_SETTINGS:
+        case LVGL_MODE_VAIL_MASTER_HISTORY:
+        case LVGL_MODE_VAIL_MASTER_CHARSET:
+            return LVGL_MODE_VAIL_MASTER;
+
+        // Koch Method sub-screens return to Koch main
+        case LVGL_MODE_KOCH_PRACTICE:
+        case LVGL_MODE_KOCH_SETTINGS:
+        case LVGL_MODE_KOCH_STATISTICS:
+        case LVGL_MODE_KOCH_HELP:
+        case LVGL_MODE_KOCH_CHAR_REF:
+        case LVGL_MODE_KOCH_NEW_CHAR:
+            return LVGL_MODE_KOCH_METHOD;
 
         // Hear It submenu items
         case LVGL_MODE_HEAR_IT_CONFIGURE:

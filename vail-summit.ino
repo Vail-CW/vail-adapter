@@ -62,6 +62,7 @@ using namespace lgfx::v1::fonts;
 #include "src/training/training_cwa.h"
 #include "src/training/training_license_ui.h"
 #include "src/training/training_license_input.h"
+#include "src/training/training_vail_master.h"
 
 // Games
 #include "src/games/game_morse_shooter.h"
@@ -489,6 +490,11 @@ void loop() {
     handleMemoryPaddleInput(ditPressed, dahPressed);
   }
 
+  // Update Vail Master if in practice mode
+  if (currentMode == MODE_VAIL_MASTER_PRACTICE) {
+    vmUpdateKeyer();
+  }
+
   // Update Radio Output if in radio output mode
   if (currentMode == MODE_RADIO_OUTPUT) {
     updateRadioOutput();
@@ -535,5 +541,5 @@ void loop() {
          currentMode == MODE_MORSE_SHOOTER || currentMode == MODE_MORSE_MEMORY ||
          currentMode == MODE_RADIO_OUTPUT || currentMode == MODE_WEB_PRACTICE ||
          currentMode == MODE_VAIL_REPEATER || currentMode == MODE_BT_HID ||
-         currentMode == MODE_BT_MIDI) ? 1 : 10);
+         currentMode == MODE_BT_MIDI || currentMode == MODE_VAIL_MASTER_PRACTICE) ? 1 : 10);
 }

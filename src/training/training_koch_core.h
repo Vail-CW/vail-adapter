@@ -13,10 +13,11 @@
 // Koch Method Configuration
 // ============================================
 
-// Standard Koch Method character sequence (44 characters)
-// Order: K M R S U A P T L O W I N J E F Y , V G 5 / Q 9 Z H 3 8 B ? 4 2 7 C 1 D 6 0 X
+// Standard Koch Method character sequence (40 characters)
+// Order: K M R S U A P T L O W I N J E F [space] Y , V G 5 / Q 9 Z H 3 8 B ? 4 2 7 C 1 D 6 0 X
+// Note: Space is at position 17 (index 16) - this is intentional in the Koch method
 const char KOCH_SEQUENCE[] = "KMRSUAPTLOWINJEF Y,VG5/Q9ZH38B?427C1D60X";
-const int KOCH_TOTAL_LESSONS = 44;
+const int KOCH_TOTAL_LESSONS = 40;
 
 // Default settings
 #define KOCH_DEFAULT_WPM 20
@@ -33,7 +34,7 @@ const int KOCH_TOTAL_LESSONS = 44;
 // ============================================
 
 struct KochProgress {
-  int currentLesson;        // Current lesson number (1-44)
+  int currentLesson;        // Current lesson number (1-40)
   int wpm;                  // Speed setting (15-30 WPM)
   int groupLength;          // Characters per group (3-10)
   int sessionCorrect;       // Correct answers this session
@@ -524,6 +525,184 @@ void checkKochAnswer(LGFX& tft) {
   Serial.print(accuracy);
   Serial.print("%) Streak: ");
   Serial.println(kochCurrentStreak);
+}
+
+// ============================================
+// LVGL Practice Session Management
+// ============================================
+
+// Initialize a new practice session (called when entering practice screen)
+void initKochPracticeSession() {
+  kochCurrentGroup = "";
+  kochUserInput = "";
+  kochWaitingForInput = false;
+  kochShowingFeedback = false;
+  kochCorrectAnswer = false;
+  kochCurrentStreak = 0;
+
+  // Load saved progress
+  loadKochProgress();
+
+  Serial.println("[Koch] Practice session initialized");
+  Serial.printf("[Koch] Level %d, WPM %d, Group Length %d\n",
+                kochProgress.currentLesson, kochProgress.wpm, kochProgress.groupLength);
+}
+
+// Get current group for display (LVGL callable)
+String getCurrentKochGroup() {
+  return kochCurrentGroup;
+}
+
+// Get user input for display (LVGL callable)
+String getKochUserInput() {
+  return kochUserInput;
+}
+
+// Set user input (LVGL callable)
+void setKochUserInput(const String& input) {
+  kochUserInput = input;
+}
+
+// Append character to user input (LVGL callable)
+void appendKochUserInput(char c) {
+  kochUserInput += (char)toupper(c);
+}
+
+// Delete last character from user input (LVGL callable)
+void deleteKochUserInput() {
+  if (kochUserInput.length() > 0) {
+    kochUserInput.remove(kochUserInput.length() - 1);
+  }
+}
+
+// Clear user input (LVGL callable)
+void clearKochUserInput() {
+  kochUserInput = "";
+}
+
+// Check if waiting for input
+bool isKochWaitingForInput() {
+  return kochWaitingForInput;
+}
+
+// Check if showing feedback
+bool isKochShowingFeedback() {
+  return kochShowingFeedback;
+}
+
+// Check if last answer was correct
+bool wasKochAnswerCorrect() {
+  return kochCorrectAnswer;
+}
+
+// Get feedback message
+String getKochFeedbackMessage() {
+  return kochCurrentMessage;
+}
+
+// Get current streak
+int getKochCurrentStreak() {
+  return kochCurrentStreak;
+}
+
+// Get best streak
+int getKochBestStreak() {
+  return kochBestStreak;
+}
+
+// Get milestones bitmask
+int getKochMilestones() {
+  return kochMilestonesHit;
+}
+
+// Generate and start new group (LVGL callable)
+void startNewKochGroupLVGL() {
+  startNewKochGroup();
+}
+
+// Play current group (LVGL callable)
+void playKochGroupLVGL() {
+  playKochGroup();
+}
+
+// Submit answer and check result (LVGL callable)
+// Returns true if correct, false if wrong
+bool submitKochAnswerLVGL() {
+  kochUserInput.toUpperCase();
+  kochCorrectAnswer = kochUserInput.equals(kochCurrentGroup);
+
+  // Update statistics based on current mode
+  if (kochCurrentMode == KOCH_MODE_PRACTICE) {
+    kochPracticeTotal++;
+    if (kochCorrectAnswer) {
+      kochPracticeCorrect++;
+    }
+  } else {
+    kochProgress.sessionTotal++;
+    if (kochCorrectAnswer) {
+      kochProgress.sessionCorrect++;
+    }
+  }
+
+  // Streak tracking
+  if (kochCorrectAnswer) {
+    kochCurrentStreak++;
+    if (kochCurrentStreak > kochBestStreak) {
+      kochBestStreak = kochCurrentStreak;
+    }
+    kochCurrentMessage = "CORRECT!";
+  } else {
+    kochCurrentStreak = 0;
+    kochCurrentMessage = "Wrong: " + kochCurrentGroup;
+  }
+
+  // Audio feedback
+  if (kochCorrectAnswer) {
+    beep(TONE_SUCCESS, BEEP_MEDIUM);
+  } else {
+    beep(TONE_ERROR, BEEP_MEDIUM);
+  }
+
+  // Save progress (test mode only)
+  if (kochCurrentMode == KOCH_MODE_TEST) {
+    saveKochProgress();
+  }
+
+  kochShowingFeedback = true;
+  kochWaitingForInput = false;
+
+  return kochCorrectAnswer;
+}
+
+// Continue after feedback (LVGL callable)
+void continueAfterFeedback() {
+  kochShowingFeedback = false;
+  kochUserInput = "";
+}
+
+// Get progress toward next level (0-100)
+int getKochLevelProgress() {
+  if (kochProgress.sessionTotal < KOCH_MIN_ATTEMPTS) {
+    // Show progress toward minimum attempts
+    return (kochProgress.sessionTotal * 100) / KOCH_MIN_ATTEMPTS;
+  }
+  // Show accuracy progress toward 90%
+  int accuracy = getKochSessionAccuracy();
+  if (accuracy >= KOCH_ACCURACY_THRESHOLD) {
+    return 100;
+  }
+  return (accuracy * 100) / KOCH_ACCURACY_THRESHOLD;
+}
+
+// Format characters learned as spaced string (e.g., "K M R S U")
+String getKochCharactersSpaced() {
+  String charSet = getKochCharacterSet();
+  String spaced = "";
+  for (int i = 0; i < charSet.length(); i++) {
+    if (i > 0) spaced += " ";
+    spaced += charSet[i];
+  }
+  return spaced;
 }
 
 #endif // TRAINING_KOCH_CORE_H

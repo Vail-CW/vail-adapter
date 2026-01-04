@@ -74,7 +74,13 @@ enum MenuMode {
   MODE_SUMMIT_CHAT,
   // Device Bluetooth submenu
   MODE_DEVICE_BT_SUBMENU,
-  MODE_BT_KEYBOARD_SETTINGS
+  MODE_BT_KEYBOARD_SETTINGS,
+  // Vail Master (CW Sending Trainer)
+  MODE_VAIL_MASTER,
+  MODE_VAIL_MASTER_PRACTICE,
+  MODE_VAIL_MASTER_SETTINGS,
+  MODE_VAIL_MASTER_HISTORY,
+  MODE_VAIL_MASTER_CHARSET
 };
 
 extern MenuMode currentMode;
@@ -170,14 +176,16 @@ String bluetoothMenuIcons[BLUETOOTH_MENU_ITEMS] = {
 };
 
 // Training submenu
-#define TRAINING_MENU_ITEMS 3
+#define TRAINING_MENU_ITEMS 4
 String trainingMenuOptions[TRAINING_MENU_ITEMS] = {
+  "Vail Master",
   "Hear It Type It",
   "Koch Method",
   "CW Academy"
 };
 
 String trainingMenuIcons[TRAINING_MENU_ITEMS] = {
+  "V",  // Vail Master
   "H",  // Hear It Type It
   "K",  // Koch Method
   "A"   // CW Academy

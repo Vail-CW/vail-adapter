@@ -18,6 +18,7 @@
 #include "../training/training_license_data.h"
 #include "../training/training_license_stats.h"
 #include "../training/training_license_downloader.h"
+#include "lv_vail_master_screens.h"
 
 // External state from training modules
 extern int cwSpeed;
@@ -1737,35 +1738,161 @@ void updateHearItResult(bool correct) {
 }
 
 // ============================================
-// Koch Method Screen
+// Koch Method Screens
 // ============================================
 
+// Forward declarations for Koch core functions
+extern struct KochProgress kochProgress;
+extern int getKochSessionAccuracy();
+extern int getKochCurrentStreak();
+extern int getKochBestStreak();
+extern int getKochMilestones();
+extern int getKochLevelProgress();
+extern String getKochCharacterSet();
+extern String getKochCharactersSpaced();
+extern String getCurrentKochGroup();
+extern String getKochUserInput();
+extern void appendKochUserInput(char c);
+extern void deleteKochUserInput();
+extern void clearKochUserInput();
+extern void startNewKochGroupLVGL();
+extern void playKochGroupLVGL();
+extern bool submitKochAnswerLVGL();
+extern void continueAfterFeedback();
+extern bool isKochWaitingForInput();
+extern bool isKochShowingFeedback();
+extern bool wasKochAnswerCorrect();
+extern String getKochFeedbackMessage();
+extern bool canAdvanceLesson();
+extern void advanceLesson();
+extern void regressLesson();
+extern void saveKochProgress();
+
+// Mode constants (defined in lv_mode_integration.h)
+#define KOCH_MODE_PRACTICE_INT 67
+#define KOCH_MODE_SETTINGS_INT 68
+#define KOCH_MODE_STATISTICS_INT 69
+#define KOCH_MODE_HELP_INT 75
+#define KOCH_MODE_CHAR_REF_INT 76
+#define KOCH_MODE_NEW_CHAR_INT 77
+
+// Koch Main Screen widgets
 static lv_obj_t* koch_screen = NULL;
 static lv_obj_t* koch_level_label = NULL;
 static lv_obj_t* koch_chars_label = NULL;
 static lv_obj_t* koch_progress_bar = NULL;
+static lv_obj_t* koch_accuracy_label = NULL;
+static lv_obj_t* koch_attempts_label = NULL;
+static lv_obj_t* koch_streak_label = NULL;
 
-// Key event callback for Koch Method keyboard input
-static void koch_key_event_cb(lv_event_t* e) {
+// Koch Practice Screen widgets
+static lv_obj_t* koch_practice_screen = NULL;
+static lv_obj_t* koch_practice_correct_label = NULL;
+static lv_obj_t* koch_practice_attempts_label = NULL;
+static lv_obj_t* koch_practice_streak_label = NULL;
+static lv_obj_t* koch_practice_prompt_label = NULL;
+static lv_obj_t* koch_practice_input_label = NULL;
+static lv_obj_t* koch_practice_feedback_label = NULL;
+static lv_obj_t* koch_practice_progress_bar = NULL;
+
+// Koch Settings Screen widgets
+static lv_obj_t* koch_settings_screen = NULL;
+static lv_obj_t* koch_settings_wpm_card = NULL;
+static lv_obj_t* koch_settings_wpm_label = NULL;
+static lv_obj_t* koch_settings_wpm_bar = NULL;
+static lv_obj_t* koch_settings_length_card = NULL;
+static lv_obj_t* koch_settings_length_label = NULL;
+static lv_obj_t* koch_settings_length_bar = NULL;
+static lv_obj_t* koch_settings_level_card = NULL;
+static lv_obj_t* koch_settings_level_label = NULL;
+static lv_obj_t* koch_settings_level_chars = NULL;
+static int koch_settings_selection = 0;  // 0=WPM, 1=Length, 2=Level
+
+// Update visual focus indicator for settings cards
+static void updateKochSettingsFocus() {
+    // Reset all cards to unfocused state
+    if (koch_settings_wpm_card != NULL) {
+        lv_obj_set_style_border_color(koch_settings_wpm_card, getThemeColors()->border_subtle, 0);
+        lv_obj_set_style_border_width(koch_settings_wpm_card, 1, 0);
+        lv_obj_set_style_border_opa(koch_settings_wpm_card, LV_OPA_50, 0);
+    }
+    if (koch_settings_length_card != NULL) {
+        lv_obj_set_style_border_color(koch_settings_length_card, getThemeColors()->border_subtle, 0);
+        lv_obj_set_style_border_width(koch_settings_length_card, 1, 0);
+        lv_obj_set_style_border_opa(koch_settings_length_card, LV_OPA_50, 0);
+    }
+    if (koch_settings_level_card != NULL) {
+        lv_obj_set_style_border_color(koch_settings_level_card, getThemeColors()->border_subtle, 0);
+        lv_obj_set_style_border_width(koch_settings_level_card, 1, 0);
+        lv_obj_set_style_border_opa(koch_settings_level_card, LV_OPA_50, 0);
+    }
+
+    // Highlight selected card with cyan border
+    lv_obj_t* selected_card = NULL;
+    switch (koch_settings_selection) {
+        case 0: selected_card = koch_settings_wpm_card; break;
+        case 1: selected_card = koch_settings_length_card; break;
+        case 2: selected_card = koch_settings_level_card; break;
+    }
+    if (selected_card != NULL) {
+        lv_obj_set_style_border_color(selected_card, LV_COLOR_ACCENT_CYAN, 0);
+        lv_obj_set_style_border_width(selected_card, 2, 0);
+        lv_obj_set_style_border_opa(selected_card, LV_OPA_COVER, 0);
+    }
+}
+
+// Koch Statistics Screen widgets
+static lv_obj_t* koch_stats_screen = NULL;
+
+// Key event callback for Koch Main Screen
+static void koch_main_key_event_cb(lv_event_t* e) {
     lv_event_code_t code = lv_event_get_code(e);
     if (code != LV_EVENT_KEY) return;
 
     uint32_t key = lv_event_get_key(e);
-    Serial.printf("[Koch LVGL] Key event: %lu (0x%02lX)\n", key, key);
+    Serial.printf("[Koch Main] Key: %lu (0x%02lX)\n", key, key);
 
+    bool handled = true;
     switch(key) {
         case LV_KEY_ESC:
             onLVGLBackNavigation();
             break;
         case LV_KEY_ENTER:
-            // TODO: Start Koch practice (future feature)
+            // Navigate to practice screen
             beep(TONE_SELECT, BEEP_MEDIUM);
+            onLVGLMenuSelect(KOCH_MODE_PRACTICE_INT);
             break;
         case 's':
         case 'S':
-            // TODO: Open Koch settings (future feature)
+            // Navigate to settings screen
             beep(TONE_MENU_NAV, BEEP_SHORT);
+            onLVGLMenuSelect(KOCH_MODE_SETTINGS_INT);
             break;
+        case 'p':
+        case 'P':
+            // Navigate to statistics screen
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+            onLVGLMenuSelect(KOCH_MODE_STATISTICS_INT);
+            break;
+        case '.':
+            // Navigate to help screen
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+            onLVGLMenuSelect(KOCH_MODE_HELP_INT);
+            break;
+        case 'r':
+        case 'R':
+            // Navigate to character reference screen
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+            onLVGLMenuSelect(KOCH_MODE_CHAR_REF_INT);
+            break;
+        default:
+            handled = false;
+            break;
+    }
+
+    // Stop event propagation to prevent double-handling
+    if (handled) {
+        lv_event_stop_bubbling(e);
     }
 }
 
@@ -1785,64 +1912,124 @@ lv_obj_t* createKochMethodScreen() {
     lv_obj_add_style(title, getStyleLabelTitle(), 0);
     lv_obj_align(title, LV_ALIGN_LEFT_MID, 15, 0);
 
-    // Status bar (WiFi + battery) on the right side
+    // Status bar
     createCompactStatusBar(screen);
 
-    // Level indicator
+    // Level card (top, full width) - needs room for level row + characters row
+    // Card has 15px padding, so 80px total gives 50px content area
     lv_obj_t* level_card = lv_obj_create(screen);
-    lv_obj_set_size(level_card, SCREEN_WIDTH - 40, 80);
-    lv_obj_set_pos(level_card, 20, HEADER_HEIGHT + 15);
-    lv_obj_set_layout(level_card, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(level_card, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(level_card, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(level_card, 5, 0);
+    lv_obj_set_size(level_card, SCREEN_WIDTH - 40, 75);
+    lv_obj_set_pos(level_card, 20, HEADER_HEIGHT + 8);
     applyCardStyle(level_card);
+    lv_obj_set_style_pad_all(level_card, 10, 0);  // Reduce padding to fit content
+    lv_obj_clear_flag(level_card, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* level_title = lv_label_create(level_card);
-    lv_label_set_text(level_title, "Current Level");
-    lv_obj_add_style(level_title, getStyleLabelBody(), 0);
-
+    // Level info row - level label on left, mode indicator on right
     koch_level_label = lv_label_create(level_card);
-    lv_label_set_text(koch_level_label, "Level 1");
-    lv_obj_set_style_text_font(koch_level_label, getThemeFonts()->font_title, 0);
+    lv_label_set_text_fmt(koch_level_label, "Level %d of 40", kochProgress.currentLesson);
+    lv_obj_set_style_text_font(koch_level_label, getThemeFonts()->font_subtitle, 0);
     lv_obj_set_style_text_color(koch_level_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_align(koch_level_label, LV_ALIGN_TOP_LEFT, 0, 0);
 
-    // Characters learned
-    lv_obj_t* chars_card = lv_obj_create(screen);
-    lv_obj_set_size(chars_card, SCREEN_WIDTH - 40, 60);
-    lv_obj_set_pos(chars_card, 20, HEADER_HEIGHT + 105);
-    lv_obj_set_layout(chars_card, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(chars_card, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(chars_card, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    applyCardStyle(chars_card);
 
-    lv_obj_t* chars_title = lv_label_create(chars_card);
-    lv_label_set_text(chars_title, "Characters Learned");
-    lv_obj_add_style(chars_title, getStyleLabelBody(), 0);
+    // Characters label - shows current level characters
+    lv_obj_t* chars_title = lv_label_create(level_card);
+    lv_label_set_text(chars_title, "Characters:");
+    lv_obj_set_style_text_font(chars_title, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(chars_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(chars_title, LV_ALIGN_BOTTOM_LEFT, 0, 0);
 
-    koch_chars_label = lv_label_create(chars_card);
-    lv_label_set_text(koch_chars_label, "K M");
-    lv_obj_set_style_text_font(koch_chars_label, getThemeFonts()->font_subtitle, 0);
+    String chars = getKochCharactersSpaced();
+    koch_chars_label = lv_label_create(level_card);
+    lv_label_set_text(koch_chars_label, chars.c_str());
+    lv_obj_set_style_text_font(koch_chars_label, getThemeFonts()->font_body, 0);
     lv_obj_set_style_text_color(koch_chars_label, LV_COLOR_ACCENT_GREEN, 0);
+    lv_obj_align_to(koch_chars_label, chars_title, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
+    lv_label_set_long_mode(koch_chars_label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_width(koch_chars_label, SCREEN_WIDTH - 150);
 
-    // Progress bar
-    lv_obj_t* progress_container = lv_obj_create(screen);
-    lv_obj_set_size(progress_container, SCREEN_WIDTH - 40, 50);
-    lv_obj_set_pos(progress_container, 20, HEADER_HEIGHT + 175);
-    lv_obj_set_layout(progress_container, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(progress_container, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(progress_container, 5, 0);
-    lv_obj_set_style_bg_opa(progress_container, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(progress_container, 0, 0);
+    // Stats row (3 small cards) - reduced padding for better fit
+    const int card_width = (SCREEN_WIDTH - 60) / 3;
+    const int card_height = 60;
+    const int stats_y = HEADER_HEIGHT + 93;  // After level card (75px) + gaps
 
-    lv_obj_t* progress_title = lv_label_create(progress_container);
-    lv_label_set_text(progress_title, "Level Progress");
-    lv_obj_add_style(progress_title, getStyleLabelBody(), 0);
+    // Accuracy card
+    lv_obj_t* acc_card = lv_obj_create(screen);
+    lv_obj_set_size(acc_card, card_width, card_height);
+    lv_obj_set_pos(acc_card, 20, stats_y);
+    applyCardStyle(acc_card);
+    lv_obj_set_style_pad_all(acc_card, 5, 0);  // Reduce padding
+    lv_obj_clear_flag(acc_card, LV_OBJ_FLAG_SCROLLABLE);
 
-    koch_progress_bar = lv_bar_create(progress_container);
-    lv_obj_set_size(koch_progress_bar, SCREEN_WIDTH - 60, 20);
+    int accuracy = getKochSessionAccuracy();
+    koch_accuracy_label = lv_label_create(acc_card);
+    lv_label_set_text_fmt(koch_accuracy_label, "%d%%", accuracy);
+    lv_obj_set_style_text_font(koch_accuracy_label, getThemeFonts()->font_subtitle, 0);
+    lv_obj_set_style_text_color(koch_accuracy_label,
+        accuracy >= 90 ? LV_COLOR_SUCCESS : (accuracy >= 70 ? LV_COLOR_WARNING : LV_COLOR_TEXT_PRIMARY), 0);
+    lv_obj_align(koch_accuracy_label, LV_ALIGN_TOP_MID, 0, 2);
+
+    lv_obj_t* acc_title = lv_label_create(acc_card);
+    lv_label_set_text(acc_title, "Accuracy");
+    lv_obj_set_style_text_font(acc_title, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(acc_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(acc_title, LV_ALIGN_BOTTOM_MID, 0, -2);
+
+    // Attempts card
+    lv_obj_t* att_card = lv_obj_create(screen);
+    lv_obj_set_size(att_card, card_width, card_height);
+    lv_obj_set_pos(att_card, 20 + card_width + 10, stats_y);
+    applyCardStyle(att_card);
+    lv_obj_set_style_pad_all(att_card, 5, 0);  // Reduce padding
+    lv_obj_clear_flag(att_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    koch_attempts_label = lv_label_create(att_card);
+    lv_label_set_text_fmt(koch_attempts_label, "%d/%d",
+        kochProgress.sessionCorrect, kochProgress.sessionTotal);
+    lv_obj_set_style_text_font(koch_attempts_label, getThemeFonts()->font_subtitle, 0);
+    lv_obj_set_style_text_color(koch_attempts_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_align(koch_attempts_label, LV_ALIGN_TOP_MID, 0, 2);
+
+    lv_obj_t* att_title = lv_label_create(att_card);
+    lv_label_set_text(att_title, "Attempts");
+    lv_obj_set_style_text_font(att_title, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(att_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(att_title, LV_ALIGN_BOTTOM_MID, 0, -2);
+
+    // Streak card
+    lv_obj_t* streak_card = lv_obj_create(screen);
+    lv_obj_set_size(streak_card, card_width, card_height);
+    lv_obj_set_pos(streak_card, 20 + (card_width + 10) * 2, stats_y);
+    applyCardStyle(streak_card);
+    lv_obj_set_style_pad_all(streak_card, 5, 0);  // Reduce padding
+    lv_obj_clear_flag(streak_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    koch_streak_label = lv_label_create(streak_card);
+    lv_label_set_text_fmt(koch_streak_label, "%d", getKochCurrentStreak());
+    lv_obj_set_style_text_font(koch_streak_label, getThemeFonts()->font_subtitle, 0);
+    lv_obj_set_style_text_color(koch_streak_label, LV_COLOR_WARNING, 0);
+    lv_obj_align(koch_streak_label, LV_ALIGN_TOP_MID, 0, 2);
+
+    lv_obj_t* streak_title = lv_label_create(streak_card);
+    lv_label_set_text(streak_title, "Streak");
+    lv_obj_set_style_text_font(streak_title, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(streak_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(streak_title, LV_ALIGN_BOTTOM_MID, 0, -2);
+
+    // Progress section
+    const int progress_y = stats_y + card_height + 15;
+    lv_obj_t* progress_title = lv_label_create(screen);
+    lv_label_set_text(progress_title, "Progress to Next Level (need 90% with 10+ attempts)");
+    lv_obj_set_style_text_font(progress_title, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(progress_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_pos(progress_title, 20, progress_y);
+
+    koch_progress_bar = lv_bar_create(screen);
+    lv_obj_set_size(koch_progress_bar, SCREEN_WIDTH - 40, 18);
+    lv_obj_set_pos(koch_progress_bar, 20, progress_y + 18);
     lv_bar_set_range(koch_progress_bar, 0, 100);
-    lv_bar_set_value(koch_progress_bar, 0, LV_ANIM_OFF);
+    int progress = getKochLevelProgress();
+    lv_bar_set_value(koch_progress_bar, progress, LV_ANIM_OFF);
     applyBarStyle(koch_progress_bar);
 
     // Footer
@@ -1854,46 +2041,38 @@ lv_obj_t* createKochMethodScreen() {
     lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* help = lv_label_create(footer);
-    lv_label_set_text(help, "ENTER Start Practice   S Settings   ESC Back");
+    lv_label_set_text(help, "ENTER Practice  S Settings  R Chars  . Help");
     lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);
 
     // Invisible focus container for keyboard input
-    // This widget receives all keyboard input and routes it through koch_key_event_cb
     lv_obj_t* focus_container = lv_obj_create(screen);
-    lv_obj_set_size(focus_container, 1, 1);  // Minimal size (invisible but can receive focus)
-    lv_obj_set_pos(focus_container, -10, -10);  // Position off-screen
+    lv_obj_set_size(focus_container, 1, 1);
+    lv_obj_set_pos(focus_container, -10, -10);
     lv_obj_set_style_bg_opa(focus_container, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(focus_container, 0, 0);
-    lv_obj_set_style_outline_width(focus_container, 0, 0);  // No focus outline
-    lv_obj_set_style_outline_width(focus_container, 0, LV_STATE_FOCUSED);  // No focus outline when focused
+    lv_obj_set_style_outline_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, LV_STATE_FOCUSED);
     lv_obj_clear_flag(focus_container, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);  // Must be clickable to receive focus
-
-    // Add keyboard event handler
-    lv_obj_add_event_cb(focus_container, koch_key_event_cb, LV_EVENT_KEY, NULL);
-
-    // Add to navigation group (enables keyboard input + ESC handling)
+    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(focus_container, koch_main_key_event_cb, LV_EVENT_KEY, NULL);
     addNavigableWidget(focus_container);
 
-    // Put group in edit mode - this makes keys go to the widget instead of navigation
     lv_group_t* group = getLVGLInputGroup();
     if (group != NULL) {
         lv_group_set_editing(group, true);
     }
-
-    // Ensure focus is on our container
     lv_group_focus_obj(focus_container);
 
     koch_screen = screen;
     return screen;
 }
 
-// Update Koch method display
+// Update Koch main screen display
 void updateKochDisplay(int level, const char* chars, int progress_percent) {
     if (koch_level_label != NULL) {
-        lv_label_set_text_fmt(koch_level_label, "Level %d", level);
+        lv_label_set_text_fmt(koch_level_label, "Level %d of 40", level);
     }
     if (koch_chars_label != NULL && chars != NULL) {
         lv_label_set_text(koch_chars_label, chars);
@@ -1901,6 +2080,1320 @@ void updateKochDisplay(int level, const char* chars, int progress_percent) {
     if (koch_progress_bar != NULL) {
         lv_bar_set_value(koch_progress_bar, progress_percent, LV_ANIM_ON);
     }
+    if (koch_accuracy_label != NULL) {
+        int accuracy = getKochSessionAccuracy();
+        lv_label_set_text_fmt(koch_accuracy_label, "%d%%", accuracy);
+        lv_obj_set_style_text_color(koch_accuracy_label,
+            accuracy >= 90 ? LV_COLOR_SUCCESS : (accuracy >= 70 ? LV_COLOR_WARNING : LV_COLOR_TEXT_PRIMARY), 0);
+    }
+    if (koch_attempts_label != NULL) {
+        lv_label_set_text_fmt(koch_attempts_label, "%d/%d",
+            kochProgress.sessionCorrect, kochProgress.sessionTotal);
+    }
+    if (koch_streak_label != NULL) {
+        lv_label_set_text_fmt(koch_streak_label, "%d", getKochCurrentStreak());
+    }
+}
+
+// ============================================
+// Koch Practice Screen
+// ============================================
+
+static void koch_practice_key_event_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+    Serial.printf("[Koch Practice] Key: %lu (0x%02lX)\n", key, key);
+
+    bool handled = true;
+
+    // If showing feedback, SPACE continues
+    if (isKochShowingFeedback()) {
+        if (key == ' ') {
+            continueAfterFeedback();
+            startNewKochGroupLVGL();
+            // Update prompt
+            if (koch_practice_prompt_label != NULL) {
+                lv_label_set_text(koch_practice_prompt_label, "Press SPACE to hear morse");
+                lv_obj_set_style_text_color(koch_practice_prompt_label, LV_COLOR_TEXT_SECONDARY, 0);
+            }
+            if (koch_practice_input_label != NULL) {
+                lv_label_set_text(koch_practice_input_label, "_");
+            }
+            if (koch_practice_feedback_label != NULL) {
+                lv_label_set_text(koch_practice_feedback_label, "");
+            }
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+        } else if (key == LV_KEY_ESC) {
+            saveKochProgress();
+            onLVGLBackNavigation();
+        } else {
+            handled = false;
+        }
+        if (handled) lv_event_stop_bubbling(e);
+        return;
+    }
+
+    switch(key) {
+        case LV_KEY_ESC:
+            saveKochProgress();
+            onLVGLBackNavigation();
+            break;
+
+        case ' ':
+            // Play morse if not waiting for input, or replay if waiting
+            if (!isKochWaitingForInput()) {
+                // Generate new group if needed
+                if (getCurrentKochGroup().length() == 0) {
+                    startNewKochGroupLVGL();
+                }
+                playKochGroupLVGL();
+                if (koch_practice_prompt_label != NULL) {
+                    lv_label_set_text(koch_practice_prompt_label, "Type what you heard:");
+                    lv_obj_set_style_text_color(koch_practice_prompt_label, LV_COLOR_ACCENT_CYAN, 0);
+                }
+            } else {
+                // Replay
+                playKochGroupLVGL();
+            }
+            break;
+
+        case LV_KEY_ENTER:
+            // Submit answer
+            if (isKochWaitingForInput() && getKochUserInput().length() > 0) {
+                bool correct = submitKochAnswerLVGL();
+
+                // Update feedback display
+                if (koch_practice_feedback_label != NULL) {
+                    if (correct) {
+                        lv_label_set_text(koch_practice_feedback_label, "CORRECT!");
+                        lv_obj_set_style_text_color(koch_practice_feedback_label, LV_COLOR_SUCCESS, 0);
+                    } else {
+                        String fb = "Wrong: " + getCurrentKochGroup();
+                        lv_label_set_text(koch_practice_feedback_label, fb.c_str());
+                        lv_obj_set_style_text_color(koch_practice_feedback_label, LV_COLOR_ERROR, 0);
+                    }
+                }
+
+                // Update stats
+                if (koch_practice_correct_label != NULL) {
+                    lv_label_set_text_fmt(koch_practice_correct_label, "%d", kochProgress.sessionCorrect);
+                }
+                if (koch_practice_attempts_label != NULL) {
+                    lv_label_set_text_fmt(koch_practice_attempts_label, "%d", kochProgress.sessionTotal);
+                }
+                if (koch_practice_streak_label != NULL) {
+                    lv_label_set_text_fmt(koch_practice_streak_label, "%d", getKochCurrentStreak());
+                }
+                if (koch_practice_progress_bar != NULL) {
+                    lv_bar_set_value(koch_practice_progress_bar, getKochLevelProgress(), LV_ANIM_ON);
+                }
+
+                // Check if ready to advance to next level
+                if (canAdvanceLesson()) {
+                    // Advance and show new character introduction
+                    advanceLesson();
+                    saveKochProgress();
+                    onLVGLMenuSelect(KOCH_MODE_NEW_CHAR_INT);
+                } else {
+                    // Update prompt for next attempt
+                    if (koch_practice_prompt_label != NULL) {
+                        lv_label_set_text(koch_practice_prompt_label, "Press SPACE to continue");
+                        lv_obj_set_style_text_color(koch_practice_prompt_label, LV_COLOR_TEXT_SECONDARY, 0);
+                    }
+                }
+            }
+            break;
+
+        case LV_KEY_BACKSPACE:
+        case 127:  // DEL
+            if (isKochWaitingForInput()) {
+                deleteKochUserInput();
+                String display = getKochUserInput();
+                if (display.length() == 0) display = "_";
+                else display += "_";
+                if (koch_practice_input_label != NULL) {
+                    lv_label_set_text(koch_practice_input_label, display.c_str());
+                }
+                beep(TONE_MENU_NAV, BEEP_SHORT);
+            }
+            break;
+
+        case '.':
+            // Navigate to help screen
+            saveKochProgress();
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+            onLVGLMenuSelect(KOCH_MODE_HELP_INT);
+            break;
+
+        default:
+            // Handle letter/number input
+            if (isKochWaitingForInput()) {
+                char c = (char)key;
+                if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                    (c >= '0' && c <= '9') || c == ',' || c == '?' || c == '/') {
+                    appendKochUserInput(c);
+                    String display = getKochUserInput() + "_";
+                    if (koch_practice_input_label != NULL) {
+                        lv_label_set_text(koch_practice_input_label, display.c_str());
+                    }
+                    beep(TONE_MENU_NAV, BEEP_SHORT);
+                }
+            } else {
+                handled = false;
+            }
+            break;
+    }
+
+    // Stop event propagation to prevent double-handling
+    if (handled) {
+        lv_event_stop_bubbling(e);
+    }
+}
+
+lv_obj_t* createKochPracticeScreen() {
+    lv_obj_t* screen = createScreen();
+    applyScreenStyle(screen);
+
+    // Title bar
+    lv_obj_t* title_bar = lv_obj_create(screen);
+    lv_obj_set_size(title_bar, SCREEN_WIDTH, HEADER_HEIGHT);
+    lv_obj_set_pos(title_bar, 0, 0);
+    lv_obj_add_style(title_bar, getStyleStatusBar(), 0);
+    lv_obj_clear_flag(title_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* title = lv_label_create(title_bar);
+    lv_label_set_text_fmt(title, "KOCH PRACTICE - Level %d", kochProgress.currentLesson);
+    lv_obj_add_style(title, getStyleLabelTitle(), 0);
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 15, 0);
+
+    createCompactStatusBar(screen);
+
+    // Stats bar - horizontal layout for session stats
+    lv_obj_t* stats_bar = lv_obj_create(screen);
+    lv_obj_set_size(stats_bar, SCREEN_WIDTH - 40, 32);
+    lv_obj_set_pos(stats_bar, 20, HEADER_HEIGHT + 5);
+    applyCardStyle(stats_bar);
+    lv_obj_set_style_pad_all(stats_bar, 5, 0);  // Smaller padding
+    lv_obj_set_style_pad_left(stats_bar, 10, 0);
+    lv_obj_clear_flag(stats_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Stats inline: "Correct: X  |  Attempts: Y  |  Streak: Z"
+    lv_obj_t* correct_title = lv_label_create(stats_bar);
+    lv_label_set_text(correct_title, "Correct:");
+    lv_obj_set_style_text_font(correct_title, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(correct_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(correct_title, LV_ALIGN_LEFT_MID, 0, 0);
+
+    koch_practice_correct_label = lv_label_create(stats_bar);
+    lv_label_set_text_fmt(koch_practice_correct_label, "%d", kochProgress.sessionCorrect);
+    lv_obj_set_style_text_font(koch_practice_correct_label, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(koch_practice_correct_label, LV_COLOR_SUCCESS, 0);
+    lv_obj_align_to(koch_practice_correct_label, correct_title, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
+
+    lv_obj_t* attempts_title = lv_label_create(stats_bar);
+    lv_label_set_text(attempts_title, "Attempts:");
+    lv_obj_set_style_text_font(attempts_title, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(attempts_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(attempts_title, LV_ALIGN_CENTER, -60, 0);
+
+    koch_practice_attempts_label = lv_label_create(stats_bar);
+    lv_label_set_text_fmt(koch_practice_attempts_label, "%d", kochProgress.sessionTotal);
+    lv_obj_set_style_text_font(koch_practice_attempts_label, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(koch_practice_attempts_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_align_to(koch_practice_attempts_label, attempts_title, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
+
+    lv_obj_t* streak_title = lv_label_create(stats_bar);
+    lv_label_set_text(streak_title, "Streak:");
+    lv_obj_set_style_text_font(streak_title, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(streak_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(streak_title, LV_ALIGN_RIGHT_MID, -60, 0);
+
+    koch_practice_streak_label = lv_label_create(stats_bar);
+    lv_label_set_text_fmt(koch_practice_streak_label, "%d", getKochCurrentStreak());
+    lv_obj_set_style_text_font(koch_practice_streak_label, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(koch_practice_streak_label, LV_COLOR_WARNING, 0);
+    lv_obj_align_to(koch_practice_streak_label, streak_title, LV_ALIGN_OUT_RIGHT_MID, 5, 0);
+
+    // Prompt area - instructions for user
+    koch_practice_prompt_label = lv_label_create(screen);
+    lv_label_set_text(koch_practice_prompt_label, "Press SPACE to hear morse");
+    lv_obj_set_style_text_font(koch_practice_prompt_label, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(koch_practice_prompt_label, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_pos(koch_practice_prompt_label, 20, HEADER_HEIGHT + 48);
+
+    // Input card - shows user's typed input
+    lv_obj_t* input_card = lv_obj_create(screen);
+    lv_obj_set_size(input_card, SCREEN_WIDTH - 40, 55);
+    lv_obj_set_pos(input_card, 20, HEADER_HEIGHT + 75);
+    applyCardStyle(input_card);
+    lv_obj_clear_flag(input_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    koch_practice_input_label = lv_label_create(input_card);
+    lv_label_set_text(koch_practice_input_label, "_");
+    lv_obj_set_style_text_font(koch_practice_input_label, getThemeFonts()->font_title, 0);
+    lv_obj_set_style_text_color(koch_practice_input_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_center(koch_practice_input_label);
+
+    // Feedback label - shows CORRECT!/Wrong
+    koch_practice_feedback_label = lv_label_create(screen);
+    lv_label_set_text(koch_practice_feedback_label, "");
+    lv_obj_set_style_text_font(koch_practice_feedback_label, getThemeFonts()->font_subtitle, 0);
+    lv_obj_set_style_text_color(koch_practice_feedback_label, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_pos(koch_practice_feedback_label, 20, HEADER_HEIGHT + 140);
+    lv_obj_set_width(koch_practice_feedback_label, SCREEN_WIDTH - 40);
+    lv_obj_set_style_text_align(koch_practice_feedback_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    // Progress bar - shows level advancement progress
+    lv_obj_t* progress_title = lv_label_create(screen);
+    lv_label_set_text(progress_title, "Level Progress");
+    lv_obj_set_style_text_font(progress_title, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(progress_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_pos(progress_title, 20, HEADER_HEIGHT + 175);
+
+    koch_practice_progress_bar = lv_bar_create(screen);
+    lv_obj_set_size(koch_practice_progress_bar, SCREEN_WIDTH - 40, 15);
+    lv_obj_set_pos(koch_practice_progress_bar, 20, HEADER_HEIGHT + 193);
+    lv_bar_set_range(koch_practice_progress_bar, 0, 100);
+    lv_bar_set_value(koch_practice_progress_bar, getKochLevelProgress(), LV_ANIM_OFF);
+    applyBarStyle(koch_practice_progress_bar);
+
+    // Footer
+    lv_obj_t* footer = lv_obj_create(screen);
+    lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
+    lv_obj_set_pos(footer, 0, SCREEN_HEIGHT - FOOTER_HEIGHT);
+    lv_obj_set_style_bg_opa(footer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(footer, 0, 0);
+    lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* help = lv_label_create(footer);
+    lv_label_set_text(help, "SPACE Play  ENTER Submit  . Help  ESC Back");
+    lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
+    lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
+    lv_obj_center(help);
+
+    // Focus container
+    lv_obj_t* focus_container = lv_obj_create(screen);
+    lv_obj_set_size(focus_container, 1, 1);
+    lv_obj_set_pos(focus_container, -10, -10);
+    lv_obj_set_style_bg_opa(focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, LV_STATE_FOCUSED);
+    lv_obj_clear_flag(focus_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(focus_container, koch_practice_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(focus_container);
+
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_set_editing(group, true);
+    }
+    lv_group_focus_obj(focus_container);
+
+    koch_practice_screen = screen;
+    return screen;
+}
+
+// ============================================
+// Koch Settings Screen
+// ============================================
+
+static void updateKochSettingsDisplay() {
+    if (koch_settings_wpm_label != NULL) {
+        lv_label_set_text_fmt(koch_settings_wpm_label, "%d WPM", kochProgress.wpm);
+    }
+    if (koch_settings_wpm_bar != NULL) {
+        // WPM range 15-30, map to 0-100
+        int wpm_pct = ((kochProgress.wpm - 15) * 100) / 15;
+        lv_bar_set_value(koch_settings_wpm_bar, wpm_pct, LV_ANIM_ON);
+    }
+    if (koch_settings_length_label != NULL) {
+        lv_label_set_text_fmt(koch_settings_length_label, "%d chars", kochProgress.groupLength);
+    }
+    if (koch_settings_length_bar != NULL) {
+        // Length range 3-10, map to 0-100
+        int len_pct = ((kochProgress.groupLength - 3) * 100) / 7;
+        lv_bar_set_value(koch_settings_length_bar, len_pct, LV_ANIM_ON);
+    }
+    if (koch_settings_level_label != NULL) {
+        lv_label_set_text_fmt(koch_settings_level_label, "Level %d", kochProgress.currentLesson);
+    }
+    if (koch_settings_level_chars != NULL) {
+        String chars = getKochCharactersSpaced();
+        lv_label_set_text(koch_settings_level_chars, chars.c_str());
+    }
+}
+
+static void koch_settings_key_event_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+    Serial.printf("[Koch Settings] Key: %lu, Selection: %d\n", key, koch_settings_selection);
+
+    bool handled = true;
+    switch(key) {
+        case LV_KEY_ESC:
+            saveKochProgress();
+            onLVGLBackNavigation();
+            break;
+
+        case LV_KEY_UP:
+        case LV_KEY_PREV:
+            if (koch_settings_selection > 0) {
+                koch_settings_selection--;
+                updateKochSettingsFocus();
+                beep(TONE_MENU_NAV, BEEP_SHORT);
+            }
+            break;
+
+        case LV_KEY_DOWN:
+        case LV_KEY_NEXT:
+            if (koch_settings_selection < 2) {
+                koch_settings_selection++;
+                updateKochSettingsFocus();
+                beep(TONE_MENU_NAV, BEEP_SHORT);
+            }
+            break;
+
+        case LV_KEY_LEFT:
+            switch(koch_settings_selection) {
+                case 0:  // WPM
+                    if (kochProgress.wpm > 15) {
+                        kochProgress.wpm--;
+                        beep(TONE_MENU_NAV, BEEP_SHORT);
+                    }
+                    break;
+                case 1:  // Length
+                    if (kochProgress.groupLength > 3) {
+                        kochProgress.groupLength--;
+                        beep(TONE_MENU_NAV, BEEP_SHORT);
+                    }
+                    break;
+                case 2:  // Level
+                    regressLesson();
+                    break;
+            }
+            updateKochSettingsDisplay();
+            break;
+
+        case LV_KEY_RIGHT:
+            switch(koch_settings_selection) {
+                case 0:  // WPM
+                    if (kochProgress.wpm < 30) {
+                        kochProgress.wpm++;
+                        beep(TONE_MENU_NAV, BEEP_SHORT);
+                    }
+                    break;
+                case 1:  // Length
+                    if (kochProgress.groupLength < 10) {
+                        kochProgress.groupLength++;
+                        beep(TONE_MENU_NAV, BEEP_SHORT);
+                    }
+                    break;
+                case 2:  // Level
+                    advanceLesson();
+                    break;
+            }
+            updateKochSettingsDisplay();
+            break;
+
+        default:
+            handled = false;
+            break;
+    }
+
+    // Stop event propagation to prevent double-handling
+    if (handled) {
+        lv_event_stop_bubbling(e);
+    }
+}
+
+lv_obj_t* createKochSettingsScreen() {
+    lv_obj_t* screen = createScreen();
+    applyScreenStyle(screen);
+    koch_settings_selection = 0;
+
+    // Title bar
+    lv_obj_t* title_bar = lv_obj_create(screen);
+    lv_obj_set_size(title_bar, SCREEN_WIDTH, HEADER_HEIGHT);
+    lv_obj_set_pos(title_bar, 0, 0);
+    lv_obj_add_style(title_bar, getStyleStatusBar(), 0);
+    lv_obj_clear_flag(title_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* title = lv_label_create(title_bar);
+    lv_label_set_text(title, "KOCH SETTINGS");
+    lv_obj_add_style(title, getStyleLabelTitle(), 0);
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 15, 0);
+
+    createCompactStatusBar(screen);
+
+    const int card_y_start = HEADER_HEIGHT + 10;
+    const int card_height = 58;
+    const int card_gap = 8;
+
+    // WPM Card
+    koch_settings_wpm_card = lv_obj_create(screen);
+    lv_obj_set_size(koch_settings_wpm_card, SCREEN_WIDTH - 40, card_height);
+    lv_obj_set_pos(koch_settings_wpm_card, 20, card_y_start);
+    applyCardStyle(koch_settings_wpm_card);
+    lv_obj_set_style_pad_all(koch_settings_wpm_card, 8, 0);
+    lv_obj_clear_flag(koch_settings_wpm_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* wpm_title = lv_label_create(koch_settings_wpm_card);
+    lv_label_set_text(wpm_title, "Speed (WPM)");
+    lv_obj_set_style_text_font(wpm_title, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(wpm_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(wpm_title, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    koch_settings_wpm_label = lv_label_create(koch_settings_wpm_card);
+    lv_label_set_text_fmt(koch_settings_wpm_label, "%d WPM", kochProgress.wpm);
+    lv_obj_set_style_text_font(koch_settings_wpm_label, getThemeFonts()->font_subtitle, 0);
+    lv_obj_set_style_text_color(koch_settings_wpm_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_align(koch_settings_wpm_label, LV_ALIGN_TOP_RIGHT, 0, 0);
+
+    koch_settings_wpm_bar = lv_bar_create(koch_settings_wpm_card);
+    lv_obj_set_size(koch_settings_wpm_bar, SCREEN_WIDTH - 76, 12);
+    lv_obj_align(koch_settings_wpm_bar, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_bar_set_range(koch_settings_wpm_bar, 0, 100);
+    applyBarStyle(koch_settings_wpm_bar);
+
+    // Group Length Card
+    koch_settings_length_card = lv_obj_create(screen);
+    lv_obj_set_size(koch_settings_length_card, SCREEN_WIDTH - 40, card_height);
+    lv_obj_set_pos(koch_settings_length_card, 20, card_y_start + card_height + card_gap);
+    applyCardStyle(koch_settings_length_card);
+    lv_obj_set_style_pad_all(koch_settings_length_card, 8, 0);
+    lv_obj_clear_flag(koch_settings_length_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* length_title = lv_label_create(koch_settings_length_card);
+    lv_label_set_text(length_title, "Group Length");
+    lv_obj_set_style_text_font(length_title, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(length_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(length_title, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    koch_settings_length_label = lv_label_create(koch_settings_length_card);
+    lv_label_set_text_fmt(koch_settings_length_label, "%d chars", kochProgress.groupLength);
+    lv_obj_set_style_text_font(koch_settings_length_label, getThemeFonts()->font_subtitle, 0);
+    lv_obj_set_style_text_color(koch_settings_length_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_align(koch_settings_length_label, LV_ALIGN_TOP_RIGHT, 0, 0);
+
+    koch_settings_length_bar = lv_bar_create(koch_settings_length_card);
+    lv_obj_set_size(koch_settings_length_bar, SCREEN_WIDTH - 76, 12);
+    lv_obj_align(koch_settings_length_bar, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_bar_set_range(koch_settings_length_bar, 0, 100);
+    applyBarStyle(koch_settings_length_bar);
+
+    // Level Card
+    koch_settings_level_card = lv_obj_create(screen);
+    lv_obj_set_size(koch_settings_level_card, SCREEN_WIDTH - 40, card_height);
+    lv_obj_set_pos(koch_settings_level_card, 20, card_y_start + (card_height + card_gap) * 2);
+    applyCardStyle(koch_settings_level_card);
+    lv_obj_set_style_pad_all(koch_settings_level_card, 8, 0);
+    lv_obj_clear_flag(koch_settings_level_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* level_title = lv_label_create(koch_settings_level_card);
+    lv_label_set_text(level_title, "Current Level");
+    lv_obj_set_style_text_font(level_title, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(level_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(level_title, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    koch_settings_level_label = lv_label_create(koch_settings_level_card);
+    lv_label_set_text_fmt(koch_settings_level_label, "Level %d", kochProgress.currentLesson);
+    lv_obj_set_style_text_font(koch_settings_level_label, getThemeFonts()->font_subtitle, 0);
+    lv_obj_set_style_text_color(koch_settings_level_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_align(koch_settings_level_label, LV_ALIGN_TOP_RIGHT, 0, 0);
+
+    koch_settings_level_chars = lv_label_create(koch_settings_level_card);
+    String chars = getKochCharactersSpaced();
+    lv_label_set_text(koch_settings_level_chars, chars.c_str());
+    lv_obj_set_style_text_font(koch_settings_level_chars, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(koch_settings_level_chars, LV_COLOR_ACCENT_GREEN, 0);
+    lv_obj_align(koch_settings_level_chars, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+    lv_label_set_long_mode(koch_settings_level_chars, LV_LABEL_LONG_SCROLL_CIRCULAR);
+    lv_obj_set_width(koch_settings_level_chars, SCREEN_WIDTH - 76);
+
+    // Update display and focus indicator
+    updateKochSettingsDisplay();
+    updateKochSettingsFocus();
+
+    // Footer
+    lv_obj_t* footer = lv_obj_create(screen);
+    lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
+    lv_obj_set_pos(footer, 0, SCREEN_HEIGHT - FOOTER_HEIGHT);
+    lv_obj_set_style_bg_opa(footer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(footer, 0, 0);
+    lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* help = lv_label_create(footer);
+    lv_label_set_text(help, "UP/DN Select   L/R Adjust   ESC Save & Back");
+    lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
+    lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
+    lv_obj_center(help);
+
+    // Focus container
+    lv_obj_t* focus_container = lv_obj_create(screen);
+    lv_obj_set_size(focus_container, 1, 1);
+    lv_obj_set_pos(focus_container, -10, -10);
+    lv_obj_set_style_bg_opa(focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, LV_STATE_FOCUSED);
+    lv_obj_clear_flag(focus_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(focus_container, koch_settings_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(focus_container);
+
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_set_editing(group, true);
+    }
+    lv_group_focus_obj(focus_container);
+
+    koch_settings_screen = screen;
+    return screen;
+}
+
+// ============================================
+// Koch Statistics Screen
+// ============================================
+
+static void koch_stats_key_event_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+
+    bool handled = true;
+    switch(key) {
+        case LV_KEY_ESC:
+            onLVGLBackNavigation();
+            break;
+        default:
+            handled = false;
+            break;
+    }
+
+    // Stop event propagation to prevent double-handling
+    if (handled) {
+        lv_event_stop_bubbling(e);
+    }
+}
+
+lv_obj_t* createKochStatisticsScreen() {
+    lv_obj_t* screen = createScreen();
+    applyScreenStyle(screen);
+
+    // Title bar
+    lv_obj_t* title_bar = lv_obj_create(screen);
+    lv_obj_set_size(title_bar, SCREEN_WIDTH, HEADER_HEIGHT);
+    lv_obj_set_pos(title_bar, 0, 0);
+    lv_obj_add_style(title_bar, getStyleStatusBar(), 0);
+    lv_obj_clear_flag(title_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* title = lv_label_create(title_bar);
+    lv_label_set_text(title, "KOCH STATISTICS");
+    lv_obj_add_style(title, getStyleLabelTitle(), 0);
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 15, 0);
+
+    createCompactStatusBar(screen);
+
+    // Progress card - overall level progress
+    lv_obj_t* progress_card = lv_obj_create(screen);
+    lv_obj_set_size(progress_card, SCREEN_WIDTH - 40, 50);
+    lv_obj_set_pos(progress_card, 20, HEADER_HEIGHT + 8);
+    applyCardStyle(progress_card);
+    lv_obj_set_style_pad_all(progress_card, 8, 0);
+    lv_obj_clear_flag(progress_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* progress_title = lv_label_create(progress_card);
+    lv_label_set_text(progress_title, "Overall Progress");
+    lv_obj_set_style_text_font(progress_title, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(progress_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(progress_title, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    int progress_pct = (kochProgress.currentLesson * 100) / 40;
+    lv_obj_t* progress_value = lv_label_create(progress_card);
+    lv_label_set_text_fmt(progress_value, "Level %d of 40 (%d%%)",
+        kochProgress.currentLesson, progress_pct);
+    lv_obj_set_style_text_font(progress_value, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(progress_value, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_align(progress_value, LV_ALIGN_TOP_RIGHT, 0, 0);
+
+    lv_obj_t* progress_bar = lv_bar_create(progress_card);
+    lv_obj_set_size(progress_bar, SCREEN_WIDTH - 70, 12);
+    lv_obj_align(progress_bar, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_bar_set_range(progress_bar, 0, 100);
+    lv_bar_set_value(progress_bar, progress_pct, LV_ANIM_OFF);
+    applyBarStyle(progress_bar);
+
+    // Session Stats card
+    const int card_width = (SCREEN_WIDTH - 50) / 2;
+    const int stats_card_y = HEADER_HEIGHT + 65;
+    lv_obj_t* session_card = lv_obj_create(screen);
+    lv_obj_set_size(session_card, card_width, 70);
+    lv_obj_set_pos(session_card, 20, stats_card_y);
+    applyCardStyle(session_card);
+    lv_obj_set_style_pad_all(session_card, 8, 0);
+    lv_obj_clear_flag(session_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* session_title = lv_label_create(session_card);
+    lv_label_set_text(session_title, "This Session");
+    lv_obj_set_style_text_font(session_title, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(session_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(session_title, LV_ALIGN_TOP_MID, 0, 0);
+
+    int accuracy = getKochSessionAccuracy();
+    lv_obj_t* session_stats = lv_label_create(session_card);
+    lv_label_set_text_fmt(session_stats, "%d/%d correct\n%d%% accuracy",
+        kochProgress.sessionCorrect, kochProgress.sessionTotal, accuracy);
+    lv_obj_set_style_text_font(session_stats, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(session_stats,
+        accuracy >= 90 ? LV_COLOR_SUCCESS : (accuracy >= 70 ? LV_COLOR_WARNING : LV_COLOR_TEXT_PRIMARY), 0);
+    lv_obj_align(session_stats, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_text_align(session_stats, LV_TEXT_ALIGN_CENTER, 0);
+
+    // Streak Stats card
+    lv_obj_t* streak_card = lv_obj_create(screen);
+    lv_obj_set_size(streak_card, card_width, 70);
+    lv_obj_set_pos(streak_card, 20 + card_width + 10, stats_card_y);
+    applyCardStyle(streak_card);
+    lv_obj_set_style_pad_all(streak_card, 8, 0);
+    lv_obj_clear_flag(streak_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* streak_title = lv_label_create(streak_card);
+    lv_label_set_text(streak_title, "Streaks");
+    lv_obj_set_style_text_font(streak_title, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(streak_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(streak_title, LV_ALIGN_TOP_MID, 0, 0);
+
+    lv_obj_t* streak_stats = lv_label_create(streak_card);
+    lv_label_set_text_fmt(streak_stats, "Current: %d\nBest: %d",
+        getKochCurrentStreak(), getKochBestStreak());
+    lv_obj_set_style_text_font(streak_stats, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(streak_stats, LV_COLOR_WARNING, 0);
+    lv_obj_align(streak_stats, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_text_align(streak_stats, LV_TEXT_ALIGN_CENTER, 0);
+
+    // Achievements card
+    const int achieve_y = stats_card_y + 78;
+    lv_obj_t* achieve_card = lv_obj_create(screen);
+    lv_obj_set_size(achieve_card, SCREEN_WIDTH - 40, 70);
+    lv_obj_set_pos(achieve_card, 20, achieve_y);
+    applyCardStyle(achieve_card);
+    lv_obj_set_style_pad_all(achieve_card, 8, 0);
+    lv_obj_clear_flag(achieve_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* achieve_title = lv_label_create(achieve_card);
+    lv_label_set_text(achieve_title, "Achievements");
+    lv_obj_set_style_text_font(achieve_title, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(achieve_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(achieve_title, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    int milestones = getKochMilestones();
+
+    // Build achievements string - compact layout
+    String ach = "";
+    ach += (milestones & 0x01) ? "[X] First  " : "[ ] First  ";
+    ach += (milestones & 0x02) ? "[X] 5 Streak  " : "[ ] 5 Streak  ";
+    ach += (milestones & 0x04) ? "[X] 10 Streak\n" : "[ ] 10 Streak\n";
+    ach += (milestones & 0x08) ? "[X] 10 Tries  " : "[ ] 10 Tries  ";
+    ach += (milestones & 0x10) ? "[X] 90%  " : "[ ] 90%  ";
+    ach += (milestones & 0x80) ? "[X] Complete" : "[ ] Complete";
+
+    lv_obj_t* achieve_list = lv_label_create(achieve_card);
+    lv_label_set_text(achieve_list, ach.c_str());
+    lv_obj_set_style_text_font(achieve_list, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(achieve_list, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align(achieve_list, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+
+    // Footer
+    lv_obj_t* footer = lv_obj_create(screen);
+    lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
+    lv_obj_set_pos(footer, 0, SCREEN_HEIGHT - FOOTER_HEIGHT);
+    lv_obj_set_style_bg_opa(footer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(footer, 0, 0);
+    lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* help = lv_label_create(footer);
+    lv_label_set_text(help, "ESC Back");
+    lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
+    lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
+    lv_obj_center(help);
+
+    // Focus container
+    lv_obj_t* focus_container = lv_obj_create(screen);
+    lv_obj_set_size(focus_container, 1, 1);
+    lv_obj_set_pos(focus_container, -10, -10);
+    lv_obj_set_style_bg_opa(focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, LV_STATE_FOCUSED);
+    lv_obj_clear_flag(focus_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(focus_container, koch_stats_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(focus_container);
+
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_set_editing(group, true);
+    }
+    lv_group_focus_obj(focus_container);
+
+    koch_stats_screen = screen;
+    return screen;
+}
+
+// ============================================
+// Koch Help Screen
+// ============================================
+
+static lv_obj_t* koch_help_screen = NULL;
+static lv_obj_t* koch_help_content = NULL;
+
+static void koch_help_key_event_cb(lv_event_t* e) {
+    uint32_t key = lv_event_get_key(e);
+
+    // Handle ESC first and return immediately to prevent double-handling
+    if (key == LV_KEY_ESC) {
+        lv_event_stop_bubbling(e);
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+        onLVGLBackNavigation();
+        return;
+    }
+
+    switch (key) {
+        case LV_KEY_UP:
+        case LV_KEY_PREV:
+            // Scroll up
+            if (koch_help_content != NULL) {
+                lv_obj_scroll_by(koch_help_content, 0, 30, LV_ANIM_ON);
+            }
+            break;
+        case LV_KEY_DOWN:
+        case LV_KEY_NEXT:
+            // Scroll down
+            if (koch_help_content != NULL) {
+                lv_obj_scroll_by(koch_help_content, 0, -30, LV_ANIM_ON);
+            }
+            break;
+        default:
+            // Check for direct character press - play if unlocked
+            {
+                char c = (char)key;
+                c = toupper(c);
+                String chars = getKochCharacterSet();
+                if (chars.indexOf(c) >= 0) {
+                    // Character is unlocked, play it
+                    playMorseChar(c, kochProgress.wpm);
+                }
+            }
+            break;
+    }
+
+    // Stop bubbling for all keys
+    lv_event_stop_bubbling(e);
+}
+
+lv_obj_t* createKochHelpScreen() {
+    lv_obj_t* screen = createScreen();
+    applyScreenStyle(screen);
+
+    // Title bar
+    lv_obj_t* title_bar = lv_obj_create(screen);
+    lv_obj_set_size(title_bar, SCREEN_WIDTH, HEADER_HEIGHT);
+    lv_obj_set_pos(title_bar, 0, 0);
+    lv_obj_add_style(title_bar, getStyleStatusBar(), 0);
+    lv_obj_clear_flag(title_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* title = lv_label_create(title_bar);
+    lv_label_set_text(title, "KOCH METHOD HELP");
+    lv_obj_add_style(title, getStyleLabelTitle(), 0);
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 15, 0);
+
+    createCompactStatusBar(screen);
+
+    // Scrollable content area
+    koch_help_content = lv_obj_create(screen);
+    lv_obj_set_size(koch_help_content, SCREEN_WIDTH - 20, SCREEN_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - 10);
+    lv_obj_set_pos(koch_help_content, 10, HEADER_HEIGHT + 5);
+    lv_obj_set_style_bg_opa(koch_help_content, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(koch_help_content, 0, 0);
+    lv_obj_set_style_pad_all(koch_help_content, 5, 0);
+    lv_obj_add_flag(koch_help_content, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(koch_help_content, LV_DIR_VER);
+
+    // Alias for readability in the rest of the function
+    lv_obj_t* content = koch_help_content;
+
+    // Help content - Section 1: What is Koch Method
+    lv_obj_t* section1_title = lv_label_create(content);
+    lv_label_set_text(section1_title, "WHAT IS THE KOCH METHOD?");
+    lv_obj_set_style_text_font(section1_title, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(section1_title, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_align(section1_title, LV_ALIGN_TOP_LEFT, 0, 0);
+
+    lv_obj_t* section1_text = lv_label_create(content);
+    lv_label_set_text(section1_text,
+        "The Koch Method is a proven technique for\n"
+        "learning Morse code by ear. You start with\n"
+        "just 2 characters (K and M), practice until\n"
+        "you copy them at 90% accuracy, then add one\n"
+        "more character. Repeat until you know all 40!");
+    lv_obj_set_style_text_font(section1_text, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(section1_text, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align_to(section1_text, section1_title, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 5);
+
+    // Section 2: How to Practice
+    lv_obj_t* section2_title = lv_label_create(content);
+    lv_label_set_text(section2_title, "HOW TO PRACTICE:");
+    lv_obj_set_style_text_font(section2_title, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(section2_title, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_align_to(section2_title, section1_text, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 12);
+
+    lv_obj_t* section2_text = lv_label_create(content);
+    lv_label_set_text(section2_text,
+        "1. Press SPACE to hear a morse code group\n"
+        "2. Type what you heard on your keyboard\n"
+        "3. Press ENTER to check your answer\n"
+        "4. Get 90%% accuracy with 10+ attempts\n"
+        "   to advance to the next level");
+    lv_obj_set_style_text_font(section2_text, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(section2_text, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align_to(section2_text, section2_title, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 5);
+
+    // Section 3: Current Level Info
+    lv_obj_t* section3_title = lv_label_create(content);
+    lv_label_set_text(section3_title, "YOUR CURRENT LEVEL:");
+    lv_obj_set_style_text_font(section3_title, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(section3_title, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_align_to(section3_title, section2_text, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 12);
+
+    // Build current level characters string
+    String levelChars = "";
+    for (int i = 0; i < kochProgress.currentLesson && i < KOCH_TOTAL_LESSONS; i++) {
+        levelChars += KOCH_SEQUENCE[i];
+        if (i < kochProgress.currentLesson - 1) levelChars += " ";
+    }
+
+    char levelInfo[128];
+    snprintf(levelInfo, sizeof(levelInfo),
+        "Level %d includes: %s\n"
+        "You need 90%% accuracy to unlock the\n"
+        "next character.",
+        kochProgress.currentLesson, levelChars.c_str());
+
+    lv_obj_t* section3_text = lv_label_create(content);
+    lv_label_set_text(section3_text, levelInfo);
+    lv_obj_set_style_text_font(section3_text, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(section3_text, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align_to(section3_text, section3_title, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 5);
+
+    // Section 4: Navigation
+    lv_obj_t* section4_title = lv_label_create(content);
+    lv_label_set_text(section4_title, "NAVIGATION:");
+    lv_obj_set_style_text_font(section4_title, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(section4_title, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_align_to(section4_title, section3_text, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 12);
+
+    lv_obj_t* section4_text = lv_label_create(content);
+    lv_label_set_text(section4_text,
+        "ENTER = Start practicing\n"
+        "S = Adjust settings (speed, group length)\n"
+        "R = Character reference (hear any char)\n"
+        ". (period) = Show this help screen\n"
+        "ESC = Go back\n\n"
+        "TIP: Press any letter/number key to hear\n"
+        "its morse code!");
+    lv_obj_set_style_text_font(section4_text, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(section4_text, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align_to(section4_text, section4_title, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 5);
+
+    // Footer
+    lv_obj_t* footer = lv_obj_create(screen);
+    lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
+    lv_obj_set_pos(footer, 0, SCREEN_HEIGHT - FOOTER_HEIGHT);
+    lv_obj_set_style_bg_opa(footer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(footer, 0, 0);
+    lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* footer_label = lv_label_create(footer);
+    lv_label_set_text(footer_label, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll  [A-Z] Play Char  ESC Back");
+    lv_obj_set_style_text_color(footer_label, LV_COLOR_WARNING, 0);
+    lv_obj_set_style_text_font(footer_label, getThemeFonts()->font_small, 0);
+    lv_obj_center(footer_label);
+
+    // Focus container for key handling
+    lv_obj_t* focus_container = lv_obj_create(screen);
+    lv_obj_set_size(focus_container, 1, 1);
+    lv_obj_set_pos(focus_container, -10, -10);
+    lv_obj_set_style_bg_opa(focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, LV_STATE_FOCUSED);
+    lv_obj_clear_flag(focus_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(focus_container, koch_help_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(focus_container);
+
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_set_editing(group, true);
+    }
+    lv_group_focus_obj(focus_container);
+
+    koch_help_screen = screen;
+    return screen;
+}
+
+// ============================================
+// Koch Character Reference Screen
+// ============================================
+
+static lv_obj_t* koch_char_ref_screen = NULL;
+static lv_obj_t* koch_char_ref_cells[40];  // One per possible character
+static int koch_char_ref_selection = 0;     // Currently selected index
+static int koch_char_ref_count = 0;         // Number of unlocked chars
+
+static void updateKochCharRefSelection() {
+    // Reset all cells to default style
+    for (int i = 0; i < koch_char_ref_count; i++) {
+        if (koch_char_ref_cells[i] != NULL) {
+            lv_obj_set_style_border_color(koch_char_ref_cells[i], getThemeColors()->border_subtle, 0);
+            lv_obj_set_style_border_width(koch_char_ref_cells[i], 1, 0);
+            lv_obj_set_style_border_opa(koch_char_ref_cells[i], LV_OPA_50, 0);
+        }
+    }
+    // Highlight selected cell
+    if (koch_char_ref_selection >= 0 && koch_char_ref_selection < koch_char_ref_count) {
+        lv_obj_t* selected = koch_char_ref_cells[koch_char_ref_selection];
+        if (selected != NULL) {
+            lv_obj_set_style_border_color(selected, LV_COLOR_ACCENT_CYAN, 0);
+            lv_obj_set_style_border_width(selected, 2, 0);
+            lv_obj_set_style_border_opa(selected, LV_OPA_COVER, 0);
+        }
+    }
+}
+
+static void koch_char_ref_key_event_cb(lv_event_t* e) {
+    uint32_t key = lv_event_get_key(e);
+    bool handled = true;
+
+    const int COLS = 8;  // 8 characters per row
+    int row = koch_char_ref_selection / COLS;
+    int col = koch_char_ref_selection % COLS;
+
+    switch (key) {
+        case LV_KEY_ESC:
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+            onLVGLBackNavigation();
+            break;
+        case LV_KEY_UP:
+        case LV_KEY_PREV:
+            if (row > 0) {
+                koch_char_ref_selection -= COLS;
+                if (koch_char_ref_selection < 0) koch_char_ref_selection = 0;
+                updateKochCharRefSelection();
+                beep(TONE_MENU_NAV, BEEP_SHORT);
+            }
+            break;
+        case LV_KEY_DOWN:
+        case LV_KEY_NEXT:
+            if (koch_char_ref_selection + COLS < koch_char_ref_count) {
+                koch_char_ref_selection += COLS;
+                updateKochCharRefSelection();
+                beep(TONE_MENU_NAV, BEEP_SHORT);
+            }
+            break;
+        case LV_KEY_LEFT:
+            if (koch_char_ref_selection > 0) {
+                koch_char_ref_selection--;
+                updateKochCharRefSelection();
+                beep(TONE_MENU_NAV, BEEP_SHORT);
+            }
+            break;
+        case LV_KEY_RIGHT:
+            if (koch_char_ref_selection < koch_char_ref_count - 1) {
+                koch_char_ref_selection++;
+                updateKochCharRefSelection();
+                beep(TONE_MENU_NAV, BEEP_SHORT);
+            }
+            break;
+        case LV_KEY_ENTER:
+            // Play the selected character
+            if (koch_char_ref_selection >= 0 && koch_char_ref_selection < koch_char_ref_count) {
+                String chars = getKochCharacterSet();
+                if (koch_char_ref_selection < (int)chars.length()) {
+                    char c = chars.charAt(koch_char_ref_selection);
+                    playMorseChar(c, kochProgress.wpm);
+                }
+            }
+            break;
+        default:
+            // Check for direct character press
+            {
+                char c = (char)key;
+                c = toupper(c);
+                String chars = getKochCharacterSet();
+                int idx = chars.indexOf(c);
+                if (idx >= 0) {
+                    // Character is unlocked, play it and select it
+                    koch_char_ref_selection = idx;
+                    updateKochCharRefSelection();
+                    playMorseChar(c, kochProgress.wpm);
+                } else {
+                    handled = false;
+                }
+            }
+            break;
+    }
+
+    lv_event_stop_bubbling(e);
+}
+
+lv_obj_t* createKochCharRefScreen() {
+    lv_obj_t* screen = createScreen();
+    applyScreenStyle(screen);
+
+    // Reset state
+    koch_char_ref_selection = 0;
+    for (int i = 0; i < 40; i++) {
+        koch_char_ref_cells[i] = NULL;
+    }
+
+    // Title bar
+    lv_obj_t* title_bar = lv_obj_create(screen);
+    lv_obj_set_size(title_bar, SCREEN_WIDTH, HEADER_HEIGHT);
+    lv_obj_set_pos(title_bar, 0, 0);
+    lv_obj_add_style(title_bar, getStyleStatusBar(), 0);
+    lv_obj_clear_flag(title_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* title = lv_label_create(title_bar);
+    lv_label_set_text(title, "CHARACTER REFERENCE");
+    lv_obj_add_style(title, getStyleLabelTitle(), 0);
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 15, 0);
+
+    createCompactStatusBar(screen);
+
+    // Get unlocked characters
+    String chars = getKochCharacterSet();
+    koch_char_ref_count = chars.length();
+
+    // Grid layout - 8 columns
+    const int COLS = 8;
+    const int cell_width = 55;
+    const int cell_height = 45;
+    const int start_x = (SCREEN_WIDTH - (COLS * cell_width)) / 2;
+    const int start_y = HEADER_HEIGHT + 10;
+
+    for (int i = 0; i < koch_char_ref_count && i < 40; i++) {
+        int row = i / COLS;
+        int col = i % COLS;
+        int x = start_x + col * cell_width;
+        int y = start_y + row * cell_height;
+
+        // Create cell container
+        lv_obj_t* cell = lv_obj_create(screen);
+        lv_obj_set_size(cell, cell_width - 4, cell_height - 4);
+        lv_obj_set_pos(cell, x + 2, y + 2);
+        applyCardStyle(cell);
+        lv_obj_set_style_pad_all(cell, 2, 0);
+        lv_obj_clear_flag(cell, LV_OBJ_FLAG_SCROLLABLE);
+
+        // Character label (large)
+        char charStr[2] = {chars.charAt(i), '\0'};
+        lv_obj_t* charLabel = lv_label_create(cell);
+        lv_label_set_text(charLabel, charStr);
+        lv_obj_set_style_text_font(charLabel, getThemeFonts()->font_subtitle, 0);
+        lv_obj_set_style_text_color(charLabel, LV_COLOR_ACCENT_CYAN, 0);
+        lv_obj_align(charLabel, LV_ALIGN_TOP_MID, 0, 0);
+
+        // Morse pattern label (small)
+        const char* pattern = getMorseCode(chars.charAt(i));
+        lv_obj_t* patternLabel = lv_label_create(cell);
+        lv_label_set_text(patternLabel, pattern ? pattern : "");
+        lv_obj_set_style_text_font(patternLabel, getThemeFonts()->font_small, 0);
+        lv_obj_set_style_text_color(patternLabel, LV_COLOR_TEXT_SECONDARY, 0);
+        lv_obj_align(patternLabel, LV_ALIGN_BOTTOM_MID, 0, 0);
+
+        koch_char_ref_cells[i] = cell;
+    }
+
+    // Set initial selection highlight
+    updateKochCharRefSelection();
+
+    // Footer
+    lv_obj_t* footer = lv_obj_create(screen);
+    lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
+    lv_obj_set_pos(footer, 0, SCREEN_HEIGHT - FOOTER_HEIGHT);
+    lv_obj_set_style_bg_opa(footer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(footer, 0, 0);
+    lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* footerLabel = lv_label_create(footer);
+    lv_label_set_text(footerLabel, LV_SYMBOL_UP LV_SYMBOL_DOWN LV_SYMBOL_LEFT LV_SYMBOL_RIGHT " Select  ENTER Play  ESC Back");
+    lv_obj_set_style_text_color(footerLabel, LV_COLOR_WARNING, 0);
+    lv_obj_set_style_text_font(footerLabel, getThemeFonts()->font_small, 0);
+    lv_obj_center(footerLabel);
+
+    // Focus container for key handling
+    lv_obj_t* focus_container = lv_obj_create(screen);
+    lv_obj_set_size(focus_container, 1, 1);
+    lv_obj_set_pos(focus_container, -10, -10);
+    lv_obj_set_style_bg_opa(focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, LV_STATE_FOCUSED);
+    lv_obj_clear_flag(focus_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(focus_container, koch_char_ref_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(focus_container);
+
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_set_editing(group, true);
+    }
+    lv_group_focus_obj(focus_container);
+
+    koch_char_ref_screen = screen;
+    return screen;
+}
+
+// ============================================
+// Koch New Character Introduction Screen
+// ============================================
+
+static lv_obj_t* koch_new_char_screen = NULL;
+static char koch_new_char_to_show = 'K';
+static int koch_new_char_play_count = 0;
+static unsigned long koch_new_char_last_play = 0;
+
+static void koch_new_char_key_event_cb(lv_event_t* e) {
+    uint32_t key = lv_event_get_key(e);
+
+    switch (key) {
+        case LV_KEY_ESC:
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+            onLVGLBackNavigation();
+            break;
+        case ' ':
+            // Replay the character
+            playMorseChar(koch_new_char_to_show, kochProgress.wpm);
+            break;
+        case LV_KEY_ENTER:
+            // Continue to practice
+            beep(TONE_SELECT, BEEP_MEDIUM);
+            onLVGLMenuSelect(KOCH_MODE_PRACTICE_INT);
+            break;
+        default:
+            break;
+    }
+
+    lv_event_stop_bubbling(e);
+}
+
+lv_obj_t* createKochNewCharScreen() {
+    lv_obj_t* screen = createScreen();
+    applyScreenStyle(screen);
+
+    // Get the new character from Koch progress
+    koch_new_char_to_show = KOCH_SEQUENCE[kochProgress.currentLesson - 1];
+    koch_new_char_play_count = 0;
+    koch_new_char_last_play = 0;
+
+    // Title bar
+    lv_obj_t* title_bar = lv_obj_create(screen);
+    lv_obj_set_size(title_bar, SCREEN_WIDTH, HEADER_HEIGHT);
+    lv_obj_set_pos(title_bar, 0, 0);
+    lv_obj_add_style(title_bar, getStyleStatusBar(), 0);
+    lv_obj_clear_flag(title_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* title = lv_label_create(title_bar);
+    lv_label_set_text(title, "NEW CHARACTER UNLOCKED!");
+    lv_obj_add_style(title, getStyleLabelTitle(), 0);
+    lv_obj_set_style_text_color(title, LV_COLOR_SUCCESS, 0);
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 15, 0);
+
+    createCompactStatusBar(screen);
+
+    // Center content area
+    int center_y = SCREEN_HEIGHT / 2 - 20;
+
+    // Large character display
+    char charStr[2] = {koch_new_char_to_show, '\0'};
+    lv_obj_t* charLabel = lv_label_create(screen);
+    lv_label_set_text(charLabel, charStr);
+    lv_obj_set_style_text_font(charLabel, getThemeFonts()->font_title, 0);
+    lv_obj_set_style_text_color(charLabel, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_align(charLabel, LV_ALIGN_CENTER, 0, -40);
+
+    // Morse pattern display
+    const char* pattern = getMorseCode(koch_new_char_to_show);
+    lv_obj_t* patternLabel = lv_label_create(screen);
+    lv_label_set_text(patternLabel, pattern ? pattern : "");
+    lv_obj_set_style_text_font(patternLabel, getThemeFonts()->font_subtitle, 0);
+    lv_obj_set_style_text_color(patternLabel, LV_COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align(patternLabel, LV_ALIGN_CENTER, 0, 10);
+
+    // Instruction text
+    lv_obj_t* instructLabel = lv_label_create(screen);
+    lv_label_set_text(instructLabel, "Listen carefully...");
+    lv_obj_set_style_text_font(instructLabel, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(instructLabel, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(instructLabel, LV_ALIGN_CENTER, 0, 60);
+
+    // Level info
+    char levelInfo[64];
+    snprintf(levelInfo, sizeof(levelInfo), "Level %d - You now have %d characters!",
+             kochProgress.currentLesson, kochProgress.currentLesson);
+    lv_obj_t* levelLabel = lv_label_create(screen);
+    lv_label_set_text(levelLabel, levelInfo);
+    lv_obj_set_style_text_font(levelLabel, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(levelLabel, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(levelLabel, LV_ALIGN_CENTER, 0, 90);
+
+    // Footer
+    lv_obj_t* footer = lv_obj_create(screen);
+    lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
+    lv_obj_set_pos(footer, 0, SCREEN_HEIGHT - FOOTER_HEIGHT);
+    lv_obj_set_style_bg_opa(footer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(footer, 0, 0);
+    lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* footerLabel = lv_label_create(footer);
+    lv_label_set_text(footerLabel, "SPACE Replay   ENTER Practice   ESC Back");
+    lv_obj_set_style_text_color(footerLabel, LV_COLOR_WARNING, 0);
+    lv_obj_set_style_text_font(footerLabel, getThemeFonts()->font_small, 0);
+    lv_obj_center(footerLabel);
+
+    // Focus container for key handling
+    lv_obj_t* focus_container = lv_obj_create(screen);
+    lv_obj_set_size(focus_container, 1, 1);
+    lv_obj_set_pos(focus_container, -10, -10);
+    lv_obj_set_style_bg_opa(focus_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, 0);
+    lv_obj_set_style_outline_width(focus_container, 0, LV_STATE_FOCUSED);
+    lv_obj_clear_flag(focus_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(focus_container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(focus_container, koch_new_char_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(focus_container);
+
+    lv_group_t* group = getLVGLInputGroup();
+    if (group != NULL) {
+        lv_group_set_editing(group, true);
+    }
+    lv_group_focus_obj(focus_container);
+
+    // Auto-play the character 3 times with delays
+    // We'll do this in a simple way - play once now, and use a timer for the rest
+    delay(500);  // Brief delay before first play
+    playMorseChar(koch_new_char_to_show, kochProgress.wpm);
+
+    koch_new_char_screen = screen;
+    return screen;
 }
 
 // ============================================
@@ -3449,6 +4942,10 @@ lv_obj_t* createLicenseAllStatsScreen() {
 // ============================================
 
 lv_obj_t* createTrainingScreenForMode(int mode) {
+    // Check for Vail Master modes first (70-74)
+    lv_obj_t* vmScreen = createVailMasterScreenForMode(mode);
+    if (vmScreen != NULL) return vmScreen;
+
     switch (mode) {
         case 6:  // MODE_PRACTICE
             return createPracticeScreen();
@@ -3457,6 +4954,18 @@ lv_obj_t* createTrainingScreenForMode(int mode) {
             return createHearItTypeItScreen();
         case 7:  // MODE_KOCH_METHOD
             return createKochMethodScreen();
+        case 67: // MODE_KOCH_PRACTICE
+            return createKochPracticeScreen();
+        case 68: // MODE_KOCH_SETTINGS
+            return createKochSettingsScreen();
+        case 69: // MODE_KOCH_STATISTICS
+            return createKochStatisticsScreen();
+        case 75: // MODE_KOCH_HELP
+            return createKochHelpScreen();
+        case 76: // MODE_KOCH_CHAR_REF
+            return createKochCharRefScreen();
+        case 77: // MODE_KOCH_NEW_CHAR
+            return createKochNewCharScreen();
         case 8:  // MODE_CW_ACADEMY_TRACK_SELECT
             return createCWAcademyTrackSelectScreen();
         case 50: // MODE_LICENSE_SELECT
