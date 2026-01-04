@@ -45,7 +45,7 @@ License: MIT
 
 * [Easy Setup](doc/easy-install.md)
 * [Advanced Setup](doc/advanced-install.md)
-
+* [See some examples others have built here](https://github.com/Vail-CW/vail-adapter/wiki#cool-people-who-have-built-one)
 
 # Contributing
 To contribute to this project please contact ke9bos@pigletradio.org
