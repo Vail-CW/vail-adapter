@@ -12,6 +12,7 @@
 #include "../core/morse_code.h"
 #include "../audio/morse_decoder_adaptive.h"
 #include "../settings/settings_cw.h"  // For KeyType enum and cwSpeed/cwTone/cwKeyType
+#include "../core/task_manager.h"     // For requestStopTone() in dual-core audio
 
 // ============================================
 // Track and Session Data Structures
@@ -239,6 +240,59 @@ void saveCWAProgress() {
   cwaPrefs.putInt("practype", (int)cwaSelectedPracticeType);
   cwaPrefs.putInt("msgtype", (int)cwaSelectedMessageType);
   cwaPrefs.end();
+}
+
+// ============================================
+// State Reset Functions
+// Used when exiting modes to ensure clean state on re-entry
+// ============================================
+
+// Copy practice state (defined in training_cwa_copy_practice.h)
+extern String cwaCopyTarget;
+extern String cwaCopyInput;
+extern int cwaCopyRound;
+extern int cwaCopyCorrect;
+extern int cwaCopyTotal;
+extern int cwaCopyCharCount;
+extern bool cwaCopyWaitingForInput;
+extern bool cwaCopyShowingFeedback;
+
+// Sending practice state (defined in training_cwa_send_practice.h)
+extern String cwaSendTarget;
+extern String cwaSendDecoded;
+extern int cwaSendRound;
+extern int cwaSendCorrect;
+extern int cwaSendTotal;
+extern bool cwaSendWaitingForSend;
+extern bool cwaSendShowingFeedback;
+extern bool cwaSendShowReference;
+
+/*
+ * Reset copy practice state
+ */
+void resetCWACopyPracticeState() {
+  cwaCopyTarget = "";
+  cwaCopyInput = "";
+  cwaCopyRound = 0;
+  cwaCopyCorrect = 0;
+  cwaCopyTotal = 0;
+  cwaCopyWaitingForInput = false;
+  cwaCopyShowingFeedback = false;
+}
+
+/*
+ * Reset sending practice state
+ */
+void resetCWASendingPracticeState() {
+  cwaSendTarget = "";
+  cwaSendDecoded = "";
+  cwaSendRound = 0;
+  cwaSendCorrect = 0;
+  cwaSendTotal = 0;
+  cwaSendWaitingForSend = false;
+  cwaSendShowingFeedback = false;
+  cwaSendShowReference = true;
+  requestStopTone();  // Ensure any tone is stopped
 }
 
 #endif // TRAINING_CWA_CORE_H

@@ -459,14 +459,18 @@ void loop() {
     }
   }
 
-  // Update CW Academy sending practice (paddle input processing)
+  // Update CW Academy sending practice (paddle input processing with dual-core audio)
   if (currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE) {
-    updateCWASendingPractice();
+    if (cwaUseLVGL) {
+      updateCWASendingPracticeLVGL();  // LVGL version with dual-core audio
+    } else {
+      updateCWASendingPractice();  // Legacy version
 
-    // Update decoded text display when new text is decoded
-    if (cwaSendNeedsUIUpdate && !isTonePlaying()) {
-      drawCWASendDecodedOnly(tft);
-      cwaSendNeedsUIUpdate = false;
+      // Update decoded text display when new text is decoded
+      if (cwaSendNeedsUIUpdate && !isTonePlaying()) {
+        drawCWASendDecodedOnly(tft);
+        cwaSendNeedsUIUpdate = false;
+      }
     }
   }
 

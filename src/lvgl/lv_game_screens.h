@@ -12,6 +12,7 @@
 #include "lv_screen_manager.h"
 #include "../core/config.h"
 #include "../settings/settings_cw.h"  // For KeyType enum and cwKeyType/cwSpeed/cwTone
+#include "lv_spark_watch_screens.h"   // Spark Watch game screens
 
 // Forward declaration for back navigation
 extern void onLVGLBackNavigation();
@@ -1360,6 +1361,21 @@ lv_obj_t* createGameScreenForMode(int mode) {
             return createMorseShooterSettingsScreen();
         case 17: // MODE_MORSE_MEMORY
             return createMemoryChainScreen();
+
+        // Spark Watch game modes (78-88)
+        case 78: // LVGL_MODE_SPARK_WATCH
+        case 79: // LVGL_MODE_SPARK_WATCH_DIFFICULTY
+        case 80: // LVGL_MODE_SPARK_WATCH_CAMPAIGN
+        case 81: // LVGL_MODE_SPARK_WATCH_MISSION
+        case 82: // LVGL_MODE_SPARK_WATCH_CHALLENGE
+        case 83: // LVGL_MODE_SPARK_WATCH_BRIEFING
+        case 84: // LVGL_MODE_SPARK_WATCH_GAMEPLAY
+        case 85: // LVGL_MODE_SPARK_WATCH_RESULTS
+        case 86: // LVGL_MODE_SPARK_WATCH_DEBRIEFING
+        case 87: // LVGL_MODE_SPARK_WATCH_SETTINGS
+        case 88: // LVGL_MODE_SPARK_WATCH_STATS
+            return createSparkWatchScreenForMode(mode);
+
         default:
             Serial.printf("[GameScreens] Unknown game mode: %d\n", mode);
             return NULL;

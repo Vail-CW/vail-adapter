@@ -25,6 +25,29 @@ extern int cwSpeed;
 extern int cwTone;
 extern String decodedText;
 
+// CW Academy external state (from training_cwa_core.h)
+// Enums are defined in training_cwa_core.h - just use extern for variables
+extern CWATrack cwaSelectedTrack;
+extern int cwaSelectedSession;
+extern void saveCWAProgress();
+extern void loadCWAProgress();
+extern const char* cwaTrackNames[];
+extern const char* cwaTrackDescriptions[];
+extern const struct CWASession cwaSessionData[];
+
+// CW Academy practice types (from training_cwa_core.h)
+extern CWAPracticeType cwaSelectedPracticeType;
+extern const char* cwaPracticeTypeNames[];
+extern const char* cwaPracticeTypeDescriptions[];
+
+// CW Academy message types (from training_cwa_core.h)
+extern CWAMessageType cwaSelectedMessageType;
+extern const char* cwaMessageTypeNames[];
+extern const char* cwaMessageTypeDescriptions[];
+
+// User callsign (from network/vail_repeater.h)
+extern String vailCallsign;
+
 // cwKeyType access function (defined in main sketch)
 int getCwKeyTypeAsInt();
 
@@ -3401,8 +3424,152 @@ lv_obj_t* createKochNewCharScreen() {
 // ============================================
 
 static lv_obj_t* cwa_screen = NULL;
+static lv_obj_t* cwa_track_btns[4] = {NULL, NULL, NULL, NULL};
+static lv_obj_t* cwa_session_btns[16] = {NULL};
+static lv_obj_t* cwa_practice_type_btns[3] = {NULL, NULL, NULL};
+static lv_obj_t* cwa_message_type_btns[6] = {NULL};
+
+// Forward declaration for menu select
+extern void onLVGLMenuSelect(int target_mode);
+
+/*
+ * Linear navigation key handler for CWA selection screens
+ * Handles UP/DOWN arrow keys for single-column lists
+ * Similar to menu_grid_nav_handler but simplified for 1D navigation
+ */
+static void cwa_linear_nav_handler(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+
+    // Only handle UP/DOWN keys (both KEY_UP/DOWN and PREV/NEXT mappings)
+    if (key != LV_KEY_PREV && key != LV_KEY_NEXT &&
+        key != LV_KEY_UP && key != LV_KEY_DOWN) return;
+
+    // Stop propagation to prevent LVGL's default handling
+    lv_event_stop_processing(e);
+
+    lv_group_t* group = getLVGLInputGroup();
+    if (!group) return;
+
+    // Navigate to previous or next object in the group
+    if (key == LV_KEY_PREV || key == LV_KEY_UP) {
+        lv_group_focus_prev(group);
+    } else if (key == LV_KEY_NEXT || key == LV_KEY_DOWN) {
+        lv_group_focus_next(group);
+    }
+
+    // Scroll focused object into view
+    lv_obj_t* focused = lv_group_get_focused(group);
+    if (focused) {
+        lv_obj_scroll_to_view(focused, LV_ANIM_ON);
+    }
+}
+
+/*
+ * Event handler for CW Academy track selection
+ * Navigates to session select screen
+ */
+static void cwa_track_select_handler(lv_event_t* e) {
+    lv_obj_t* target = lv_event_get_target(e);
+    int track = (int)(intptr_t)lv_obj_get_user_data(target);
+
+    Serial.printf("[CWAScreen] Selected track: %d\n", track);
+
+    // Only Beginner track (0) is available, others coming soon
+    if (track > 0) {
+        beep(600, 150);  // Error beep
+        Serial.println("[CWAScreen] Track not yet available");
+        return;
+    }
+
+    cwaSelectedTrack = (CWATrack)track;
+    saveCWAProgress();
+    // Note: onLVGLMenuSelect plays the selection beep
+
+    // Navigate to session select (mode 9)
+    onLVGLMenuSelect(9);
+}
+
+/*
+ * Event handler for CW Academy session selection
+ * Navigates to practice type select screen
+ */
+static void cwa_session_select_handler(lv_event_t* e) {
+    lv_obj_t* target = lv_event_get_target(e);
+    int session = (int)(intptr_t)lv_obj_get_user_data(target);
+
+    Serial.printf("[CWAScreen] Selected session: %d\n", session);
+
+    cwaSelectedSession = session;
+    saveCWAProgress();
+    // Note: onLVGLMenuSelect plays the selection beep
+
+    // Navigate to practice type select (mode 10)
+    onLVGLMenuSelect(10);
+}
+
+/*
+ * Event handler for CW Academy practice type selection
+ */
+static void cwa_practice_type_select_handler(lv_event_t* e) {
+    lv_obj_t* target = lv_event_get_target(e);
+    int practiceType = (int)(intptr_t)lv_obj_get_user_data(target);
+
+    Serial.printf("[CWAScreen] Selected practice type: %d, session: %d\n", practiceType, cwaSelectedSession);
+
+    // Check if locked (sending/daily drill locked for sessions 1-10)
+    bool advancedLocked = (cwaSelectedSession <= 10);
+    bool currentTypeLocked = advancedLocked && (practiceType != PRACTICE_COPY);
+
+    if (currentTypeLocked) {
+        beep(600, 150);  // Error beep
+        Serial.println("[CWAScreen] Practice type locked");
+        return;
+    }
+
+    cwaSelectedPracticeType = (CWAPracticeType)practiceType;
+    saveCWAProgress();
+    // Note: onLVGLMenuSelect plays the selection beep
+
+    // Sessions 11-13 go directly to QSO practice (mode 14)
+    if (cwaSelectedSession >= 11 && cwaSelectedSession <= 13) {
+        onLVGLMenuSelect(14);
+    } else {
+        // Navigate to message type select (mode 11)
+        onLVGLMenuSelect(11);
+    }
+}
+
+/*
+ * Event handler for CW Academy message type selection
+ * Starts the appropriate practice mode
+ */
+static void cwa_message_type_select_handler(lv_event_t* e) {
+    lv_obj_t* target = lv_event_get_target(e);
+    int messageType = (int)(intptr_t)lv_obj_get_user_data(target);
+
+    Serial.printf("[CWAScreen] Selected message type: %d\n", messageType);
+
+    cwaSelectedMessageType = (CWAMessageType)messageType;
+    saveCWAProgress();
+    // Note: onLVGLMenuSelect plays the selection beep
+
+    // Route based on practice type
+    if (cwaSelectedPracticeType == PRACTICE_COPY) {
+        onLVGLMenuSelect(12);  // Copy practice
+    } else if (cwaSelectedPracticeType == PRACTICE_SENDING) {
+        onLVGLMenuSelect(13);  // Sending practice
+    } else {
+        // Daily drill - default to copy for now
+        onLVGLMenuSelect(12);
+    }
+}
 
 lv_obj_t* createCWAcademyTrackSelectScreen() {
+    // NOTE: Don't call clearNavigationGroup() here - onLVGLMenuSelect() already does it
+
     lv_obj_t* screen = createScreen();
     applyScreenStyle(screen);
 
@@ -3427,37 +3594,51 @@ lv_obj_t* createCWAcademyTrackSelectScreen() {
     lv_obj_set_pos(content, 20, HEADER_HEIGHT + 10);
     lv_obj_set_layout(content, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(content, 10, 0);
+    lv_obj_set_style_pad_row(content, 12, 0);
     lv_obj_set_style_pad_all(content, 10, 0);
     lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(content, 0, 0);
 
-    // Track buttons
-    const char* tracks[] = {"Beginner", "Intermediate", "Advanced", "Extra"};
-    const char* descs[] = {
-        "Learn letters A-Z at 5-10 WPM",
-        "Numbers and punctuation at 10-15 WPM",
-        "Build speed to 20+ WPM",
-        "Expert level challenges"
+    // Track buttons (4 tracks) - only Beginner is available, others coming soon
+    // Using correct CWA track names: Beginner, Fundamental, Intermediate, Advanced
+    const char* track_texts[] = {
+        "Beginner - Learn CW from zero",
+        "Fundamental - Coming Soon",
+        "Intermediate - Coming Soon",
+        "Advanced - Coming Soon"
     };
 
     for (int i = 0; i < 4; i++) {
-        lv_obj_t* track_btn = lv_obj_create(content);
+        bool isComingSoon = (i > 0);  // Only Beginner (index 0) is available
+
+        lv_obj_t* track_btn = lv_btn_create(content);
         lv_obj_set_size(track_btn, lv_pct(100), 50);
-        lv_obj_set_layout(track_btn, LV_LAYOUT_FLEX);
-        lv_obj_set_flex_flow(track_btn, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_style_pad_all(track_btn, 10, 0);
-        applyCardStyle(track_btn);
-        lv_obj_add_flag(track_btn, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_style(track_btn, getStyleMenuCard(), 0);
+        lv_obj_add_style(track_btn, getStyleMenuCardFocused(), LV_STATE_FOCUSED);
+
+        // Grey out coming soon tracks
+        if (isComingSoon) {
+            lv_obj_set_style_bg_opa(track_btn, LV_OPA_50, 0);
+        }
+
+        // Store track index in user_data and add event handlers
+        lv_obj_set_user_data(track_btn, (void*)(intptr_t)i);
+        lv_obj_add_event_cb(track_btn, cwa_track_select_handler, LV_EVENT_CLICKED, NULL);
+        lv_obj_add_event_cb(track_btn, cwa_linear_nav_handler, LV_EVENT_KEY, NULL);
+
         addNavigableWidget(track_btn);
+        cwa_track_btns[i] = track_btn;
 
-        lv_obj_t* track_title = lv_label_create(track_btn);
-        lv_label_set_text(track_title, tracks[i]);
-        lv_obj_add_style(track_title, getStyleLabelSubtitle(), 0);
-
-        lv_obj_t* track_desc = lv_label_create(track_btn);
-        lv_label_set_text(track_desc, descs[i]);
-        lv_obj_add_style(track_desc, getStyleLabelBody(), 0);
+        // Track name and description - single line format
+        lv_obj_t* track_label = lv_label_create(track_btn);
+        lv_label_set_text(track_label, track_texts[i]);
+        lv_obj_set_style_text_font(track_label, getThemeFonts()->font_body, 0);
+        if (isComingSoon) {
+            lv_obj_set_style_text_color(track_label, LV_COLOR_TEXT_SECONDARY, 0);
+        }
+        lv_obj_set_width(track_label, lv_pct(100));
+        lv_label_set_long_mode(track_label, LV_LABEL_LONG_CLIP);
+        lv_obj_center(track_label);
     }
 
     // Footer
@@ -3474,7 +3655,1513 @@ lv_obj_t* createCWAcademyTrackSelectScreen() {
     lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
     lv_obj_center(help);
 
+    // Focus the first button for keyboard navigation
+    if (cwa_track_btns[0] != NULL) {
+        lv_group_focus_obj(cwa_track_btns[0]);
+    }
+
     cwa_screen = screen;
+    return screen;
+}
+
+/*
+ * Create CW Academy Session Select Screen (Mode 9)
+ * Shows 16 sessions with character counts and descriptions
+ */
+lv_obj_t* createCWAcademySessionSelectScreen() {
+    // NOTE: Don't call clearNavigationGroup() here - onLVGLMenuSelect() already does it
+
+    lv_obj_t* screen = createScreen();
+    applyScreenStyle(screen);
+
+    // Title bar
+    lv_obj_t* title_bar = lv_obj_create(screen);
+    lv_obj_set_size(title_bar, SCREEN_WIDTH, HEADER_HEIGHT);
+    lv_obj_set_pos(title_bar, 0, 0);
+    lv_obj_add_style(title_bar, getStyleStatusBar(), 0);
+    lv_obj_clear_flag(title_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* title = lv_label_create(title_bar);
+    char title_text[48];
+    snprintf(title_text, sizeof(title_text), "CW ACADEMY - %s", cwaTrackNames[cwaSelectedTrack]);
+    lv_label_set_text(title, title_text);
+    lv_obj_add_style(title, getStyleLabelTitle(), 0);
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 15, 0);
+
+    // Status bar
+    createCompactStatusBar(screen);
+
+    // Content - Scrollable session list
+    lv_obj_t* content = lv_obj_create(screen);
+    lv_obj_set_size(content, SCREEN_WIDTH - 20, SCREEN_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - 10);
+    lv_obj_set_pos(content, 10, HEADER_HEIGHT + 5);
+    lv_obj_set_layout(content, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(content, 8, 0);
+    lv_obj_set_style_pad_all(content, 8, 0);
+    lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(content, 0, 0);
+
+    // Session buttons (16 sessions) - use lv_btn for proper keyboard navigation
+    for (int i = 0; i < 16; i++) {
+        lv_obj_t* session_btn = lv_btn_create(content);
+        lv_obj_set_size(session_btn, lv_pct(100), 50);
+        lv_obj_add_style(session_btn, getStyleMenuCard(), 0);
+        lv_obj_add_style(session_btn, getStyleMenuCardFocused(), LV_STATE_FOCUSED);
+
+        // Store session number (1-based) and add event handlers
+        lv_obj_set_user_data(session_btn, (void*)(intptr_t)(i + 1));
+        lv_obj_add_event_cb(session_btn, cwa_session_select_handler, LV_EVENT_CLICKED, NULL);
+        lv_obj_add_event_cb(session_btn, cwa_linear_nav_handler, LV_EVENT_KEY, NULL);
+
+        addNavigableWidget(session_btn);
+        cwa_session_btns[i] = session_btn;
+
+        // Session number and description - single line format
+        lv_obj_t* session_label = lv_label_create(session_btn);
+        char session_text[80];
+        const struct CWASession& session = cwaSessionData[i];
+        if (strlen(session.newChars) > 0) {
+            snprintf(session_text, sizeof(session_text), "%d. %s  [+%s]", i + 1, session.description, session.newChars);
+        } else {
+            snprintf(session_text, sizeof(session_text), "%d. %s", i + 1, session.description);
+        }
+        lv_label_set_text(session_label, session_text);
+        lv_obj_set_style_text_font(session_label, getThemeFonts()->font_body, 0);
+        lv_obj_set_width(session_label, lv_pct(100));
+        lv_label_set_long_mode(session_label, LV_LABEL_LONG_CLIP);
+        lv_obj_center(session_label);
+    }
+
+    // Footer
+    lv_obj_t* footer = lv_obj_create(screen);
+    lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
+    lv_obj_set_pos(footer, 0, SCREEN_HEIGHT - FOOTER_HEIGHT);
+    lv_obj_set_style_bg_opa(footer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(footer, 0, 0);
+    lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* help = lv_label_create(footer);
+    lv_label_set_text(help, "UP/DN Select   ENTER Choose   ESC Back");
+    lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
+    lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
+    lv_obj_center(help);
+
+    // Focus the first button for keyboard navigation
+    if (cwa_session_btns[0] != NULL) {
+        lv_group_focus_obj(cwa_session_btns[0]);
+    }
+
+    return screen;
+}
+
+/*
+ * Create CW Academy Practice Type Select Screen (Mode 10)
+ * Shows Copy Practice, Sending Practice, Daily Drill with lock indicators
+ */
+lv_obj_t* createCWAcademyPracticeTypeSelectScreen() {
+    // NOTE: Don't call clearNavigationGroup() here - onLVGLMenuSelect() already does it
+
+    lv_obj_t* screen = createScreen();
+    applyScreenStyle(screen);
+
+    // Title bar
+    lv_obj_t* title_bar = lv_obj_create(screen);
+    lv_obj_set_size(title_bar, SCREEN_WIDTH, HEADER_HEIGHT);
+    lv_obj_set_pos(title_bar, 0, 0);
+    lv_obj_add_style(title_bar, getStyleStatusBar(), 0);
+    lv_obj_clear_flag(title_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* title = lv_label_create(title_bar);
+    char title_text[48];
+    snprintf(title_text, sizeof(title_text), "SESSION %d - PRACTICE TYPE", cwaSelectedSession);
+    lv_label_set_text(title, title_text);
+    lv_obj_add_style(title, getStyleLabelTitle(), 0);
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 15, 0);
+
+    // Status bar
+    createCompactStatusBar(screen);
+
+    // Content area
+    lv_obj_t* content = lv_obj_create(screen);
+    lv_obj_set_size(content, SCREEN_WIDTH - 40, SCREEN_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - 20);
+    lv_obj_set_pos(content, 20, HEADER_HEIGHT + 10);
+    lv_obj_set_layout(content, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(content, 12, 0);
+    lv_obj_set_style_pad_all(content, 10, 0);
+    lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(content, 0, 0);
+
+    bool advancedLocked = (cwaSelectedSession <= 10);
+
+    // Practice type buttons (3 types) - use lv_btn for proper keyboard navigation
+    for (int i = 0; i < 3; i++) {
+        bool isLocked = advancedLocked && (i != PRACTICE_COPY);
+
+        lv_obj_t* type_btn = lv_btn_create(content);
+        lv_obj_set_size(type_btn, lv_pct(100), 55);
+        lv_obj_add_style(type_btn, getStyleMenuCard(), 0);
+        lv_obj_add_style(type_btn, getStyleMenuCardFocused(), LV_STATE_FOCUSED);
+
+        // Visual indication for locked items
+        if (isLocked) {
+            lv_obj_set_style_bg_opa(type_btn, LV_OPA_50, 0);
+        }
+
+        // Store practice type and add event handlers
+        lv_obj_set_user_data(type_btn, (void*)(intptr_t)i);
+        lv_obj_add_event_cb(type_btn, cwa_practice_type_select_handler, LV_EVENT_CLICKED, NULL);
+        lv_obj_add_event_cb(type_btn, cwa_linear_nav_handler, LV_EVENT_KEY, NULL);
+
+        addNavigableWidget(type_btn);
+        cwa_practice_type_btns[i] = type_btn;
+
+        // Practice type - single line format with description
+        lv_obj_t* type_label = lv_label_create(type_btn);
+        char type_text[64];
+        if (isLocked) {
+            snprintf(type_text, sizeof(type_text), "[LOCKED] %s (Session 11+)", cwaPracticeTypeNames[i]);
+        } else {
+            snprintf(type_text, sizeof(type_text), "%s - %s", cwaPracticeTypeNames[i], cwaPracticeTypeDescriptions[i]);
+        }
+        lv_label_set_text(type_label, type_text);
+        lv_obj_set_style_text_font(type_label, getThemeFonts()->font_body, 0);
+        if (isLocked) {
+            lv_obj_set_style_text_color(type_label, LV_COLOR_TEXT_SECONDARY, 0);
+        }
+        lv_obj_set_width(type_label, lv_pct(100));
+        lv_label_set_long_mode(type_label, LV_LABEL_LONG_CLIP);
+        lv_obj_center(type_label);
+    }
+
+    // Footer
+    lv_obj_t* footer = lv_obj_create(screen);
+    lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
+    lv_obj_set_pos(footer, 0, SCREEN_HEIGHT - FOOTER_HEIGHT);
+    lv_obj_set_style_bg_opa(footer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(footer, 0, 0);
+    lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* help = lv_label_create(footer);
+    lv_label_set_text(help, "UP/DN Select   ENTER Start   ESC Back");
+    lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
+    lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
+    lv_obj_center(help);
+
+    // Focus the first button for keyboard navigation
+    if (cwa_practice_type_btns[0] != NULL) {
+        lv_group_focus_obj(cwa_practice_type_btns[0]);
+    }
+
+    return screen;
+}
+
+/*
+ * Create CW Academy Message Type Select Screen (Mode 11)
+ * Shows 6 message types: Characters, Words, Abbreviations, Numbers, Callsigns, Phrases
+ */
+lv_obj_t* createCWAcademyMessageTypeSelectScreen() {
+    // NOTE: Don't call clearNavigationGroup() here - onLVGLMenuSelect() already does it
+
+    lv_obj_t* screen = createScreen();
+    applyScreenStyle(screen);
+
+    // Title bar
+    lv_obj_t* title_bar = lv_obj_create(screen);
+    lv_obj_set_size(title_bar, SCREEN_WIDTH, HEADER_HEIGHT);
+    lv_obj_set_pos(title_bar, 0, 0);
+    lv_obj_add_style(title_bar, getStyleStatusBar(), 0);
+    lv_obj_clear_flag(title_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* title = lv_label_create(title_bar);
+    char title_text[48];
+    snprintf(title_text, sizeof(title_text), "%s - MESSAGE TYPE", cwaPracticeTypeNames[cwaSelectedPracticeType]);
+    lv_label_set_text(title, title_text);
+    lv_obj_add_style(title, getStyleLabelTitle(), 0);
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 15, 0);
+
+    // Status bar
+    createCompactStatusBar(screen);
+
+    // Content - Scrollable message type list
+    lv_obj_t* content = lv_obj_create(screen);
+    lv_obj_set_size(content, SCREEN_WIDTH - 20, SCREEN_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - 10);
+    lv_obj_set_pos(content, 10, HEADER_HEIGHT + 5);
+    lv_obj_set_layout(content, LV_LAYOUT_FLEX);
+    lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(content, 8, 0);
+    lv_obj_set_style_pad_all(content, 8, 0);
+    lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(content, 0, 0);
+
+    // Message type buttons (6 types) - use lv_btn for proper keyboard navigation
+    for (int i = 0; i < 6; i++) {
+        lv_obj_t* msg_btn = lv_btn_create(content);
+        lv_obj_set_size(msg_btn, lv_pct(100), 40);
+        lv_obj_add_style(msg_btn, getStyleMenuCard(), 0);
+        lv_obj_add_style(msg_btn, getStyleMenuCardFocused(), LV_STATE_FOCUSED);
+
+        // Store message type and add event handlers
+        lv_obj_set_user_data(msg_btn, (void*)(intptr_t)i);
+        lv_obj_add_event_cb(msg_btn, cwa_message_type_select_handler, LV_EVENT_CLICKED, NULL);
+        lv_obj_add_event_cb(msg_btn, cwa_linear_nav_handler, LV_EVENT_KEY, NULL);
+
+        addNavigableWidget(msg_btn);
+        cwa_message_type_btns[i] = msg_btn;
+
+        // Message type - single line format: "Name - Description"
+        lv_obj_t* msg_label = lv_label_create(msg_btn);
+        char msg_text[64];
+        snprintf(msg_text, sizeof(msg_text), "%s - %s", cwaMessageTypeNames[i], cwaMessageTypeDescriptions[i]);
+        lv_label_set_text(msg_label, msg_text);
+        lv_obj_set_style_text_font(msg_label, getThemeFonts()->font_body, 0);
+        lv_obj_set_width(msg_label, lv_pct(100));
+        lv_label_set_long_mode(msg_label, LV_LABEL_LONG_CLIP);
+        lv_obj_center(msg_label);
+    }
+
+    // Footer
+    lv_obj_t* footer = lv_obj_create(screen);
+    lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
+    lv_obj_set_pos(footer, 0, SCREEN_HEIGHT - FOOTER_HEIGHT);
+    lv_obj_set_style_bg_opa(footer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(footer, 0, 0);
+    lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* help = lv_label_create(footer);
+    lv_label_set_text(help, "UP/DN Select   ENTER Start   ESC Back");
+    lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
+    lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
+    lv_obj_center(help);
+
+    // Focus the first button for keyboard navigation
+    if (cwa_message_type_btns[0] != NULL) {
+        lv_group_focus_obj(cwa_message_type_btns[0]);
+    }
+
+    return screen;
+}
+
+// ============================================
+// CW Academy Copy Practice Screen (Mode 12)
+// ============================================
+
+// External copy practice state (from training_cwa_copy_practice.h)
+extern String cwaCopyTarget;
+extern String cwaCopyInput;
+extern int cwaCopyRound;
+extern int cwaCopyCorrect;
+extern int cwaCopyTotal;
+extern int cwaCopyCharCount;
+extern bool cwaCopyWaitingForInput;
+extern bool cwaCopyShowingFeedback;
+extern void startCWACopyRound(LGFX& tft);
+extern String generateCWAContent();
+extern void playMorseString(const char* text, int wpm, int tone);
+extern LGFX tft;
+
+// Static widgets for Copy Practice screen
+static lv_obj_t* cwa_copy_screen = NULL;
+static lv_obj_t* cwa_copy_round_label = NULL;
+static lv_obj_t* cwa_copy_score_label = NULL;
+static lv_obj_t* cwa_copy_chars_label = NULL;
+static lv_obj_t* cwa_copy_prompt_label = NULL;
+static lv_obj_t* cwa_copy_input_label = NULL;
+static lv_obj_t* cwa_copy_feedback_label = NULL;
+static lv_obj_t* cwa_copy_target_label = NULL;
+
+// State machine for copy practice
+enum CWACopyState {
+    CWA_COPY_READY,        // Ready to start round
+    CWA_COPY_PLAYING,      // Playing morse
+    CWA_COPY_INPUT,        // Waiting for input
+    CWA_COPY_FEEDBACK,     // Showing feedback
+    CWA_COPY_COMPLETE      // Session complete
+};
+static CWACopyState cwaCopyUIState = CWA_COPY_READY;
+
+/*
+ * Initialize copy practice state for LVGL mode
+ */
+void initCWACopyPractice() {
+    cwaCopyRound = 0;
+    cwaCopyCorrect = 0;
+    cwaCopyTotal = 0;
+    cwaCopyTarget = "";
+    cwaCopyInput = "";
+    cwaCopyWaitingForInput = false;
+    cwaCopyShowingFeedback = false;
+    cwaCopyUIState = CWA_COPY_READY;
+
+    // Use esp_random() instead of analogRead(0) to avoid breaking I2S audio
+    randomSeed(esp_random());
+}
+
+/*
+ * Update CW Academy Copy Practice UI elements
+ */
+void updateCWACopyPracticeUI() {
+    if (!cwa_copy_screen) return;
+
+    // Update round display
+    if (cwa_copy_round_label) {
+        lv_label_set_text_fmt(cwa_copy_round_label, "Round: %d/10", cwaCopyRound);
+    }
+
+    // Update score display
+    if (cwa_copy_score_label) {
+        lv_label_set_text_fmt(cwa_copy_score_label, "Score: %d/%d", cwaCopyCorrect, cwaCopyTotal);
+    }
+
+    // Update character count display
+    if (cwa_copy_chars_label) {
+        lv_label_set_text_fmt(cwa_copy_chars_label, "Chars: %d", cwaCopyCharCount);
+    }
+
+    // Update input display
+    if (cwa_copy_input_label) {
+        if (cwaCopyInput.length() > 0) {
+            lv_label_set_text(cwa_copy_input_label, cwaCopyInput.c_str());
+        } else {
+            lv_label_set_text(cwa_copy_input_label, "_");
+        }
+    }
+
+    // Update feedback based on state
+    if (cwaCopyUIState == CWA_COPY_FEEDBACK && cwa_copy_feedback_label && cwa_copy_target_label) {
+        bool correct = cwaCopyInput.equalsIgnoreCase(cwaCopyTarget);
+        lv_label_set_text(cwa_copy_feedback_label, correct ? "CORRECT!" : "INCORRECT");
+        lv_obj_set_style_text_color(cwa_copy_feedback_label, correct ? LV_COLOR_SUCCESS : LV_COLOR_ERROR, 0);
+        lv_label_set_text_fmt(cwa_copy_target_label, "Answer: %s", cwaCopyTarget.c_str());
+    }
+
+    // Update prompt based on state
+    if (cwa_copy_prompt_label) {
+        switch (cwaCopyUIState) {
+            case CWA_COPY_READY:
+                lv_label_set_text(cwa_copy_prompt_label, "Press SPACE to hear morse");
+                break;
+            case CWA_COPY_PLAYING:
+                lv_label_set_text(cwa_copy_prompt_label, "Listening...");
+                break;
+            case CWA_COPY_INPUT:
+                lv_label_set_text(cwa_copy_prompt_label, "Type what you heard:");
+                break;
+            case CWA_COPY_FEEDBACK:
+                lv_label_set_text(cwa_copy_prompt_label, "Press any key to continue");
+                break;
+            case CWA_COPY_COMPLETE:
+                lv_label_set_text(cwa_copy_prompt_label, "Session Complete!");
+                break;
+        }
+    }
+}
+
+/*
+ * Key event handler for Copy Practice
+ */
+static void cwa_copy_key_event_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+    Serial.printf("[CWACopy] Key event: %lu state: %d\n", key, cwaCopyUIState);
+
+    // Handle ESC always
+    if (key == LV_KEY_ESC) {
+        // Cleanup is handled by back navigation
+        return;
+    }
+
+    // Handle UP/DOWN for character count adjustment
+    if (key == LV_KEY_UP) {
+        if (cwaCopyCharCount < 10) {
+            cwaCopyCharCount++;
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+            updateCWACopyPracticeUI();
+        }
+        return;
+    }
+    if (key == LV_KEY_DOWN) {
+        if (cwaCopyCharCount > 1) {
+            cwaCopyCharCount--;
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+            updateCWACopyPracticeUI();
+        }
+        return;
+    }
+
+    switch (cwaCopyUIState) {
+        case CWA_COPY_READY:
+            if (key == ' ') {
+                // Start playing morse
+                cwaCopyUIState = CWA_COPY_PLAYING;
+                updateCWACopyPracticeUI();
+
+                // Generate new content and play
+                cwaCopyRound++;
+                cwaCopyTarget = generateCWAContent();
+                cwaCopyInput = "";
+                Serial.printf("[CWACopy] Playing: %s\n", cwaCopyTarget.c_str());
+
+                playMorseString(cwaCopyTarget.c_str(), cwSpeed, cwTone);
+
+                // After playing, switch to input mode
+                cwaCopyUIState = CWA_COPY_INPUT;
+                updateCWACopyPracticeUI();
+            }
+            break;
+
+        case CWA_COPY_INPUT:
+            if (key == ' ') {
+                // Replay
+                playMorseString(cwaCopyTarget.c_str(), cwSpeed, cwTone);
+            } else if (key == LV_KEY_ENTER) {
+                // Submit answer
+                cwaCopyTotal++;
+                if (cwaCopyInput.equalsIgnoreCase(cwaCopyTarget)) {
+                    cwaCopyCorrect++;
+                    beep(1000, 200);  // Success beep
+                } else {
+                    beep(400, 300);  // Error beep
+                }
+                cwaCopyUIState = CWA_COPY_FEEDBACK;
+                updateCWACopyPracticeUI();
+            } else if (key == LV_KEY_BACKSPACE || key == 0x08) {
+                // Delete last character
+                if (cwaCopyInput.length() > 0) {
+                    cwaCopyInput.remove(cwaCopyInput.length() - 1);
+                    beep(TONE_MENU_NAV, BEEP_SHORT);
+                    updateCWACopyPracticeUI();
+                }
+            } else if (key >= 32 && key <= 126 && key != ' ') {
+                // Printable character - add to input
+                if (cwaCopyInput.length() < 20) {
+                    cwaCopyInput += (char)toupper(key);
+                    beep(TONE_MENU_NAV, BEEP_SHORT);
+                    updateCWACopyPracticeUI();
+                }
+            }
+            break;
+
+        case CWA_COPY_FEEDBACK:
+            // Any key continues
+            if (cwaCopyRound >= 10) {
+                cwaCopyUIState = CWA_COPY_COMPLETE;
+                updateCWACopyPracticeUI();
+            } else {
+                cwaCopyUIState = CWA_COPY_READY;
+                cwaCopyInput = "";
+                updateCWACopyPracticeUI();
+            }
+            break;
+
+        case CWA_COPY_COMPLETE:
+            // Any key exits - ESC handled at top
+            break;
+
+        default:
+            break;
+    }
+}
+
+/*
+ * Create CW Academy Copy Practice Screen (Mode 12)
+ */
+lv_obj_t* createCWAcademyCopyPracticeScreen() {
+    clearNavigationGroup();
+
+    lv_obj_t* screen = createScreen();
+    applyScreenStyle(screen);
+
+    // Initialize copy practice state
+    cwaCopyRound = 0;
+    cwaCopyCorrect = 0;
+    cwaCopyTotal = 0;
+    cwaCopyInput = "";
+    cwaCopyUIState = CWA_COPY_READY;
+
+    // Use esp_random() instead of analogRead(0) which breaks I2S audio
+    randomSeed(esp_random());
+
+    // Title bar
+    lv_obj_t* title_bar = lv_obj_create(screen);
+    lv_obj_set_size(title_bar, SCREEN_WIDTH, HEADER_HEIGHT);
+    lv_obj_set_pos(title_bar, 0, 0);
+    lv_obj_add_style(title_bar, getStyleStatusBar(), 0);
+    lv_obj_clear_flag(title_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* title = lv_label_create(title_bar);
+    lv_label_set_text(title, "CW ACADEMY - COPY PRACTICE");
+    lv_obj_add_style(title, getStyleLabelTitle(), 0);
+    lv_obj_align(title, LV_ALIGN_LEFT_MID, 15, 0);
+
+    createCompactStatusBar(screen);
+
+    // Stats bar
+    lv_obj_t* stats_bar = lv_obj_create(screen);
+    lv_obj_set_size(stats_bar, SCREEN_WIDTH - 40, 32);
+    lv_obj_set_pos(stats_bar, 20, HEADER_HEIGHT + 5);
+    applyCardStyle(stats_bar);
+    lv_obj_set_style_pad_all(stats_bar, 5, 0);
+    lv_obj_clear_flag(stats_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    cwa_copy_round_label = lv_label_create(stats_bar);
+    lv_label_set_text_fmt(cwa_copy_round_label, "Round: %d/10", cwaCopyRound);
+    lv_obj_set_style_text_font(cwa_copy_round_label, getThemeFonts()->font_body, 0);
+    lv_obj_align(cwa_copy_round_label, LV_ALIGN_LEFT_MID, 10, 0);
+
+    cwa_copy_score_label = lv_label_create(stats_bar);
+    lv_label_set_text_fmt(cwa_copy_score_label, "Score: %d/%d", cwaCopyCorrect, cwaCopyTotal);
+    lv_obj_set_style_text_font(cwa_copy_score_label, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(cwa_copy_score_label, LV_COLOR_SUCCESS, 0);
+    lv_obj_align(cwa_copy_score_label, LV_ALIGN_CENTER, 0, 0);
+
+    cwa_copy_chars_label = lv_label_create(stats_bar);
+    lv_label_set_text_fmt(cwa_copy_chars_label, "Chars: %d", cwaCopyCharCount);
+    lv_obj_set_style_text_font(cwa_copy_chars_label, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(cwa_copy_chars_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_align(cwa_copy_chars_label, LV_ALIGN_RIGHT_MID, -10, 0);
+
+    // Prompt label
+    cwa_copy_prompt_label = lv_label_create(screen);
+    lv_label_set_text(cwa_copy_prompt_label, "Press SPACE to hear morse");
+    lv_obj_set_style_text_font(cwa_copy_prompt_label, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(cwa_copy_prompt_label, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_pos(cwa_copy_prompt_label, 20, HEADER_HEIGHT + 48);
+
+    // Input card
+    lv_obj_t* input_card = lv_obj_create(screen);
+    lv_obj_set_size(input_card, SCREEN_WIDTH - 40, 60);
+    lv_obj_set_pos(input_card, 20, HEADER_HEIGHT + 75);
+    applyCardStyle(input_card);
+    lv_obj_clear_flag(input_card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(input_card, LV_OBJ_FLAG_CLICKABLE);
+
+    // Add key event handler
+    lv_obj_add_event_cb(input_card, cwa_copy_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(input_card);
+
+    cwa_copy_input_label = lv_label_create(input_card);
+    lv_label_set_text(cwa_copy_input_label, "_");
+    lv_obj_set_style_text_font(cwa_copy_input_label, getThemeFonts()->font_title, 0);
+    lv_obj_set_style_text_color(cwa_copy_input_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_center(cwa_copy_input_label);
+
+    // Feedback label
+    cwa_copy_feedback_label = lv_label_create(screen);
+    lv_label_set_text(cwa_copy_feedback_label, "");
+    lv_obj_set_style_text_font(cwa_copy_feedback_label, getThemeFonts()->font_subtitle, 0);
+    lv_obj_set_pos(cwa_copy_feedback_label, 20, HEADER_HEIGHT + 145);
+    lv_obj_set_width(cwa_copy_feedback_label, SCREEN_WIDTH - 40);
+    lv_obj_set_style_text_align(cwa_copy_feedback_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    // Target label (shows correct answer during feedback)
+    cwa_copy_target_label = lv_label_create(screen);
+    lv_label_set_text(cwa_copy_target_label, "");
+    lv_obj_set_style_text_font(cwa_copy_target_label, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(cwa_copy_target_label, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_pos(cwa_copy_target_label, 20, HEADER_HEIGHT + 175);
+    lv_obj_set_width(cwa_copy_target_label, SCREEN_WIDTH - 40);
+    lv_obj_set_style_text_align(cwa_copy_target_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    // Footer
+    lv_obj_t* footer = lv_obj_create(screen);
+    lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
+    lv_obj_set_pos(footer, 0, SCREEN_HEIGHT - FOOTER_HEIGHT);
+    lv_obj_set_style_bg_opa(footer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(footer, 0, 0);
+    lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* help = lv_label_create(footer);
+    lv_label_set_text(help, "SPACE: Play   UP/DN: Chars   ENTER: Submit   ESC: Exit");
+    lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
+    lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
+    lv_obj_center(help);
+
+    cwa_copy_screen = screen;
+    return screen;
+}
+
+// ============================================
+// CW Academy Sending Practice Screen (Mode 13)
+// ============================================
+
+// Sending practice state
+enum CWASendState {
+    CWA_SEND_READY,       // Ready to start sending
+    CWA_SEND_SENDING,     // Student is sending morse
+    CWA_SEND_FEEDBACK,    // Showing correct/incorrect feedback
+    CWA_SEND_COMPLETE     // Session complete
+};
+
+static CWASendState cwa_send_state = CWA_SEND_READY;
+static lv_obj_t* cwa_send_screen = NULL;
+static lv_obj_t* cwa_send_round_label = NULL;
+static lv_obj_t* cwa_send_score_label = NULL;
+static lv_obj_t* cwa_send_target_label = NULL;
+static lv_obj_t* cwa_send_decoded_label = NULL;
+static lv_obj_t* cwa_send_feedback_label = NULL;
+static lv_obj_t* cwa_send_hint_label = NULL;
+static lv_obj_t* cwa_send_ref_toggle = NULL;
+
+// Keyer state for dual-core operation
+static bool cwa_send_last_tone_state = false;   // Track tone state changes
+static unsigned long cwa_send_element_start = 0;
+static unsigned long cwa_send_last_state_change = 0;
+static unsigned long cwa_send_last_element = 0;
+static bool cwa_send_sending_dit = false;
+static bool cwa_send_sending_dah = false;
+static bool cwa_send_keyer_active = false;
+static bool cwa_send_in_spacing = false;
+static bool cwa_send_dit_memory = false;
+static bool cwa_send_dah_memory = false;
+static int cwa_send_dit_duration = 0;
+static MorseDecoderAdaptive* cwa_send_decoder_ptr = NULL;
+
+/*
+ * Initialize sending practice state for LVGL mode
+ */
+void initCWASendingPractice() {
+    cwaSendRound = 0;
+    cwaSendCorrect = 0;
+    cwaSendTotal = 0;
+    cwaSendTarget = "";
+    cwaSendDecoded = "";
+    cwaSendShowReference = true;
+    cwa_send_state = CWA_SEND_READY;
+
+    // Reset keyer state
+    cwa_send_last_tone_state = false;
+    cwa_send_element_start = 0;
+    cwa_send_last_state_change = 0;
+    cwa_send_last_element = 0;
+    cwa_send_sending_dit = false;
+    cwa_send_sending_dah = false;
+    cwa_send_keyer_active = false;
+    cwa_send_in_spacing = false;
+    cwa_send_dit_memory = false;
+    cwa_send_dah_memory = false;
+
+    // Set up timing for 15 WPM sending speed
+    cwa_send_dit_duration = DIT_DURATION(15);
+
+    // Initialize decoder
+    if (cwa_send_decoder_ptr == NULL) {
+        cwa_send_decoder_ptr = new MorseDecoderAdaptive(15, 15, 30);
+    }
+    cwa_send_decoder_ptr->reset();
+    cwa_send_decoder_ptr->setWPM(15);
+
+    // Set up decoder callback - uses thread-safe queue
+    cwa_send_decoder_ptr->messageCallback = [](String morse, String text) {
+        for (int i = 0; i < text.length(); i++) {
+            sendDecodedChar(text[i]);  // Thread-safe queue
+        }
+    };
+}
+
+/*
+ * Start a new sending round (LVGL version)
+ */
+void startCWASendRoundLVGL() {
+    cwaSendRound++;
+    cwaSendTarget = generateCWAContent();
+    cwaSendDecoded = "";
+    cwa_send_state = CWA_SEND_SENDING;
+
+    // Reset keyer state
+    cwa_send_last_tone_state = false;
+    cwa_send_element_start = 0;
+    cwa_send_last_state_change = 0;
+    cwa_send_last_element = 0;
+    cwa_send_sending_dit = false;
+    cwa_send_sending_dah = false;
+    cwa_send_keyer_active = false;
+    cwa_send_in_spacing = false;
+    cwa_send_dit_memory = false;
+    cwa_send_dah_memory = false;
+
+    // Reset decoder
+    if (cwa_send_decoder_ptr) {
+        cwa_send_decoder_ptr->reset();
+        cwa_send_decoder_ptr->flush();
+    }
+
+    // Ensure tone is stopped
+    requestStopTone();
+}
+
+/*
+ * Handle iambic keyer with dual-core audio
+ */
+void handleCWASendingKeyerDualCore() {
+    unsigned long currentTime = millis();
+
+    // Get paddle state from audio task (thread-safe)
+    bool ditPressed = false;
+    bool dahPressed = false;
+    getPaddleState(&ditPressed, &dahPressed);
+
+    // If not actively sending or spacing, check for new input
+    if (!cwa_send_keyer_active && !cwa_send_in_spacing) {
+        if (ditPressed || cwa_send_dit_memory) {
+            // Start sending dit
+            if (!cwa_send_last_tone_state) {
+                if (cwa_send_last_state_change > 0) {
+                    float silenceDuration = currentTime - cwa_send_last_state_change;
+                    if (silenceDuration > 0 && cwa_send_decoder_ptr) {
+                        cwa_send_decoder_ptr->addTiming(-silenceDuration);
+                    }
+                }
+                cwa_send_last_state_change = currentTime;
+                cwa_send_last_tone_state = true;
+                requestStartTone(cwTone);  // Non-blocking request
+            }
+
+            cwa_send_keyer_active = true;
+            cwa_send_sending_dit = true;
+            cwa_send_sending_dah = false;
+            cwa_send_in_spacing = false;
+            cwa_send_element_start = currentTime;
+            cwa_send_dit_memory = false;
+        }
+        else if (dahPressed || cwa_send_dah_memory) {
+            // Start sending dah
+            if (!cwa_send_last_tone_state) {
+                if (cwa_send_last_state_change > 0) {
+                    float silenceDuration = currentTime - cwa_send_last_state_change;
+                    if (silenceDuration > 0 && cwa_send_decoder_ptr) {
+                        cwa_send_decoder_ptr->addTiming(-silenceDuration);
+                    }
+                }
+                cwa_send_last_state_change = currentTime;
+                cwa_send_last_tone_state = true;
+                requestStartTone(cwTone);  // Non-blocking request
+            }
+
+            cwa_send_keyer_active = true;
+            cwa_send_sending_dit = false;
+            cwa_send_sending_dah = true;
+            cwa_send_in_spacing = false;
+            cwa_send_element_start = currentTime;
+            cwa_send_dah_memory = false;
+        }
+    }
+    // Currently sending an element
+    else if (cwa_send_keyer_active && !cwa_send_in_spacing) {
+        int duration = cwa_send_sending_dit ? cwa_send_dit_duration : (cwa_send_dit_duration * 3);
+
+        // Check for opposite paddle (iambic memory)
+        if (cwa_send_sending_dit && dahPressed) {
+            cwa_send_dah_memory = true;
+        } else if (cwa_send_sending_dah && ditPressed) {
+            cwa_send_dit_memory = true;
+        }
+
+        // Check if element is complete
+        if (currentTime - cwa_send_element_start >= duration) {
+            // Send tone duration to decoder
+            if (cwa_send_last_tone_state) {
+                float toneDuration = currentTime - cwa_send_last_state_change;
+                if (toneDuration > 0 && cwa_send_decoder_ptr) {
+                    cwa_send_decoder_ptr->addTiming(toneDuration);
+                    cwa_send_last_element = currentTime;
+                }
+                cwa_send_last_state_change = currentTime;
+                cwa_send_last_tone_state = false;
+            }
+
+            requestStopTone();  // Non-blocking request
+            cwa_send_keyer_active = false;
+            cwa_send_in_spacing = true;
+            cwa_send_element_start = currentTime;
+        }
+    }
+    // In inter-element spacing
+    else if (cwa_send_in_spacing) {
+        if (currentTime - cwa_send_element_start >= cwa_send_dit_duration) {
+            cwa_send_in_spacing = false;
+        }
+    }
+}
+
+/*
+ * Handle straight key with dual-core audio
+ */
+void handleCWASendingStraightKeyDualCore() {
+    bool ditPressed = false;
+    bool dahPressed = false;
+    getPaddleState(&ditPressed, &dahPressed);  // Use dit paddle for straight key
+
+    unsigned long currentTime = millis();
+    bool keyDown = ditPressed;
+
+    if (keyDown && !cwa_send_last_tone_state) {
+        // Key just pressed
+        if (cwa_send_last_state_change > 0) {
+            float silenceDuration = currentTime - cwa_send_last_state_change;
+            if (silenceDuration > 0 && cwa_send_decoder_ptr) {
+                cwa_send_decoder_ptr->addTiming(-silenceDuration);
+            }
+        }
+        cwa_send_last_state_change = currentTime;
+        cwa_send_last_tone_state = true;
+        requestStartTone(cwTone);
+    }
+    else if (!keyDown && cwa_send_last_tone_state) {
+        // Key just released
+        float toneDuration = currentTime - cwa_send_last_state_change;
+        if (toneDuration > 0 && cwa_send_decoder_ptr) {
+            cwa_send_decoder_ptr->addTiming(toneDuration);
+            cwa_send_last_element = currentTime;
+        }
+        cwa_send_last_state_change = currentTime;
+        cwa_send_last_tone_state = false;
+        requestStopTone();
+    }
+}
+
+/*
+ * Update sending practice - called from main loop
+ */
+void updateCWASendingPracticeLVGL() {
+    if (cwa_send_state != CWA_SEND_SENDING) return;
+    if (!cwa_send_screen) return;
+
+    // Handle keyer based on type
+    if (cwKeyType == KEY_STRAIGHT) {
+        handleCWASendingStraightKeyDualCore();
+    } else {
+        handleCWASendingKeyerDualCore();
+    }
+
+    // Check for decoded characters from thread-safe queue
+    bool decoded_changed = false;
+    while (hasDecodedChars()) {
+        char c = getDecodedChar();
+        if (c != 0) {
+            cwaSendDecoded += c;
+            decoded_changed = true;
+        }
+    }
+
+    // Check for decoder timeout (flush after word gap)
+    if (cwa_send_last_element > 0) {
+        bool ditPressed = false, dahPressed = false;
+        getPaddleState(&ditPressed, &dahPressed);
+
+        if (!ditPressed && !dahPressed) {
+            unsigned long timeSinceLastElement = millis() - cwa_send_last_element;
+            float wordGapDuration = MorseWPM::wordGap(15);
+
+            if (timeSinceLastElement > wordGapDuration) {
+                if (cwa_send_decoder_ptr) {
+                    cwa_send_decoder_ptr->flush();
+                }
+                cwa_send_last_element = 0;
+            }
+        }
+    }
+
+    // Update decoded label if changed
+    if (decoded_changed && cwa_send_decoded_label) {
+        String display = cwaSendDecoded.length() > 0 ? cwaSendDecoded : "_";
+        lv_label_set_text(cwa_send_decoded_label, display.c_str());
+    }
+}
+
+/*
+ * Update sending practice UI
+ */
+void updateCWASendPracticeUI() {
+    if (!cwa_send_screen) return;
+
+    // Update round/score labels
+    if (cwa_send_round_label) {
+        lv_label_set_text_fmt(cwa_send_round_label, "Round: %d/10", cwaSendRound);
+    }
+    if (cwa_send_score_label) {
+        lv_label_set_text_fmt(cwa_send_score_label, "Score: %d/%d", cwaSendCorrect, cwaSendTotal);
+    }
+
+    // Update target label
+    if (cwa_send_target_label) {
+        if (cwaSendShowReference) {
+            String target = "Send: " + cwaSendTarget;
+            lv_label_set_text(cwa_send_target_label, target.c_str());
+            lv_obj_set_style_text_color(cwa_send_target_label, LV_COLOR_SUCCESS, 0);
+        } else {
+            lv_label_set_text(cwa_send_target_label, "(Reference hidden - press R to show)");
+            lv_obj_set_style_text_color(cwa_send_target_label, LV_COLOR_TEXT_SECONDARY, 0);
+        }
+    }
+
+    // Update decoded label
+    if (cwa_send_decoded_label) {
+        String display = cwaSendDecoded.length() > 0 ? cwaSendDecoded : "_";
+        lv_label_set_text(cwa_send_decoded_label, display.c_str());
+    }
+
+    // Update feedback label based on state
+    if (cwa_send_feedback_label) {
+        switch (cwa_send_state) {
+            case CWA_SEND_READY:
+                lv_label_set_text(cwa_send_feedback_label, "Press SPACE to hear target, then key your response");
+                lv_obj_set_style_text_color(cwa_send_feedback_label, LV_COLOR_ACCENT_CYAN, 0);
+                break;
+            case CWA_SEND_SENDING:
+                lv_label_set_text(cwa_send_feedback_label, "");
+                break;
+            case CWA_SEND_FEEDBACK: {
+                bool correct = cwaSendDecoded.equalsIgnoreCase(cwaSendTarget);
+                if (correct) {
+                    lv_label_set_text(cwa_send_feedback_label, "CORRECT!");
+                    lv_obj_set_style_text_color(cwa_send_feedback_label, LV_COLOR_SUCCESS, 0);
+                } else {
+                    String fb = "Expected: " + cwaSendTarget;
+                    lv_label_set_text(cwa_send_feedback_label, fb.c_str());
+                    lv_obj_set_style_text_color(cwa_send_feedback_label, LV_COLOR_ERROR, 0);
+                }
+                break;
+            }
+            case CWA_SEND_COMPLETE: {
+                int pct = cwaSendTotal > 0 ? (cwaSendCorrect * 100 / cwaSendTotal) : 0;
+                char buf[64];
+                snprintf(buf, sizeof(buf), "Session Complete! Score: %d%% - Press any key", pct);
+                lv_label_set_text(cwa_send_feedback_label, buf);
+                lv_obj_set_style_text_color(cwa_send_feedback_label, pct >= 70 ? LV_COLOR_SUCCESS : LV_COLOR_WARNING, 0);
+                break;
+            }
+        }
+    }
+}
+
+/*
+ * Key event handler for sending practice
+ */
+static void cwa_send_key_event_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+
+    // ESC exits
+    if (key == LV_KEY_ESC) {
+        requestStopTone();
+        if (cwa_send_decoder_ptr) {
+            cwa_send_decoder_ptr->reset();
+        }
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+        onLVGLBackNavigation();
+        return;
+    }
+
+    switch (cwa_send_state) {
+        case CWA_SEND_READY:
+            // Start first round
+            startCWASendRoundLVGL();
+            updateCWASendPracticeUI();
+            break;
+
+        case CWA_SEND_SENDING:
+            if (key == ' ') {
+                // Play target
+                playMorseString(cwaSendTarget.c_str(), 15, cwTone);
+            }
+            else if (key == 'R' || key == 'r') {
+                // Toggle reference
+                cwaSendShowReference = !cwaSendShowReference;
+                beep(TONE_MENU_NAV, BEEP_SHORT);
+                updateCWASendPracticeUI();
+            }
+            else if (key == LV_KEY_ENTER) {
+                // Submit
+                if (cwa_send_decoder_ptr) {
+                    cwa_send_decoder_ptr->flush();
+                }
+
+                // Check for any remaining decoded chars
+                while (hasDecodedChars()) {
+                    char c = getDecodedChar();
+                    if (c != 0) cwaSendDecoded += c;
+                }
+
+                cwaSendTotal++;
+                if (cwaSendDecoded.equalsIgnoreCase(cwaSendTarget)) {
+                    cwaSendCorrect++;
+                    beep(1000, 200);  // Success
+                } else {
+                    beep(400, 300);   // Error
+                }
+
+                requestStopTone();
+                cwa_send_state = CWA_SEND_FEEDBACK;
+                updateCWASendPracticeUI();
+            }
+            break;
+
+        case CWA_SEND_FEEDBACK:
+            if (cwaSendRound >= 10) {
+                cwa_send_state = CWA_SEND_COMPLETE;
+                updateCWASendPracticeUI();
+            } else {
+                startCWASendRoundLVGL();
+                updateCWASendPracticeUI();
+            }
+            break;
+
+        case CWA_SEND_COMPLETE:
+            // Exit on any key
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+            onLVGLBackNavigation();
+            break;
+    }
+}
+
+/*
+ * Create CW Academy Sending Practice screen
+ */
+lv_obj_t* createCWAcademySendingPracticeScreen() {
+    clearNavigationGroup();
+
+    lv_obj_t* screen = createScreen();
+    applyScreenStyle(screen);
+
+    // Header
+    lv_obj_t* header = createHeader(screen, "CWA SENDING PRACTICE");
+
+    // Session info label
+    lv_obj_t* session_label = lv_label_create(screen);
+    char session_text[64];
+    snprintf(session_text, sizeof(session_text), "Session %d - %s",
+             cwaSelectedSession, cwaMessageTypeNames[cwaSelectedMessageType]);
+    lv_label_set_text(session_label, session_text);
+    lv_obj_set_style_text_font(session_label, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(session_label, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_pos(session_label, 20, HEADER_HEIGHT + 5);
+
+    // Stats bar
+    lv_obj_t* stats_bar = lv_obj_create(screen);
+    lv_obj_set_size(stats_bar, SCREEN_WIDTH - 40, 30);
+    lv_obj_set_pos(stats_bar, 20, HEADER_HEIGHT + 25);
+    lv_obj_set_style_bg_opa(stats_bar, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(stats_bar, 0, 0);
+    lv_obj_clear_flag(stats_bar, LV_OBJ_FLAG_SCROLLABLE);
+
+    cwa_send_round_label = lv_label_create(stats_bar);
+    lv_label_set_text(cwa_send_round_label, "Round: 0/10");
+    lv_obj_set_style_text_font(cwa_send_round_label, getThemeFonts()->font_body, 0);
+    lv_obj_align(cwa_send_round_label, LV_ALIGN_LEFT_MID, 0, 0);
+
+    cwa_send_score_label = lv_label_create(stats_bar);
+    lv_label_set_text(cwa_send_score_label, "Score: 0/0");
+    lv_obj_set_style_text_font(cwa_send_score_label, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(cwa_send_score_label, LV_COLOR_SUCCESS, 0);
+    lv_obj_align(cwa_send_score_label, LV_ALIGN_RIGHT_MID, 0, 0);
+
+    // Target card (what to send)
+    lv_obj_t* target_card = lv_obj_create(screen);
+    lv_obj_set_size(target_card, SCREEN_WIDTH - 40, 50);
+    lv_obj_set_pos(target_card, 20, HEADER_HEIGHT + 60);
+    applyCardStyle(target_card);
+    lv_obj_clear_flag(target_card, LV_OBJ_FLAG_SCROLLABLE);
+
+    cwa_send_target_label = lv_label_create(target_card);
+    lv_label_set_text(cwa_send_target_label, "Press any key to start");
+    lv_obj_set_style_text_font(cwa_send_target_label, getThemeFonts()->font_subtitle, 0);
+    lv_obj_set_style_text_color(cwa_send_target_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_center(cwa_send_target_label);
+
+    // Decoded display card
+    lv_obj_t* decoded_card = lv_obj_create(screen);
+    lv_obj_set_size(decoded_card, SCREEN_WIDTH - 40, 50);
+    lv_obj_set_pos(decoded_card, 20, HEADER_HEIGHT + 120);
+    applyCardStyle(decoded_card);
+    lv_obj_clear_flag(decoded_card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(decoded_card, LV_OBJ_FLAG_CLICKABLE);
+
+    // Add key event handler
+    lv_obj_add_event_cb(decoded_card, cwa_send_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(decoded_card);
+
+    lv_obj_t* decoded_prefix = lv_label_create(decoded_card);
+    lv_label_set_text(decoded_prefix, "You sent:");
+    lv_obj_set_style_text_font(decoded_prefix, getThemeFonts()->font_small, 0);
+    lv_obj_set_style_text_color(decoded_prefix, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(decoded_prefix, LV_ALIGN_LEFT_MID, 10, -10);
+
+    cwa_send_decoded_label = lv_label_create(decoded_card);
+    lv_label_set_text(cwa_send_decoded_label, "_");
+    lv_obj_set_style_text_font(cwa_send_decoded_label, getThemeFonts()->font_title, 0);
+    lv_obj_set_style_text_color(cwa_send_decoded_label, LV_COLOR_WARNING, 0);
+    lv_obj_align(cwa_send_decoded_label, LV_ALIGN_LEFT_MID, 80, 0);
+
+    // Feedback label
+    cwa_send_feedback_label = lv_label_create(screen);
+    lv_label_set_text(cwa_send_feedback_label, "Press any key to start");
+    lv_obj_set_style_text_font(cwa_send_feedback_label, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(cwa_send_feedback_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_pos(cwa_send_feedback_label, 20, HEADER_HEIGHT + 180);
+    lv_obj_set_width(cwa_send_feedback_label, SCREEN_WIDTH - 40);
+    lv_obj_set_style_text_align(cwa_send_feedback_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    // Footer
+    lv_obj_t* footer = lv_obj_create(screen);
+    lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
+    lv_obj_set_pos(footer, 0, SCREEN_HEIGHT - FOOTER_HEIGHT);
+    lv_obj_set_style_bg_opa(footer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(footer, 0, 0);
+    lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* help = lv_label_create(footer);
+    lv_label_set_text(help, "SPACE: Hear target   R: Toggle ref   ENTER: Submit   ESC: Exit");
+    lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
+    lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
+    lv_obj_center(help);
+
+    // Initialize state
+    initCWASendingPractice();
+
+    cwa_send_screen = screen;
+    return screen;
+}
+
+// ============================================
+// CW Academy QSO Practice Screen (Mode 14)
+// ============================================
+
+// QSO Practice state
+enum CWAQSOState {
+    CWA_QSO_READY,        // Ready to start
+    CWA_QSO_PLAYING,      // Playing exchange
+    CWA_QSO_INPUT,        // Waiting for user response
+    CWA_QSO_FEEDBACK,     // Showing feedback
+    CWA_QSO_COMPLETE      // Session complete
+};
+
+static CWAQSOState cwa_qso_state = CWA_QSO_READY;
+static lv_obj_t* cwa_qso_screen = NULL;
+static lv_obj_t* cwa_qso_round_label = NULL;
+static lv_obj_t* cwa_qso_station_label = NULL;
+static lv_obj_t* cwa_qso_prompt_label = NULL;
+static lv_obj_t* cwa_qso_input_label = NULL;
+static lv_obj_t* cwa_qso_feedback_label = NULL;
+
+// QSO practice variables
+static int cwa_qso_round = 0;
+static int cwa_qso_correct = 0;
+static int cwa_qso_total = 0;
+static String cwa_qso_input = "";
+static String cwa_qso_expected = "";
+static String cwa_qso_station_call = "";
+static String cwa_qso_station_name = "";
+static int cwa_qso_rst = 599;
+
+// Simulated station data
+static const char* cwa_qso_callsigns[] = {"W1AW", "K3LR", "N6BV", "W5KFT", "K9LA", "W0AIH", "N2IC", "K5ZD"};
+static const char* cwa_qso_names[] = {"JOHN", "BOB", "MARY", "TOM", "JANE", "MIKE", "SUE", "BILL"};
+static const int cwa_qso_num_stations = 8;
+
+/*
+ * Initialize QSO practice
+ */
+void initCWAQSOPractice() {
+    cwa_qso_round = 0;
+    cwa_qso_correct = 0;
+    cwa_qso_total = 0;
+    cwa_qso_input = "";
+    cwa_qso_expected = "";
+    cwa_qso_state = CWA_QSO_READY;
+
+    // Pick a random station
+    randomSeed(esp_random());
+    int idx = random(cwa_qso_num_stations);
+    cwa_qso_station_call = cwa_qso_callsigns[idx];
+    cwa_qso_station_name = cwa_qso_names[idx];
+    cwa_qso_rst = 559 + random(4) * 10;  // 559, 569, 579, 589, or 599
+}
+
+/*
+ * Start a new QSO round
+ */
+void startCWAQSORound() {
+    cwa_qso_round++;
+    cwa_qso_input = "";
+    cwa_qso_state = CWA_QSO_PLAYING;
+
+    // Generate exchange based on round
+    // Rounds 1-3: CQ exchange, Rounds 4-6: RST exchange, Rounds 7-10: Full exchange
+    if (cwa_qso_round <= 3) {
+        // CQ exchange: Station calls CQ, expect your call
+        cwa_qso_expected = vailCallsign.length() > 0 && vailCallsign != "GUEST" ? vailCallsign : "W1TEST";
+    } else if (cwa_qso_round <= 6) {
+        // RST exchange: Station sends RST, expect 599 back
+        cwa_qso_expected = "599";
+    } else {
+        // Full exchange: Station sends name, expect your name
+        cwa_qso_expected = "OP";  // Placeholder - user should send their name
+    }
+}
+
+/*
+ * Update QSO practice UI
+ */
+void updateCWAQSOPracticeUI() {
+    if (!cwa_qso_screen) return;
+
+    if (cwa_qso_round_label) {
+        lv_label_set_text_fmt(cwa_qso_round_label, "Round: %d/10  Score: %d/%d",
+                              cwa_qso_round, cwa_qso_correct, cwa_qso_total);
+    }
+
+    if (cwa_qso_station_label) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "Station: %s (%s)",
+                 cwa_qso_station_call.c_str(), cwa_qso_station_name.c_str());
+        lv_label_set_text(cwa_qso_station_label, buf);
+    }
+
+    if (cwa_qso_prompt_label) {
+        switch (cwa_qso_state) {
+            case CWA_QSO_READY:
+                lv_label_set_text(cwa_qso_prompt_label, "Press any key to start QSO practice");
+                break;
+            case CWA_QSO_PLAYING:
+                lv_label_set_text(cwa_qso_prompt_label, "Listening to exchange...");
+                break;
+            case CWA_QSO_INPUT:
+                lv_label_set_text(cwa_qso_prompt_label, "Type your response:");
+                break;
+            case CWA_QSO_FEEDBACK:
+            case CWA_QSO_COMPLETE:
+                break;
+        }
+    }
+
+    if (cwa_qso_input_label) {
+        String display = cwa_qso_input.length() > 0 ? cwa_qso_input : "_";
+        lv_label_set_text(cwa_qso_input_label, display.c_str());
+    }
+
+    if (cwa_qso_feedback_label) {
+        switch (cwa_qso_state) {
+            case CWA_QSO_FEEDBACK: {
+                bool correct = cwa_qso_input.equalsIgnoreCase(cwa_qso_expected);
+                if (correct) {
+                    lv_label_set_text(cwa_qso_feedback_label, "CORRECT! Press any key to continue");
+                    lv_obj_set_style_text_color(cwa_qso_feedback_label, LV_COLOR_SUCCESS, 0);
+                } else {
+                    char buf[64];
+                    snprintf(buf, sizeof(buf), "Expected: %s - Press any key", cwa_qso_expected.c_str());
+                    lv_label_set_text(cwa_qso_feedback_label, buf);
+                    lv_obj_set_style_text_color(cwa_qso_feedback_label, LV_COLOR_ERROR, 0);
+                }
+                break;
+            }
+            case CWA_QSO_COMPLETE: {
+                int pct = cwa_qso_total > 0 ? (cwa_qso_correct * 100 / cwa_qso_total) : 0;
+                char buf[64];
+                snprintf(buf, sizeof(buf), "QSO Complete! Score: %d%% - Press any key", pct);
+                lv_label_set_text(cwa_qso_feedback_label, buf);
+                lv_obj_set_style_text_color(cwa_qso_feedback_label,
+                                            pct >= 70 ? LV_COLOR_SUCCESS : LV_COLOR_WARNING, 0);
+                break;
+            }
+            default:
+                lv_label_set_text(cwa_qso_feedback_label, "");
+                break;
+        }
+    }
+}
+
+/*
+ * Play QSO exchange audio
+ */
+void playCWAQSOExchange() {
+    String exchange = "";
+
+    if (cwa_qso_round <= 3) {
+        // CQ exchange
+        exchange = "CQ CQ CQ DE " + cwa_qso_station_call + " " + cwa_qso_station_call + " K";
+    } else if (cwa_qso_round <= 6) {
+        // RST exchange
+        char rst[8];
+        snprintf(rst, sizeof(rst), "%d", cwa_qso_rst);
+        exchange = "UR RST " + String(rst) + " " + String(rst);
+    } else {
+        // Name exchange
+        exchange = "NAME " + cwa_qso_station_name + " " + cwa_qso_station_name;
+    }
+
+    playMorseString(exchange.c_str(), cwSpeed, cwTone);
+    cwa_qso_state = CWA_QSO_INPUT;
+    updateCWAQSOPracticeUI();
+}
+
+/*
+ * Key event handler for QSO practice
+ */
+static void cwa_qso_key_event_cb(lv_event_t* e) {
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code != LV_EVENT_KEY) return;
+
+    uint32_t key = lv_event_get_key(e);
+
+    // ESC exits
+    if (key == LV_KEY_ESC) {
+        beep(TONE_MENU_NAV, BEEP_SHORT);
+        onLVGLBackNavigation();
+        return;
+    }
+
+    switch (cwa_qso_state) {
+        case CWA_QSO_READY:
+            startCWAQSORound();
+            playCWAQSOExchange();
+            break;
+
+        case CWA_QSO_PLAYING:
+            // Wait for audio to finish
+            break;
+
+        case CWA_QSO_INPUT:
+            if (key == ' ') {
+                // Replay exchange
+                playCWAQSOExchange();
+            }
+            else if (key == LV_KEY_ENTER) {
+                // Submit answer
+                cwa_qso_total++;
+                if (cwa_qso_input.equalsIgnoreCase(cwa_qso_expected)) {
+                    cwa_qso_correct++;
+                    beep(1000, 200);
+                } else {
+                    beep(400, 300);
+                }
+                cwa_qso_state = CWA_QSO_FEEDBACK;
+                updateCWAQSOPracticeUI();
+            }
+            else if (key == 0x08 || key == 0x7F) {
+                // Backspace
+                if (cwa_qso_input.length() > 0) {
+                    cwa_qso_input.remove(cwa_qso_input.length() - 1);
+                    beep(TONE_MENU_NAV, BEEP_SHORT);
+                    updateCWAQSOPracticeUI();
+                }
+            }
+            else if (key >= 32 && key <= 126) {
+                // Printable character
+                if (cwa_qso_input.length() < 20) {
+                    cwa_qso_input += (char)toupper(key);
+                    beep(TONE_MENU_NAV, BEEP_SHORT);
+                    updateCWAQSOPracticeUI();
+                }
+            }
+            break;
+
+        case CWA_QSO_FEEDBACK:
+            if (cwa_qso_round >= 10) {
+                cwa_qso_state = CWA_QSO_COMPLETE;
+                updateCWAQSOPracticeUI();
+            } else {
+                // Pick new station for variety
+                int idx = random(cwa_qso_num_stations);
+                cwa_qso_station_call = cwa_qso_callsigns[idx];
+                cwa_qso_station_name = cwa_qso_names[idx];
+                cwa_qso_rst = 559 + random(4) * 10;
+
+                startCWAQSORound();
+                playCWAQSOExchange();
+            }
+            break;
+
+        case CWA_QSO_COMPLETE:
+            // Exit on any key
+            beep(TONE_MENU_NAV, BEEP_SHORT);
+            onLVGLBackNavigation();
+            break;
+    }
+}
+
+/*
+ * Create CW Academy QSO Practice screen
+ */
+lv_obj_t* createCWAcademyQSOPracticeScreen() {
+    clearNavigationGroup();
+
+    lv_obj_t* screen = createScreen();
+    applyScreenStyle(screen);
+
+    // Header
+    lv_obj_t* header = createHeader(screen, "CWA QSO PRACTICE");
+
+    // Round/score label
+    cwa_qso_round_label = lv_label_create(screen);
+    lv_label_set_text(cwa_qso_round_label, "Round: 0/10  Score: 0/0");
+    lv_obj_set_style_text_font(cwa_qso_round_label, getThemeFonts()->font_body, 0);
+    lv_obj_set_pos(cwa_qso_round_label, 20, HEADER_HEIGHT + 10);
+
+    // Station info
+    cwa_qso_station_label = lv_label_create(screen);
+    lv_label_set_text(cwa_qso_station_label, "Station: W1AW (JOHN)");
+    lv_obj_set_style_text_font(cwa_qso_station_label, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(cwa_qso_station_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_pos(cwa_qso_station_label, 20, HEADER_HEIGHT + 35);
+
+    // Prompt label
+    cwa_qso_prompt_label = lv_label_create(screen);
+    lv_label_set_text(cwa_qso_prompt_label, "Press any key to start QSO practice");
+    lv_obj_set_style_text_font(cwa_qso_prompt_label, getThemeFonts()->font_body, 0);
+    lv_obj_set_style_text_color(cwa_qso_prompt_label, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_pos(cwa_qso_prompt_label, 20, HEADER_HEIGHT + 65);
+
+    // Input card
+    lv_obj_t* input_card = lv_obj_create(screen);
+    lv_obj_set_size(input_card, SCREEN_WIDTH - 40, 60);
+    lv_obj_set_pos(input_card, 20, HEADER_HEIGHT + 95);
+    applyCardStyle(input_card);
+    lv_obj_clear_flag(input_card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(input_card, LV_OBJ_FLAG_CLICKABLE);
+
+    // Add key event handler
+    lv_obj_add_event_cb(input_card, cwa_qso_key_event_cb, LV_EVENT_KEY, NULL);
+    addNavigableWidget(input_card);
+
+    cwa_qso_input_label = lv_label_create(input_card);
+    lv_label_set_text(cwa_qso_input_label, "_");
+    lv_obj_set_style_text_font(cwa_qso_input_label, getThemeFonts()->font_title, 0);
+    lv_obj_set_style_text_color(cwa_qso_input_label, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_center(cwa_qso_input_label);
+
+    // Feedback label
+    cwa_qso_feedback_label = lv_label_create(screen);
+    lv_label_set_text(cwa_qso_feedback_label, "");
+    lv_obj_set_style_text_font(cwa_qso_feedback_label, getThemeFonts()->font_subtitle, 0);
+    lv_obj_set_pos(cwa_qso_feedback_label, 20, HEADER_HEIGHT + 165);
+    lv_obj_set_width(cwa_qso_feedback_label, SCREEN_WIDTH - 40);
+    lv_obj_set_style_text_align(cwa_qso_feedback_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    // Footer
+    lv_obj_t* footer = lv_obj_create(screen);
+    lv_obj_set_size(footer, SCREEN_WIDTH, FOOTER_HEIGHT);
+    lv_obj_set_pos(footer, 0, SCREEN_HEIGHT - FOOTER_HEIGHT);
+    lv_obj_set_style_bg_opa(footer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(footer, 0, 0);
+    lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* help = lv_label_create(footer);
+    lv_label_set_text(help, "SPACE: Replay   ENTER: Submit   ESC: Exit");
+    lv_obj_set_style_text_color(help, LV_COLOR_WARNING, 0);
+    lv_obj_set_style_text_font(help, getThemeFonts()->font_small, 0);
+    lv_obj_center(help);
+
+    // Initialize state
+    initCWAQSOPractice();
+    updateCWAQSOPracticeUI();
+
+    cwa_qso_screen = screen;
     return screen;
 }
 
@@ -4968,6 +6655,18 @@ lv_obj_t* createTrainingScreenForMode(int mode) {
             return createKochNewCharScreen();
         case 8:  // MODE_CW_ACADEMY_TRACK_SELECT
             return createCWAcademyTrackSelectScreen();
+        case 9:  // MODE_CW_ACADEMY_SESSION_SELECT
+            return createCWAcademySessionSelectScreen();
+        case 10: // MODE_CW_ACADEMY_PRACTICE_TYPE_SELECT
+            return createCWAcademyPracticeTypeSelectScreen();
+        case 11: // MODE_CW_ACADEMY_MESSAGE_TYPE_SELECT
+            return createCWAcademyMessageTypeSelectScreen();
+        case 12: // MODE_CW_ACADEMY_COPY_PRACTICE
+            return createCWAcademyCopyPracticeScreen();
+        case 13: // MODE_CW_ACADEMY_SENDING_PRACTICE
+            return createCWAcademySendingPracticeScreen();
+        case 14: // MODE_CW_ACADEMY_QSO_PRACTICE
+            return createCWAcademyQSOPracticeScreen();
         case 50: // MODE_LICENSE_SELECT
             return createLicenseSelectScreen();
         case 51: // MODE_LICENSE_QUIZ

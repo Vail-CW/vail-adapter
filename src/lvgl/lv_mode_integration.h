@@ -122,6 +122,19 @@
 #define LVGL_MODE_KOCH_CHAR_REF          76
 #define LVGL_MODE_KOCH_NEW_CHAR          77
 
+// Spark Watch game modes
+#define LVGL_MODE_SPARK_WATCH            78
+#define LVGL_MODE_SPARK_WATCH_DIFFICULTY 79
+#define LVGL_MODE_SPARK_WATCH_CAMPAIGN   80
+#define LVGL_MODE_SPARK_WATCH_MISSION    81
+#define LVGL_MODE_SPARK_WATCH_CHALLENGE  82
+#define LVGL_MODE_SPARK_WATCH_BRIEFING   83
+#define LVGL_MODE_SPARK_WATCH_GAMEPLAY   84
+#define LVGL_MODE_SPARK_WATCH_RESULTS    85
+#define LVGL_MODE_SPARK_WATCH_DEBRIEFING 86
+#define LVGL_MODE_SPARK_WATCH_SETTINGS   87
+#define LVGL_MODE_SPARK_WATCH_STATS      88
+
 // ============================================
 // Forward declarations from main file
 // ============================================
@@ -141,6 +154,7 @@ extern void startCWAcademy(LGFX& tft);
 extern void startMorseShooter(LGFX& tft);
 extern void loadShooterPrefs();  // Load shooter settings before showing settings screen
 extern void startMemoryGame(LGFX& tft);
+extern void startSparkWatch();
 extern void startRadioOutput(LGFX& tft);
 extern void startCWMemoriesMode(LGFX& tft);
 extern void startBTHID(LGFX& tft);
@@ -158,6 +172,10 @@ extern void startLoggerSettings(LGFX& tft);
 extern void startCWACopyPractice(LGFX& tft);
 extern void startCWASendingPractice(LGFX& tft);
 extern void startCWAQSOPractice(LGFX& tft);
+// CW Academy LVGL init functions (defined in lv_training_screens.h)
+extern void initCWACopyPractice();
+extern void initCWASendingPractice();
+extern void initCWAQSOPractice();
 extern void startWebPracticeMode(LGFX& tft);
 extern void startWebMemoryChainMode(LGFX& tft, int difficulty, int mode, int wpm, bool sound, bool hints);
 extern void startWebHearItMode(LGFX& tft);
@@ -166,6 +184,9 @@ extern void startLicenseQuiz(LGFX& tft, int licenseType);
 extern void startLicenseStats(LGFX& tft);
 extern void updateLicenseQuizDisplay();
 extern void startVailMaster(LGFX& tft);
+// CW Academy state reset functions (defined in training_cwa_core.h)
+extern void resetCWACopyPracticeState();
+extern void resetCWASendingPracticeState();
 
 // Forward declaration for license session
 extern struct LicenseStudySession licenseSession;
@@ -356,20 +377,32 @@ void initializeModeInt(int mode) {
             // Statistics screen handles its own init
             break;
         case LVGL_MODE_CW_ACADEMY_TRACK_SELECT:
-            Serial.println("[ModeInit] Starting CW Academy");
-            startCWAcademy(tft);
+            Serial.println("[ModeInit] Starting CW Academy Track Select");
+            loadCWAProgress();  // Load saved progress
+            break;
+        case LVGL_MODE_CW_ACADEMY_SESSION_SELECT:
+            Serial.println("[ModeInit] CW Academy Session Select");
+            // Session select screen handles its own init
+            break;
+        case LVGL_MODE_CW_ACADEMY_PRACTICE_TYPE_SELECT:
+            Serial.println("[ModeInit] CW Academy Practice Type Select");
+            // Practice type select screen handles its own init
+            break;
+        case LVGL_MODE_CW_ACADEMY_MESSAGE_TYPE_SELECT:
+            Serial.println("[ModeInit] CW Academy Message Type Select");
+            // Message type select screen handles its own init
             break;
         case LVGL_MODE_CW_ACADEMY_COPY_PRACTICE:
-            Serial.println("[ModeInit] Starting CW Academy Copy Practice");
-            startCWACopyPractice(tft);
+            Serial.println("[ModeInit] Starting CW Academy Copy Practice (LVGL)");
+            initCWACopyPractice();  // LVGL version initializes in screen creation
             break;
         case LVGL_MODE_CW_ACADEMY_SENDING_PRACTICE:
-            Serial.println("[ModeInit] Starting CW Academy Sending Practice");
-            startCWASendingPractice(tft);
+            Serial.println("[ModeInit] Starting CW Academy Sending Practice (LVGL)");
+            initCWASendingPractice();  // LVGL version with dual-core audio
             break;
         case LVGL_MODE_CW_ACADEMY_QSO_PRACTICE:
-            Serial.println("[ModeInit] Starting CW Academy QSO Practice");
-            startCWAQSOPractice(tft);
+            Serial.println("[ModeInit] Starting CW Academy QSO Practice (LVGL)");
+            initCWAQSOPractice();  // LVGL version
             break;
         case LVGL_MODE_HEAR_IT_TYPE_IT:
         case LVGL_MODE_HEAR_IT_MENU:
@@ -390,6 +423,10 @@ void initializeModeInt(int mode) {
         case LVGL_MODE_MORSE_MEMORY:
             Serial.println("[ModeInit] Starting Memory Game");
             startMemoryGame(tft);
+            break;
+        case LVGL_MODE_SPARK_WATCH:
+            Serial.println("[ModeInit] Starting Spark Watch");
+            startSparkWatch();
             break;
 
         // Network/radio modes
@@ -673,7 +710,33 @@ int getParentModeInt(int mode) {
         // Games submenu items
         case LVGL_MODE_MORSE_SHOOTER:
         case LVGL_MODE_MORSE_MEMORY:
+        case LVGL_MODE_SPARK_WATCH:
             return LVGL_MODE_GAMES_MENU;
+
+        // Spark Watch sub-screens
+        case LVGL_MODE_SPARK_WATCH_DIFFICULTY:
+        case LVGL_MODE_SPARK_WATCH_CAMPAIGN:
+        case LVGL_MODE_SPARK_WATCH_SETTINGS:
+        case LVGL_MODE_SPARK_WATCH_STATS:
+            return LVGL_MODE_SPARK_WATCH;
+
+        case LVGL_MODE_SPARK_WATCH_CHALLENGE:
+            return LVGL_MODE_SPARK_WATCH_DIFFICULTY;
+
+        case LVGL_MODE_SPARK_WATCH_MISSION:
+            return LVGL_MODE_SPARK_WATCH_CAMPAIGN;
+
+        case LVGL_MODE_SPARK_WATCH_BRIEFING:
+            // Returns to challenge or mission select based on context
+            // Default to difficulty select; actual logic handled in screen code
+            return LVGL_MODE_SPARK_WATCH_CHALLENGE;
+
+        case LVGL_MODE_SPARK_WATCH_GAMEPLAY:
+            return LVGL_MODE_SPARK_WATCH_BRIEFING;
+
+        case LVGL_MODE_SPARK_WATCH_RESULTS:
+        case LVGL_MODE_SPARK_WATCH_DEBRIEFING:
+            return LVGL_MODE_SPARK_WATCH_GAMEPLAY;
 
         // Settings submenu items
         case LVGL_MODE_DEVICE_SETTINGS_MENU:
@@ -793,6 +856,13 @@ void onLVGLBackNavigation() {
     if (currentModeInt == LVGL_MODE_VAIL_REPEATER) {
         // Properly disconnect from Vail when leaving the mode
         disconnectFromVail();
+    }
+    // CW Academy cleanup
+    if (currentModeInt == LVGL_MODE_CW_ACADEMY_COPY_PRACTICE) {
+        resetCWACopyPracticeState();
+    }
+    if (currentModeInt == LVGL_MODE_CW_ACADEMY_SENDING_PRACTICE) {
+        resetCWASendingPracticeState();
     }
 
     // Get parent mode
