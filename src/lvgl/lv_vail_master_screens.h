@@ -532,12 +532,13 @@ lv_obj_t* createVailMasterPracticeScreen() {
     lv_label_set_long_mode(vm_target_label, LV_LABEL_LONG_WRAP);
     lv_obj_align(vm_target_label, LV_ALIGN_CENTER, 0, 8);
 
-    // Echo display
+    // Echo display - taller container to fit 4+ rows of decoded text
     lv_obj_t* echo_container = lv_obj_create(screen);
-    lv_obj_set_size(echo_container, SCREEN_WIDTH - 20, 70);
+    lv_obj_set_size(echo_container, SCREEN_WIDTH - 20, 100);
     lv_obj_set_pos(echo_container, 10, HEADER_HEIGHT + 140);
     applyCardStyle(echo_container);
-    lv_obj_clear_flag(echo_container, LV_OBJ_FLAG_SCROLLABLE);
+    // Enable scrolling for long decoded sequences
+    lv_obj_set_scroll_dir(echo_container, LV_DIR_VER);
 
     lv_obj_t* echo_title = lv_label_create(echo_container);
     lv_label_set_text(echo_title, "ECHO:");

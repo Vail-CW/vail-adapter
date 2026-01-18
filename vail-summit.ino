@@ -66,7 +66,7 @@ using namespace lgfx::v1::fonts;
 
 // Games
 #include "src/games/game_morse_shooter.h"
-#include "src/games/game_morse_memory.h"
+#include "src/games/game_memory_chain.h"
 
 // Settings modes
 #include "src/settings/settings_wifi.h"
@@ -335,6 +335,10 @@ void setup() {
   // Load saved web password
   Serial.println("Loading web password...");
   loadSavedWebPassword();
+
+  // Load Vail Repeater settings (saved room)
+  Serial.println("Loading Vail settings...");
+  loadVailSettings();
   setSplashStage(5);  // "Starting web server..."
 
   // Load Koch Method progress
@@ -488,10 +492,10 @@ void loop() {
 
   // Update Memory Chain game if in game mode
   if (currentMode == MODE_MORSE_MEMORY) {
-    updateMemoryGame();
+    memoryChainUpdate();
     bool ditPressed = (digitalRead(DIT_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
     bool dahPressed = (digitalRead(DAH_PIN) == PADDLE_ACTIVE) || (touchRead(TOUCH_DAH_PIN) > TOUCH_THRESHOLD);
-    handleMemoryPaddleInput(ditPressed, dahPressed);
+    memoryChainHandlePaddle(ditPressed, dahPressed);
   }
 
   // Update Vail Master if in practice mode

@@ -240,9 +240,15 @@ void updateFilterLabel() {
         return;
     }
 
-    char buf[64];
-    snprintf(buf, sizeof(buf), "Filter: %s / %s / %s",
-             potaSpotFilter.band, potaSpotFilter.mode, potaSpotFilter.region);
+    char buf[80];
+    if (potaSpotFilter.callsign[0] != '\0') {
+        snprintf(buf, sizeof(buf), "Filter: %s / %s / %s / Call: %s",
+                 potaSpotFilter.band, potaSpotFilter.mode, potaSpotFilter.region,
+                 potaSpotFilter.callsign);
+    } else {
+        snprintf(buf, sizeof(buf), "Filter: %s / %s / %s",
+                 potaSpotFilter.band, potaSpotFilter.mode, potaSpotFilter.region);
+    }
     lv_label_set_text(pota_filter_label, buf);
     // Show the container
     if (pota_filter_container && lv_obj_is_valid(pota_filter_container)) {
@@ -715,7 +721,7 @@ lv_obj_t* createPOTAActiveSpotsScreen() {
     lv_obj_clear_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* footer_text = lv_label_create(footer);
-    lv_label_set_text(footer_text, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll  ENTER Details  F Filter  C Clear  R Refresh  ESC Back");
+    lv_label_set_text(footer_text, LV_SYMBOL_UP LV_SYMBOL_DOWN " Scroll  ENTER View  F Filter  S Search  C Clear  R Refresh");
     lv_obj_set_style_text_font(footer_text, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(footer_text, LV_COLOR_TEXT_TERTIARY, 0);
     lv_obj_align(footer_text, LV_ALIGN_CENTER, 0, 0);
@@ -729,6 +735,16 @@ lv_obj_t* createPOTAActiveSpotsScreen() {
         lv_table_set_cell_value(pota_spots_table, 0, 1, "");
         lv_table_set_cell_value(pota_spots_table, 0, 2, "");
         lv_table_set_cell_value(pota_spots_table, 0, 3, "");
+    }
+
+    // If we have cached data, populate the table immediately
+    // This handles returning from detail view without requiring manual refresh
+    if (potaSpotsCache.valid && potaSpotsCache.count > 0) {
+        Serial.println("[POTA] Using cached spots data");
+        refreshPOTASpotsDisplay();
+        if (pota_loading_label) {
+            lv_obj_add_flag(pota_loading_label, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 
     Serial.println("[POTA] Active Spots screen ready");
@@ -790,6 +806,13 @@ static void pota_spots_key_handler(lv_event_t* e) {
             refreshPOTASpotsDisplay();
             beep(800, 100);
         }
+        lv_event_stop_processing(e);
+        return;
+    }
+
+    // S or s - Search by callsign (opens filter screen with callsign input)
+    if (key == 'S' || key == 's') {
+        onLVGLMenuSelect(POTA_MODE_FILTERS);
         lv_event_stop_processing(e);
         return;
     }
@@ -1171,17 +1194,18 @@ static void pota_detail_key_handler(lv_event_t* e) {
 static lv_obj_t* filter_band_label = NULL;
 static lv_obj_t* filter_mode_label = NULL;
 static lv_obj_t* filter_region_label = NULL;
-static lv_obj_t* filter_rows[5] = {NULL};
+static lv_obj_t* filter_callsign_textarea = NULL;  // Callsign search field
+static lv_obj_t* filter_rows[6] = {NULL};  // 0=band, 1=mode, 2=region, 3=callsign, 4=apply, 5=clear
 
 static void pota_filter_key_handler(lv_event_t* e);
 
 void updateFilterRowStyles() {
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 6; i++) {
         if (!filter_rows[i]) continue;
 
         if (i == pota_filter_focus_row) {
-            // Apply and Clear buttons (rows 3 and 4) need special focus styling
-            if (i == 3) {
+            // Apply and Clear buttons (rows 4 and 5) need special focus styling
+            if (i == 4) {
                 // Apply button - keep green bg, add cyan border
                 lv_obj_set_style_bg_color(filter_rows[i], LV_COLOR_SUCCESS, 0);
                 lv_obj_set_style_border_color(filter_rows[i], LV_COLOR_ACCENT_CYAN, 0);
@@ -1189,7 +1213,7 @@ void updateFilterRowStyles() {
                 lv_obj_set_style_shadow_color(filter_rows[i], LV_COLOR_ACCENT_CYAN, 0);
                 lv_obj_set_style_shadow_width(filter_rows[i], 10, 0);
                 lv_obj_set_style_shadow_opa(filter_rows[i], LV_OPA_50, 0);
-            } else if (i == 4) {
+            } else if (i == 5) {
                 // Clear button - keep red bg, add cyan border
                 lv_obj_set_style_bg_color(filter_rows[i], LV_COLOR_ERROR, 0);
                 lv_obj_set_style_border_color(filter_rows[i], LV_COLOR_ACCENT_CYAN, 0);
@@ -1198,7 +1222,7 @@ void updateFilterRowStyles() {
                 lv_obj_set_style_shadow_width(filter_rows[i], 10, 0);
                 lv_obj_set_style_shadow_opa(filter_rows[i], LV_OPA_50, 0);
             } else {
-                // Filter rows (0-2)
+                // Filter rows (0-3)
                 lv_obj_set_style_bg_color(filter_rows[i], getThemeColors()->card_secondary, 0);
                 lv_obj_set_style_border_color(filter_rows[i], LV_COLOR_ACCENT_CYAN, 0);
                 lv_obj_set_style_border_width(filter_rows[i], 2, 0);
@@ -1206,12 +1230,12 @@ void updateFilterRowStyles() {
             }
         } else {
             // Not focused
-            if (i == 3) {
+            if (i == 4) {
                 // Apply button unfocused
                 lv_obj_set_style_bg_color(filter_rows[i], LV_COLOR_SUCCESS, 0);
                 lv_obj_set_style_border_width(filter_rows[i], 0, 0);
                 lv_obj_set_style_shadow_width(filter_rows[i], 0, 0);
-            } else if (i == 4) {
+            } else if (i == 5) {
                 // Clear button unfocused
                 lv_obj_set_style_bg_color(filter_rows[i], LV_COLOR_ERROR, 0);
                 lv_obj_set_style_border_width(filter_rows[i], 0, 0);
@@ -1292,15 +1316,15 @@ lv_obj_t* createPOTAFilterScreen() {
     lv_obj_add_style(title, getStyleLabelTitle(), 0);
     lv_obj_align(title, LV_ALIGN_LEFT_MID, 15, 0);
 
-    // Content card
+    // Content card - increased height for callsign row
     lv_obj_t* card = lv_obj_create(screen);
-    lv_obj_set_size(card, SCREEN_WIDTH - 40, 180);
+    lv_obj_set_size(card, SCREEN_WIDTH - 40, 220);
     lv_obj_align(card, LV_ALIGN_CENTER, 0, 0);
     applyCardStyle(card);
     lv_obj_set_layout(card, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_all(card, 15, 0);
-    lv_obj_set_style_pad_row(card, 10, 0);
+    lv_obj_set_style_pad_all(card, 12, 0);
+    lv_obj_set_style_pad_row(card, 8, 0);
     lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
 
     // Band row
@@ -1363,6 +1387,39 @@ lv_obj_t* createPOTAFilterScreen() {
     lv_obj_set_style_text_color(filter_region_label, LV_COLOR_ACCENT_CYAN, 0);
     lv_obj_align(filter_region_label, LV_ALIGN_RIGHT_MID, 0, 0);
 
+    // Callsign row - text input for callsign search
+    lv_obj_t* callsign_row = lv_obj_create(card);
+    lv_obj_set_size(callsign_row, LV_PCT(100), 30);
+    lv_obj_set_style_bg_opa(callsign_row, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(callsign_row, 6, 0);
+    lv_obj_set_style_pad_all(callsign_row, 5, 0);
+    lv_obj_clear_flag(callsign_row, LV_OBJ_FLAG_SCROLLABLE);
+    filter_rows[3] = callsign_row;
+
+    lv_obj_t* callsign_title = lv_label_create(callsign_row);
+    lv_label_set_text(callsign_title, "CALL:");
+    lv_obj_set_style_text_font(callsign_title, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(callsign_title, LV_COLOR_TEXT_SECONDARY, 0);
+    lv_obj_align(callsign_title, LV_ALIGN_LEFT_MID, 0, 0);
+
+    // Callsign textarea - allows text entry
+    filter_callsign_textarea = lv_textarea_create(callsign_row);
+    lv_obj_set_size(filter_callsign_textarea, 150, 24);
+    lv_obj_align(filter_callsign_textarea, LV_ALIGN_RIGHT_MID, 0, 0);
+    lv_textarea_set_one_line(filter_callsign_textarea, true);
+    lv_textarea_set_max_length(filter_callsign_textarea, 10);
+    lv_textarea_set_placeholder_text(filter_callsign_textarea, "Type callsign...");
+    lv_obj_set_style_text_font(filter_callsign_textarea, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(filter_callsign_textarea, LV_COLOR_ACCENT_CYAN, 0);
+    lv_obj_set_style_bg_color(filter_callsign_textarea, getThemeColors()->bg_layer2, 0);
+    lv_obj_set_style_border_width(filter_callsign_textarea, 1, 0);
+    lv_obj_set_style_border_color(filter_callsign_textarea, LV_COLOR_TEXT_TERTIARY, 0);
+    lv_obj_set_style_pad_all(filter_callsign_textarea, 2, 0);
+    // Load existing filter value
+    if (potaSpotFilter.callsign[0] != '\0') {
+        lv_textarea_set_text(filter_callsign_textarea, potaSpotFilter.callsign);
+    }
+
     // Button row
     lv_obj_t* btn_row = lv_obj_create(card);
     lv_obj_set_size(btn_row, LV_PCT(100), 40);
@@ -1379,7 +1436,7 @@ lv_obj_t* createPOTAFilterScreen() {
     lv_obj_set_style_radius(apply_btn, 6, 0);
     lv_obj_set_style_border_width(apply_btn, 0, 0);
     lv_obj_clear_flag(apply_btn, LV_OBJ_FLAG_SCROLLABLE);
-    filter_rows[3] = apply_btn;
+    filter_rows[4] = apply_btn;
 
     lv_obj_t* apply_lbl = lv_label_create(apply_btn);
     lv_label_set_text(apply_lbl, "APPLY");
@@ -1395,7 +1452,7 @@ lv_obj_t* createPOTAFilterScreen() {
     lv_obj_set_style_radius(clear_btn, 6, 0);
     lv_obj_set_style_border_width(clear_btn, 0, 0);
     lv_obj_clear_flag(clear_btn, LV_OBJ_FLAG_SCROLLABLE);
-    filter_rows[4] = clear_btn;
+    filter_rows[5] = clear_btn;
 
     lv_obj_t* clear_lbl = lv_label_create(clear_btn);
     lv_label_set_text(clear_lbl, "CLEAR");
@@ -1435,6 +1492,51 @@ static void pota_filter_key_handler(lv_event_t* e) {
 
     uint32_t key = lv_event_get_key(e);
 
+    // If on callsign row, handle text input differently
+    if (pota_filter_focus_row == 3) {
+        // Callsign row - pass printable characters to textarea
+        if (key >= 'A' && key <= 'Z') {
+            // Uppercase letter - add to textarea
+            char str[2] = {(char)key, '\0'};
+            lv_textarea_add_text(filter_callsign_textarea, str);
+            lv_event_stop_processing(e);
+            return;
+        }
+        if (key >= 'a' && key <= 'z') {
+            // Lowercase letter - convert to uppercase and add
+            char str[2] = {(char)(key - 'a' + 'A'), '\0'};
+            lv_textarea_add_text(filter_callsign_textarea, str);
+            lv_event_stop_processing(e);
+            return;
+        }
+        if (key >= '0' && key <= '9') {
+            // Number - add to textarea
+            char str[2] = {(char)key, '\0'};
+            lv_textarea_add_text(filter_callsign_textarea, str);
+            lv_event_stop_processing(e);
+            return;
+        }
+        if (key == '/') {
+            // Slash (for portable stations like W1ABC/P)
+            lv_textarea_add_text(filter_callsign_textarea, "/");
+            lv_event_stop_processing(e);
+            return;
+        }
+        if (key == LV_KEY_BACKSPACE || key == 0x08) {
+            // Backspace - delete character
+            lv_textarea_del_char(filter_callsign_textarea);
+            lv_event_stop_processing(e);
+            return;
+        }
+        if (key == LV_KEY_LEFT) {
+            // Move cursor left (or delete)
+            lv_textarea_del_char(filter_callsign_textarea);
+            lv_event_stop_processing(e);
+            return;
+        }
+        // UP/DOWN/ENTER/ESC handled below
+    }
+
     // UP/DOWN - Navigate rows
     if (key == LV_KEY_UP || key == LV_KEY_PREV) {
         if (pota_filter_focus_row > 0) {
@@ -1446,7 +1548,7 @@ static void pota_filter_key_handler(lv_event_t* e) {
     }
 
     if (key == LV_KEY_DOWN || key == LV_KEY_NEXT) {
-        if (pota_filter_focus_row < 4) {
+        if (pota_filter_focus_row < 5) {
             pota_filter_focus_row++;
             updateFilterRowStyles();
         }
@@ -1454,7 +1556,7 @@ static void pota_filter_key_handler(lv_event_t* e) {
         return;
     }
 
-    // LEFT/RIGHT - Adjust values
+    // LEFT/RIGHT - Adjust values (not for callsign row - handled above)
     if (key == LV_KEY_LEFT) {
         switch (pota_filter_focus_row) {
             case 0:  // Band
@@ -1475,8 +1577,9 @@ static void pota_filter_key_handler(lv_event_t* e) {
                     updateFilterValues();
                 }
                 break;
-            case 3:  // Apply (do nothing)
-            case 4:  // Clear (do nothing)
+            case 3:  // Callsign (text input - handled above)
+            case 4:  // Apply (do nothing)
+            case 5:  // Clear (do nothing)
                 break;
         }
         lv_event_stop_processing(e);
@@ -1503,8 +1606,9 @@ static void pota_filter_key_handler(lv_event_t* e) {
                     updateFilterValues();
                 }
                 break;
-            case 3:  // Apply (do nothing)
-            case 4:  // Clear (do nothing)
+            case 3:  // Callsign (text input - handled above)
+            case 4:  // Apply (do nothing)
+            case 5:  // Clear (do nothing)
                 break;
         }
         lv_event_stop_processing(e);
@@ -1513,20 +1617,30 @@ static void pota_filter_key_handler(lv_event_t* e) {
 
     // ENTER - Apply or Clear
     if (key == LV_KEY_ENTER) {
-        if (pota_filter_focus_row <= 3) {
+        if (pota_filter_focus_row <= 4) {
             // Apply filter (from any filter row or Apply button)
             strcpy(potaSpotFilter.band, bandFilterOptions[pota_filter_band_idx]);
             strcpy(potaSpotFilter.mode, modeFilterOptions[pota_filter_mode_idx]);
             strcpy(potaSpotFilter.region, regionFilterOptions[pota_filter_region_idx]);
+            // Copy callsign filter from textarea
+            if (filter_callsign_textarea) {
+                const char* text = lv_textarea_get_text(filter_callsign_textarea);
+                strncpy(potaSpotFilter.callsign, text ? text : "", sizeof(potaSpotFilter.callsign) - 1);
+                potaSpotFilter.callsign[sizeof(potaSpotFilter.callsign) - 1] = '\0';
+            }
             updateFilterActiveStatus();
             beep(1000, 100);
             onLVGLMenuSelect(POTA_MODE_ACTIVE_SPOTS);
-        } else if (pota_filter_focus_row == 4) {
+        } else if (pota_filter_focus_row == 5) {
             // Clear filter
             resetSpotFilter();
             pota_filter_band_idx = 0;
             pota_filter_mode_idx = 0;
             pota_filter_region_idx = 0;
+            // Clear callsign textarea
+            if (filter_callsign_textarea) {
+                lv_textarea_set_text(filter_callsign_textarea, "");
+            }
             beep(800, 100);
             onLVGLMenuSelect(POTA_MODE_ACTIVE_SPOTS);
         }

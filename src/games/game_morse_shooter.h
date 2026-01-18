@@ -106,6 +106,12 @@ unsigned long shooterLastStateChangeTime = 0;
 bool shooterLastToneState = false;
 unsigned long shooterLastElementTime = 0;  // Track last element for timeout flush
 
+// Straight key debouncing - for scratchy/intermittent contacts
+#define STRAIGHT_KEY_DEBOUNCE_MS 8   // Ignore state changes shorter than this
+static bool shooterDebouncedKeyState = false;      // Debounced key state
+static unsigned long shooterKeyLastChangeTime = 0; // When raw state last changed
+static bool shooterKeyLastRawState = false;        // Previous raw reading
+
 // Settings mode state (legacy - will be removed)
 bool inShooterSettings = false;
 int shooterSettingsSelection = 0;  // 0=Speed, 1=Tone, 2=Key Type, 3=Save & Return
@@ -539,7 +545,13 @@ bool checkMorseShoot(LGFX& tft) {
  */
 void updateMorseInputFast(LGFX& tft) {
   morseInput.ditPressed = (digitalRead(DIT_PIN) == LOW) || (touchRead(TOUCH_DIT_PIN) > TOUCH_THRESHOLD);
-  morseInput.dahPressed = (digitalRead(DAH_PIN) == LOW) || (touchRead(TOUCH_DAH_PIN) > TOUCH_THRESHOLD);
+  // In straight key mode, ignore DAH pin entirely - the TRS ring may be grounded
+  // which would cause dahPressed to always read as true and freeze the game
+  if (cwKeyType == KEY_STRAIGHT) {
+    morseInput.dahPressed = false;
+  } else {
+    morseInput.dahPressed = (digitalRead(DAH_PIN) == LOW) || (touchRead(TOUCH_DAH_PIN) > TOUCH_THRESHOLD);
+  }
 
   unsigned long now = millis();
   MorseTiming timing(cwSpeed);
@@ -572,8 +584,25 @@ void updateMorseInputFast(LGFX& tft) {
 
   // STRAIGHT KEY MODE
   if (cwKeyType == KEY_STRAIGHT) {
-    // Use DIT pin as straight key
-    if (morseInput.ditPressed && !toneOn) {
+    // Software debouncing for scratchy/intermittent contacts
+    // Raw reading from pin
+    bool rawKeyState = morseInput.ditPressed;
+
+    // If raw state changed from last reading, reset debounce timer
+    if (rawKeyState != shooterKeyLastRawState) {
+      shooterKeyLastChangeTime = now;
+      shooterKeyLastRawState = rawKeyState;
+    }
+
+    // Only update debounced state if raw state has been stable for debounce period
+    if ((now - shooterKeyLastChangeTime) >= STRAIGHT_KEY_DEBOUNCE_MS) {
+      shooterDebouncedKeyState = rawKeyState;
+    }
+
+    // Use debounced state for keying
+    bool keyPressed = shooterDebouncedKeyState;
+
+    if (keyPressed && !toneOn) {
       // Tone starting
       if (shooterLastToneState == false) {
         // Send silence duration to decoder (negative)
@@ -588,11 +617,11 @@ void updateMorseInputFast(LGFX& tft) {
       }
       startTone(cwTone);
     }
-    else if (morseInput.ditPressed && toneOn) {
+    else if (keyPressed && toneOn) {
       // Tone continuing
       continueTone(cwTone);
     }
-    else if (!morseInput.ditPressed && toneOn) {
+    else if (!keyPressed && toneOn) {
       // Tone stopping
       if (shooterLastToneState == true) {
         // Send tone duration to decoder (positive)

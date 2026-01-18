@@ -48,6 +48,7 @@ struct POTASpotFilter {
     char band[6];                 // "ALL", "20m", "40m", etc.
     char mode[8];                 // "ALL", "CW", "SSB", etc.
     char region[4];               // "ALL", "K", "VE", etc.
+    char callsign[12];            // "" = no filter, or partial callsign to search
     bool active;                  // True if any filter is active
 };
 
@@ -147,6 +148,7 @@ static POTASpotFilter potaSpotFilter = {
     "ALL",  // band
     "ALL",  // mode
     "ALL",  // region
+    "",     // callsign (empty = no filter)
     false   // active
 };
 
@@ -395,6 +397,25 @@ bool spotMatchesFilter(const POTASpot& spot, const POTASpotFilter& filter) {
         }
     }
 
+    // Callsign filter (partial match, case-insensitive)
+    if (filter.callsign[0] != '\0') {
+        // Check if the filter string appears anywhere in the activator callsign
+        char lowerCall[16];
+        char lowerFilter[16];
+        strncpy(lowerCall, spot.activator, sizeof(lowerCall) - 1);
+        lowerCall[sizeof(lowerCall) - 1] = '\0';
+        strncpy(lowerFilter, filter.callsign, sizeof(lowerFilter) - 1);
+        lowerFilter[sizeof(lowerFilter) - 1] = '\0';
+
+        // Convert both to uppercase for case-insensitive comparison
+        for (int i = 0; lowerCall[i]; i++) lowerCall[i] = toupper(lowerCall[i]);
+        for (int i = 0; lowerFilter[i]; i++) lowerFilter[i] = toupper(lowerFilter[i]);
+
+        if (strstr(lowerCall, lowerFilter) == NULL) {
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -621,6 +642,7 @@ void resetSpotFilter() {
     strcpy(potaSpotFilter.band, "ALL");
     strcpy(potaSpotFilter.mode, "ALL");
     strcpy(potaSpotFilter.region, "ALL");
+    potaSpotFilter.callsign[0] = '\0';
     potaSpotFilter.active = false;
 }
 
@@ -630,7 +652,8 @@ void resetSpotFilter() {
 void updateFilterActiveStatus() {
     potaSpotFilter.active = (strcmp(potaSpotFilter.band, "ALL") != 0 ||
                               strcmp(potaSpotFilter.mode, "ALL") != 0 ||
-                              strcmp(potaSpotFilter.region, "ALL") != 0);
+                              strcmp(potaSpotFilter.region, "ALL") != 0 ||
+                              potaSpotFilter.callsign[0] != '\0');
 }
 
 #endif // POTA_SPOTS_H

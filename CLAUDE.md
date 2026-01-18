@@ -2,10 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## IMPORTANT: DO NOT COMPILE
-
-**NEVER** run compilation commands (arduino-cli compile, etc.) for this project. The user will always handle compilation themselves. Do not check for compilation or build the project under any circumstances.
-
 ## Project Overview
 
 VAIL SUMMIT is a portable morse code training device built on the ESP32-S3 Feather platform with an LCD display and modern UI. It's designed for ham radio operators to practice receiving and sending morse code. Input comes from a CardKB I2C keyboard, iambic paddle, and capacitive touch pads. The device includes training modes, settings management, WiFi connectivity to the Vail internet morse repeater, and extensive hardware integration.
@@ -56,6 +52,71 @@ This project uses modular documentation. For detailed information on specific to
 arduino-cli compile \
   --fqbn "esp32:esp32:adafruit_feather_esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,PSRAM=enabled,FlashSize=4M" \
   vail-summit/
+```
+
+### Standalone Arduino CLI Environment
+
+This project includes a standalone Arduino CLI environment with all required libraries pre-installed at specific versions. This ensures consistent builds without affecting your global Arduino installation.
+
+**Location:** The CLI environment is installed at `C:\vail-cli` (short path required for Windows) with a symlink from `arduino-cli/` in the project.
+
+**Why a standalone environment?**
+- **Pinned library versions:** Ensures compatibility (esp32 core 2.0.14, LVGL 8.3.11, NimBLE 2.3.6, etc.)
+- **Isolation:** Won't conflict with other Arduino projects that need different library versions
+- **Reproducible builds:** Same environment for all developers
+
+**Build Scripts:**
+- `build.bat` - Windows batch script
+- `build.ps1` - PowerShell script (with colored output)
+
+**Quick Start:**
+```bash
+# Compile firmware
+.\build.bat                      # or: .\build.ps1
+
+# Upload to device (replace COM31 with your port)
+.\build.bat upload COM31         # or: .\build.ps1 upload COM31
+
+# Open serial monitor
+.\build.bat monitor COM31        # or: .\build.ps1 monitor COM31
+
+# List available serial ports
+.\build.bat list                 # or: .\build.ps1 list
+
+# Clean build directory
+.\build.bat clean                # or: .\build.ps1 clean
+```
+
+**Installed Libraries:**
+| Library | Version | Purpose |
+|---------|---------|---------|
+| esp32 core | 2.0.14 | ESP32-S3 board support (required for ST7796S display) |
+| LovyanGFX | 1.1.16 | Display driver |
+| lvgl | 8.3.11 | UI framework (**NOT v9.x**) |
+| NimBLE-Arduino | 2.3.6 | Bluetooth BLE HID/MIDI |
+| ArduinoJson | 7.0.4 | JSON parsing |
+| WebSockets | 2.4.1 | WebSocket client |
+| Adafruit MAX1704X | 1.0.3 | Battery monitoring |
+| Adafruit LC709203F | 1.3.4 | Battery monitoring |
+| ESP Async WebServer | 3.6.0 | Web server |
+| Async TCP | 3.3.2 | Async TCP for web server |
+
+**Reinstalling the Standalone Environment:**
+If you need to recreate the environment:
+```bash
+# Create short-path directory (Windows path length limit workaround)
+mkdir C:\vail-cli
+
+# Run these commands from the project's arduino-cli folder:
+cd arduino-cli
+.\arduino-cli.exe --config-file arduino-cli.yaml core update-index
+.\arduino-cli.exe --config-file arduino-cli.yaml core install esp32:esp32@2.0.14
+.\arduino-cli.exe --config-file arduino-cli.yaml lib install "LovyanGFX@1.1.16" "lvgl@8.3.11" "NimBLE-Arduino@2.3.6" "ArduinoJson@7.0.4" "WebSockets@2.4.1" "Adafruit MAX1704X@1.0.3" "Adafruit LC709203F@1.3.4"
+.\arduino-cli.exe --config-file arduino-cli.yaml lib install --git-url https://github.com/me-no-dev/AsyncTCP.git
+.\arduino-cli.exe --config-file arduino-cli.yaml lib install --git-url https://github.com/me-no-dev/ESPAsyncWebServer.git
+
+# Copy lv_conf.h to libraries folder
+copy ..\lv_conf.h user\libraries\
 ```
 
 For detailed build instructions, firmware updates, and GitHub Actions workflow, see **[docs/BUILDING.md](docs/BUILDING.md)**.

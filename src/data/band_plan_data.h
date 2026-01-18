@@ -125,16 +125,17 @@ static const BandPlanEntry us_80m_entries[] = {
 };
 
 // ============================================
-// US Band Plan Data - 60 Meters (5 Channels)
-// Note: 60m is channelized, not continuous
+// US Band Plan Data - 60 Meters (5 USB Channels)
+// Note: 60m is channelized, USB only, 100W ERP max
+// Center frequencies shown - actual dial freq is 1.5kHz lower
 // ============================================
 
 static const BandPlanEntry us_60m_entries[] = {
-    { 5.332f, 5.333f, LICENSE_GENERAL,    BP_MODE_CW | BP_MODE_PHONE | BP_MODE_DATA, "Ch 1 - 5332.0" },
-    { 5.348f, 5.349f, LICENSE_GENERAL,    BP_MODE_CW | BP_MODE_PHONE | BP_MODE_DATA, "Ch 2 - 5348.0" },
-    { 5.358f, 5.359f, LICENSE_GENERAL,    BP_MODE_CW | BP_MODE_PHONE | BP_MODE_DATA, "Ch 3 - 5358.5" },
-    { 5.373f, 5.374f, LICENSE_GENERAL,    BP_MODE_CW | BP_MODE_PHONE | BP_MODE_DATA, "Ch 4 - 5373.0" },
-    { 5.405f, 5.406f, LICENSE_GENERAL,    BP_MODE_CW | BP_MODE_PHONE | BP_MODE_DATA, "Ch 5 - 5405.0" }
+    { 5.332f, 5.333f, LICENSE_GENERAL,    BP_MODE_ALL, "Ch 1 - 5332.0 kHz (USB)" },
+    { 5.348f, 5.349f, LICENSE_GENERAL,    BP_MODE_ALL, "Ch 2 - 5348.0 kHz (USB)" },
+    { 5.358f, 5.359f, LICENSE_GENERAL,    BP_MODE_ALL, "Ch 3 - 5358.5 kHz (USB)" },
+    { 5.373f, 5.374f, LICENSE_GENERAL,    BP_MODE_ALL, "Ch 4 - 5373.0 kHz (USB)" },
+    { 5.405f, 5.406f, LICENSE_GENERAL,    BP_MODE_ALL, "Ch 5 - 5405.0 kHz (USB)" }
 };
 
 // ============================================

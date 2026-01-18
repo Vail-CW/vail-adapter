@@ -153,7 +153,7 @@ extern void initKochPracticeSession();
 extern void startCWAcademy(LGFX& tft);
 extern void startMorseShooter(LGFX& tft);
 extern void loadShooterPrefs();  // Load shooter settings before showing settings screen
-extern void startMemoryGame(LGFX& tft);
+extern void memoryChainStart();  // New Memory Chain implementation
 extern void startSparkWatch();
 extern void startRadioOutput(LGFX& tft);
 extern void startCWMemoriesMode(LGFX& tft);
@@ -421,8 +421,8 @@ void initializeModeInt(int mode) {
             loadShooterPrefs();
             break;
         case LVGL_MODE_MORSE_MEMORY:
-            Serial.println("[ModeInit] Starting Memory Game");
-            startMemoryGame(tft);
+            Serial.println("[ModeInit] Starting Memory Chain");
+            memoryChainStart();
             break;
         case LVGL_MODE_SPARK_WATCH:
             Serial.println("[ModeInit] Starting Spark Watch");

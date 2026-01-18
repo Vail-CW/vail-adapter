@@ -30,6 +30,25 @@
 // Default channel - always defined
 String vailChannel = "General";
 
+// Preferences for Vail settings persistence
+Preferences vailPrefs;
+
+// Load Vail settings from flash
+void loadVailSettings() {
+  vailPrefs.begin("vail", true);  // Read-only mode
+  vailChannel = vailPrefs.getString("room", "General");
+  vailPrefs.end();
+  Serial.printf("[Vail] Loaded room: %s\n", vailChannel.c_str());
+}
+
+// Save Vail settings to flash
+void saveVailSettings() {
+  vailPrefs.begin("vail", false);  // Read-write mode
+  vailPrefs.putString("room", vailChannel);
+  vailPrefs.end();
+  Serial.printf("[Vail] Saved room: %s\n", vailChannel.c_str());
+}
+
 // User identification
 String vailCallsign = "GUEST";  // Default callsign (user can configure)
 uint8_t vailTxTone = 72;        // MIDI note 72 = C5 (523 Hz) - default CW tone
@@ -249,6 +268,7 @@ void connectToVail(String channel) {
   }
 
   vailChannel = channel;
+  saveVailSettings();  // Persist room selection for next boot
   vailState = VAIL_CONNECTING;
   statusText = "Connecting...";
 

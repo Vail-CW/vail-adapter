@@ -229,6 +229,44 @@ static void addSparkNavHandler(lv_obj_t* widget) {
     lv_obj_add_event_cb(widget, spark_linear_nav_handler, LV_EVENT_KEY, NULL);
 }
 
+/*
+ * Click handler for speed buttons - selects the speed and updates visuals
+ */
+static void spark_speed_button_cb(lv_event_t* e) {
+    int speedIndex = (int)(intptr_t)lv_event_get_user_data(e);
+
+    // Set the new speed
+    setSparkSpeed(speedIndex);
+
+    // Play selection sound
+    beep(TONE_SELECT, BEEP_SHORT);
+
+    // Update button visuals - clear old selection, highlight new one
+    const SparkWatchChallenge* ch = sparkSession.currentChallenge;
+    if (!ch) return;
+
+    int minSpeed = SPARK_MIN_SPEED_INDEX[ch->difficulty];
+    for (int i = 0; i < 6; i++) {
+        if (spark_speed_buttons[i] == NULL) continue;
+        if (i < minSpeed) continue;  // Skip disabled buttons
+
+        lv_obj_t* btn = spark_speed_buttons[i];
+        lv_obj_t* label = lv_obj_get_child(btn, 0);
+
+        if (i == speedIndex) {
+            // Selected - cyan background, black text
+            lv_obj_set_style_bg_color(btn, LV_COLOR_ACCENT_CYAN, 0);
+            lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+            if (label) lv_obj_set_style_text_color(label, lv_color_black(), 0);
+        } else {
+            // Not selected - restore normal card style
+            lv_obj_set_style_bg_color(btn, LV_COLOR_BG_LAYER2, 0);
+            lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+            if (label) lv_obj_set_style_text_color(label, LV_COLOR_TEXT_PRIMARY, 0);
+        }
+    }
+}
+
 // ============================================
 // Main Menu Screen
 // ============================================
@@ -595,13 +633,19 @@ lv_obj_t* createSparkWatchBriefingScreen() {
             if (i == sparkSession.speedIndex) {
                 // Currently selected - show with cyan background
                 lv_obj_set_style_bg_color(btn, LV_COLOR_ACCENT_CYAN, 0);
-                lv_obj_set_style_text_color(btn, lv_color_black(), 0);
+                lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
             } else {
-                // Not selected - normal card style
-                lv_obj_add_style(btn, getStyleMenuCard(), 0);
+                // Not selected - normal dark background
+                lv_obj_set_style_bg_color(btn, LV_COLOR_BG_LAYER2, 0);
+                lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
             }
-            // Focused style when navigated to (glow effect)
-            lv_obj_add_style(btn, getStyleMenuCardFocused(), LV_STATE_FOCUSED);
+            // Focused style - only add border glow, not background change
+            // This allows selected (cyan) and focused (glow) to be independent
+            lv_obj_set_style_outline_width(btn, 2, LV_STATE_FOCUSED);
+            lv_obj_set_style_outline_color(btn, LV_COLOR_ACCENT_CYAN, LV_STATE_FOCUSED);
+            lv_obj_set_style_outline_opa(btn, LV_OPA_COVER, LV_STATE_FOCUSED);
+            // Add click handler to select this speed (works with ENTER key too)
+            lv_obj_add_event_cb(btn, spark_speed_button_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
             addNavigableWidget(btn);
             addSparkNavHandler(btn);
         }
@@ -611,6 +655,8 @@ lv_obj_t* createSparkWatchBriefingScreen() {
         lv_obj_set_style_text_font(label, getThemeFonts()->font_small, 0);
         if (i == sparkSession.speedIndex && i >= minSpeed) {
             lv_obj_set_style_text_color(label, lv_color_black(), 0);
+        } else {
+            lv_obj_set_style_text_color(label, LV_COLOR_TEXT_PRIMARY, 0);
         }
         lv_obj_center(label);
 
@@ -1483,7 +1529,7 @@ lv_obj_t* createSparkWatchResultsScreen() {
         lv_obj_set_style_text_color(field_lbl, LV_COLOR_TEXT_SECONDARY, 0);
         lv_obj_align(field_lbl, LV_ALIGN_LEFT_MID, 0, 0);
 
-        // User answer
+        // User answer - constrain width to prevent overlap with right side
         lv_obj_t* answer_lbl = lv_label_create(row);
         if (strlen(userAnswer) == 0) {
             lv_label_set_text(answer_lbl, "(empty)");
@@ -1494,14 +1540,18 @@ lv_obj_t* createSparkWatchResultsScreen() {
                 isCorrect ? LV_COLOR_SUCCESS : LV_COLOR_ERROR, 0);
         }
         lv_obj_set_style_text_font(answer_lbl, getThemeFonts()->font_body, 0);
+        lv_obj_set_width(answer_lbl, isCorrect ? 280 : 140);  // Narrower if showing correction
+        lv_label_set_long_mode(answer_lbl, LV_LABEL_LONG_DOT);  // Truncate with "..."
         lv_obj_align(answer_lbl, LV_ALIGN_LEFT_MID, 70, 0);
 
-        // Correct answer (if wrong)
+        // Correct answer (if wrong) - also constrain width
         if (!isCorrect) {
             lv_obj_t* correct_lbl = lv_label_create(row);
             lv_label_set_text_fmt(correct_lbl, LV_SYMBOL_RIGHT " %s", correct);
             lv_obj_set_style_text_font(correct_lbl, getThemeFonts()->font_small, 0);
             lv_obj_set_style_text_color(correct_lbl, LV_COLOR_SUCCESS, 0);
+            lv_obj_set_width(correct_lbl, 140);
+            lv_label_set_long_mode(correct_lbl, LV_LABEL_LONG_DOT);
             lv_obj_align(correct_lbl, LV_ALIGN_RIGHT_MID, 0, 0);
         } else {
             // Checkmark

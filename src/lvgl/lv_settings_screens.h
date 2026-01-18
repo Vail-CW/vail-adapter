@@ -65,14 +65,32 @@ static void volume_slider_event_cb(lv_event_t* e) {
 
     // Apply volume immediately for feedback
     setVolume(value);
+
+    // Play test tone so user can hear the new volume level
+    beep(TONE_MENU_NAV, BEEP_SHORT);
 }
 
 // Key handler for volume slider - applies acceleration for faster adjustment
+// Number keys 1-9 = 10%-90%, 0 = 100%
 static void volume_slider_key_cb(lv_event_t* e) {
     if (lv_event_get_code(e) != LV_EVENT_KEY) return;
 
     uint32_t key = lv_event_get_key(e);
     lv_obj_t* slider = lv_event_get_target(e);
+
+    // Number keys for quick percentage jumps
+    if (key >= '0' && key <= '9') {
+        int new_val;
+        if (key == '0') {
+            new_val = 100;  // 0 = 100%
+        } else {
+            new_val = (key - '0') * 10;  // 1=10%, 2=20%, ... 9=90%
+        }
+        lv_slider_set_value(slider, new_val, LV_ANIM_OFF);
+        lv_event_send(slider, LV_EVENT_VALUE_CHANGED, NULL);
+        lv_event_stop_bubbling(e);
+        return;
+    }
 
     if (key == LV_KEY_LEFT || key == LV_KEY_RIGHT) {
         int step = getKeyAccelerationStep();
@@ -183,11 +201,26 @@ static void brightness_slider_event_cb(lv_event_t* e) {
 }
 
 // Key handler for brightness slider - applies acceleration for faster adjustment
+// Number keys 1-9 = 10%-90%, 0 = 100%
 static void brightness_slider_key_cb(lv_event_t* e) {
     if (lv_event_get_code(e) != LV_EVENT_KEY) return;
 
     uint32_t key = lv_event_get_key(e);
     lv_obj_t* slider = lv_event_get_target(e);
+
+    // Number keys for quick percentage jumps
+    if (key >= '0' && key <= '9') {
+        int new_val;
+        if (key == '0') {
+            new_val = 100;  // 0 = 100%
+        } else {
+            new_val = (key - '0') * 10;  // 1=10%, 2=20%, ... 9=90%
+        }
+        lv_slider_set_value(slider, new_val, LV_ANIM_OFF);
+        lv_event_send(slider, LV_EVENT_VALUE_CHANGED, NULL);
+        lv_event_stop_bubbling(e);
+        return;
+    }
 
     if (key == LV_KEY_LEFT || key == LV_KEY_RIGHT) {
         int step = getKeyAccelerationStep();
@@ -515,6 +548,8 @@ static void cw_speed_event_cb(lv_event_t* e) {
         lv_label_set_text_fmt(cw_speed_value, "%d WPM", cwSpeed);
     }
     saveCWSettings();
+    // Play preview tone at current CW frequency to confirm change
+    beep(cwTone, 100);
 }
 
 
@@ -823,18 +858,71 @@ static lv_obj_t* web_password_textarea = NULL;
 static lv_obj_t* web_password_enable_switch = NULL;
 static lv_obj_t* web_password_error_label = NULL;
 
-// Key handler for web password - handles navigation and ENTER to save
+// Key handler for web password switch - uses LEFT/RIGHT to toggle, UP/DOWN to navigate
+// NOTE: Must stop processing on all keys to prevent LVGL's default switch behavior
+// from toggling on PREV/NEXT keys
+static void web_password_switch_key_handler(lv_event_t* e) {
+    if (lv_event_get_code(e) != LV_EVENT_KEY) return;
+    uint32_t key = lv_event_get_key(e);
+    lv_obj_t* obj = lv_event_get_target(e);
+
+    // LEFT/RIGHT toggles the switch
+    if (key == LV_KEY_LEFT || key == LV_KEY_RIGHT) {
+        if (lv_obj_has_state(obj, LV_STATE_CHECKED)) {
+            lv_obj_clear_state(obj, LV_STATE_CHECKED);
+        } else {
+            lv_obj_add_state(obj, LV_STATE_CHECKED);
+        }
+        beep(TONE_SELECT, BEEP_SHORT);
+        lv_event_stop_processing(e);
+        return;
+    }
+
+    // UP/DOWN should navigate - prevent default switch toggle behavior
+    if (key == LV_KEY_UP || key == LV_KEY_PREV) {
+        // Can't go up from switch (it's the first widget)
+        lv_event_stop_processing(e);
+        return;
+    }
+    if (key == LV_KEY_DOWN || key == LV_KEY_NEXT) {
+        // Move to password textarea
+        lv_group_focus_next(getLVGLInputGroup());
+        lv_event_stop_processing(e);
+        return;
+    }
+
+    // ENTER on switch toggles it
+    if (key == LV_KEY_ENTER) {
+        if (lv_obj_has_state(obj, LV_STATE_CHECKED)) {
+            lv_obj_clear_state(obj, LV_STATE_CHECKED);
+        } else {
+            lv_obj_add_state(obj, LV_STATE_CHECKED);
+        }
+        beep(TONE_SELECT, BEEP_SHORT);
+        lv_event_stop_processing(e);
+        return;
+    }
+}
+
+// Key handler for web password textarea - handles navigation and ENTER to save
 static void web_password_key_handler(lv_event_t* e) {
     if (lv_event_get_code(e) != LV_EVENT_KEY) return;
     uint32_t key = lv_event_get_key(e);
 
-    // Handle navigation between widgets
-    if (key == LV_KEY_PREV || key == LV_KEY_NEXT) {
-        // Hide error when navigating
+    // Handle UP/DOWN navigation from textarea
+    if (key == LV_KEY_UP || key == LV_KEY_PREV) {
+        // Move focus back to switch
         if (web_password_error_label != NULL) {
             lv_obj_add_flag(web_password_error_label, LV_OBJ_FLAG_HIDDEN);
         }
-        // Allow default navigation group behavior (don't stop bubbling)
+        lv_group_focus_prev(getLVGLInputGroup());
+        lv_event_stop_processing(e);
+        return;
+    }
+
+    if (key == LV_KEY_DOWN || key == LV_KEY_NEXT) {
+        // Can't go down from textarea (it's the last navigable widget)
+        lv_event_stop_processing(e);
         return;
     }
 
@@ -932,8 +1020,8 @@ lv_obj_t* createWebPasswordSettingsScreen() {
     }
     lv_obj_add_style(web_password_enable_switch, getStyleSwitch(), 0);
     lv_obj_add_style(web_password_enable_switch, getStyleSwitchChecked(), LV_STATE_CHECKED);
-    // Add key handler to switch for navigation support
-    lv_obj_add_event_cb(web_password_enable_switch, web_password_key_handler, LV_EVENT_KEY, NULL);
+    // Add key handler for switch: LEFT/RIGHT toggles, UP/DOWN navigates
+    lv_obj_add_event_cb(web_password_enable_switch, web_password_switch_key_handler, LV_EVENT_KEY, NULL);
     addNavigableWidget(web_password_enable_switch);
 
     // Password label

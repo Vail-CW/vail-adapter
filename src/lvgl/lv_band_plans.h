@@ -41,6 +41,9 @@ static int bp_detail_scroll = 0;     // Scroll offset in detail view
 // Band cards in overview
 static lv_obj_t* bp_band_cards[10] = {NULL};
 
+// Track the focused row object for scrolling
+static lv_obj_t* bp_focused_row_obj = NULL;
+
 // ============================================
 // Forward Declarations
 // ============================================
@@ -427,6 +430,7 @@ void updateBandPlansDetail() {
     // Sub-band rows
     int y_pos = 72;
     int visible_count = 0;
+    bp_focused_row_obj = NULL;  // Reset focused row tracking
 
     for (int i = 0; i < band->entry_count; i++) {
         const BandPlanEntry* entry = &band->entries[i];
@@ -437,7 +441,13 @@ void updateBandPlansDetail() {
         bool can_operate = canOperate(entry, user_lic);
         bool is_focused = (visible_count == bp_focused_row);
 
-        createDetailRow(bp_content, entry, y_pos, can_operate, is_focused);
+        lv_obj_t* row = createDetailRow(bp_content, entry, y_pos, can_operate, is_focused);
+
+        // Track the focused row for scrolling
+        if (is_focused) {
+            bp_focused_row_obj = row;
+        }
+
         y_pos += 32;
         visible_count++;
     }
@@ -453,6 +463,11 @@ void updateBandPlansDetail() {
     lv_obj_set_style_text_font(legend, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(legend, LV_COLOR_TEXT_TERTIARY, 0);
     lv_obj_set_pos(legend, 5, y_pos + 5);
+
+    // Scroll focused row into view
+    if (bp_focused_row_obj) {
+        lv_obj_scroll_to_view(bp_focused_row_obj, LV_ANIM_ON);
+    }
 }
 
 // ============================================
@@ -817,6 +832,7 @@ void cleanupBandPlans() {
     bp_license_label = NULL;
     bp_mode_label = NULL;
     bp_footer_text = NULL;
+    bp_focused_row_obj = NULL;
 
     for (int i = 0; i < 10; i++) {
         bp_band_cards[i] = NULL;
