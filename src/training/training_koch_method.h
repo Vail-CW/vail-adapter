@@ -43,7 +43,8 @@ int handleKochInput(char key, LGFX& tft) {
       if (kochNewCharPlayCount < 3) {
         String charStr;
         charStr += kochNewCharacter;
-        playMorseString(charStr.c_str(), kochProgress.wpm);
+        // Use async playback for new character
+        requestPlayMorseString(charStr.c_str(), kochProgress.wpm, TONE_SIDETONE);
         kochNewCharPlayCount++;
         return 0;  // Keep showing intro
       } else {
@@ -219,6 +220,11 @@ int handleKochInput(char key, LGFX& tft) {
 
   // Exit to training menu
   if (key == KEY_ESC) {
+    // Cancel any active playback
+    if (isMorsePlaybackActive()) {
+      cancelMorsePlayback();
+      kochPlaybackState = KOCH_PLAYBACK_IDLE;
+    }
     saveKochProgress();
     return -1;
   }

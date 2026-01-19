@@ -250,9 +250,11 @@ int qsoPlaybackSpeed = 15;  // Start at 15 WPM, adjustable
 bool qsoWaitingForInput = false;
 String qsoUserInput = "";
 String qsoExpectedResponse = "";
+String qsoPendingResponse = "";  // Response to set when async playback completes
+
 enum QSOState {
   QSO_READY,           // Ready to start
-  QSO_PLAYING,         // Playing other station's message
+  QSO_PLAYING,         // Playing other station's message (async)
   QSO_WAITING_INPUT,   // Waiting for user to type response
   QSO_SHOWING_FEEDBACK // Showing correct/incorrect feedback
 };
@@ -498,24 +500,39 @@ void playQSOExchange(int sessionIndex, int exchangeIndex, LGFX& tft) {
   // Personalize the text
   String qsoText = personalizeQSOText(exchange->messageTemplate);
 
+  // Prepare the expected response before starting playback
+  const char** responses = qso_responses[sessionIndex];
+  if (responses[exchangeIndex] != nullptr) {
+    qsoPendingResponse = personalizeQSOText(responses[exchangeIndex]);
+  } else {
+    qsoPendingResponse = ""; // No response expected (shouldn't happen)
+  }
+
   // Set state to playing and update UI
   qsoState = QSO_PLAYING;
   drawCWAQSOPracticeUI(tft);
 
-  // Play at current playback speed
-  playMorseString(qsoText.c_str(), qsoPlaybackSpeed, cwTone);
+  // Start async playback - returns immediately
+  // The updateCWAQSOPractice() function will transition to QSO_WAITING_INPUT when complete
+  requestPlayMorseString(qsoText.c_str(), qsoPlaybackSpeed, cwTone);
+}
 
-  // After playing, prepare expected response and move to input state
-  const char** responses = qso_responses[sessionIndex];
-  if (responses[exchangeIndex] != nullptr) {
-    qsoExpectedResponse = personalizeQSOText(responses[exchangeIndex]);
-  } else {
-    qsoExpectedResponse = ""; // No response expected (shouldn't happen)
+/*
+ * Update function for CW Academy QSO Practice - polls async playback status
+ * Called from main loop when this mode is active
+ */
+void updateCWAQSOPractice() {
+  // Check if async playback has completed during PLAYING state
+  if (qsoState == QSO_PLAYING) {
+    if (isMorsePlaybackComplete()) {
+      // Transition to input state
+      qsoExpectedResponse = qsoPendingResponse;
+      qsoUserInput = "";
+      qsoState = QSO_WAITING_INPUT;
+      Serial.println("[CWAQSO] Playback complete, waiting for input");
+      // Note: UI will be redrawn on next loop iteration or input event
+    }
   }
-
-  qsoUserInput = "";
-  qsoState = QSO_WAITING_INPUT;
-  drawCWAQSOPracticeUI(tft);
 }
 
 /*
@@ -528,6 +545,10 @@ int handleCWAQSOPracticeInput(char key, LGFX& tft) {
   }
 
   if (key == KEY_ESC) {
+    // Cancel any active playback
+    if (isMorsePlaybackActive()) {
+      cancelMorsePlayback();
+    }
     return -1; // Exit
   }
 

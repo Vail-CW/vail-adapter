@@ -10,6 +10,10 @@
 #include <LovyanGFX.hpp>
 #include "../core/config.h"
 
+// Forward declaration for global hotkey handler (defined in lv_mode_integration.h)
+// Returns true if key was consumed as a global hotkey
+extern bool handleGlobalHotkey(char key);
+
 // ============================================
 // Display Buffer Configuration
 // ============================================
@@ -178,7 +182,15 @@ void lvgl_keypad_read(lv_indev_drv_t* drv, lv_indev_data_t* data) {
     uint32_t now = millis();
 
     if (raw_key != 0) {
-        // New key pressed
+        // Check for global hotkeys FIRST (before LVGL processing)
+        // Global hotkeys are consumed and not passed to LVGL widgets
+        if (handleGlobalHotkey(raw_key)) {
+            // Key was handled as hotkey, don't pass to LVGL
+            data->state = LV_INDEV_STATE_REL;
+            return;
+        }
+
+        // New key pressed (not a global hotkey)
         uint32_t lvgl_key = mapCardKBtoLVGL(raw_key);
 
         // Debug output

@@ -487,8 +487,8 @@ int handleCWASendingPracticeInput(char key, LGFX& tft) {
   // Waiting for student to send
   if (cwaSendWaitingForSend) {
     if (key == 'P' || key == 'p') {
-      // Play target message
-      playMorseString(cwaSendTarget.c_str(), 15, cwTone);  // 15 WPM for sending practice
+      // Play target message (async)
+      requestPlayMorseString(cwaSendTarget.c_str(), 15, cwTone);  // 15 WPM for sending practice
       return 0;
 
     } else if (key == 'R' || key == 'r') {

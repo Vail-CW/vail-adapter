@@ -8,6 +8,7 @@
 
 #include "training_cwa_core.h"  // Same folder
 #include "training_cwa_data.h"  // Same folder
+#include "../core/task_manager.h"  // For async playback
 
 // Forward declaration for header drawing
 extern void drawHeader();
@@ -15,6 +16,14 @@ extern void drawHeader();
 // ============================================
 // Copy Practice State
 // ============================================
+
+// Async playback state for dual-core audio
+enum CWACopyPlaybackState {
+  CWACOPY_PLAYBACK_IDLE,      // No playback active
+  CWACOPY_PLAYBACK_PLAYING,   // Morse playback in progress
+  CWACOPY_PLAYBACK_COMPLETE   // Playback just finished
+};
+CWACopyPlaybackState cwaCopyPlaybackState = CWACOPY_PLAYBACK_IDLE;
 
 String cwaCopyTarget = "";              // What was sent (correct answer)
 String cwaCopyInput = "";               // What user typed
@@ -239,7 +248,7 @@ void drawCWACopyPracticeUI(LGFX& tft) {
 // ============================================
 
 /*
- * Start a new round of practice
+ * Start a new round of practice (async - non-blocking)
  */
 void startCWACopyRound(LGFX& tft) {
   cwaCopyRound++;
@@ -251,13 +260,27 @@ void startCWACopyRound(LGFX& tft) {
   // Draw the UI FIRST showing the ready state
   drawCWACopyPracticeUI(tft);
 
-  // Then play the morse code after a brief delay
-  delay(1000);
-  playMorseString(cwaCopyTarget.c_str(), cwSpeed, cwTone);
+  // Start async morse playback (returns immediately)
+  cwaCopyPlaybackState = CWACOPY_PLAYBACK_PLAYING;
+  requestPlayMorseString(cwaCopyTarget.c_str(), cwSpeed, cwTone);
+  // Note: cwaCopyWaitingForInput will be set to true when playback completes
+  // in updateCWACopyPractice()
+}
 
-  // Now ready for input
-  cwaCopyWaitingForInput = true;
-  drawCWACopyPracticeUI(tft);  // Redraw to show input prompt
+/*
+ * Update function for CW Academy Copy Practice - polls async playback status
+ * Called from main loop when this mode is active
+ */
+void updateCWACopyPractice() {
+  // Check if async playback has completed
+  if (cwaCopyPlaybackState == CWACOPY_PLAYBACK_PLAYING) {
+    if (isMorsePlaybackComplete()) {
+      cwaCopyPlaybackState = CWACOPY_PLAYBACK_IDLE;
+      cwaCopyWaitingForInput = true;
+      Serial.println("[CWACopy] Playback complete, waiting for input");
+      // Note: UI will be updated on next input or redraw request
+    }
+  }
 }
 
 /*
@@ -285,8 +308,12 @@ void startCWACopyPractice(LGFX& tft) {
  * Returns: -1 to exit, 0 for normal input, 2 for redraw
  */
 int handleCWACopyPracticeInput(char key, LGFX& tft) {
-  // ESC always exits
+  // ESC always exits - cancel any active playback
   if (key == KEY_ESC) {
+    if (isMorsePlaybackActive()) {
+      cancelMorsePlayback();
+      cwaCopyPlaybackState = CWACOPY_PLAYBACK_IDLE;
+    }
     return -1;  // Return to message type selection
   }
 
@@ -346,10 +373,16 @@ int handleCWACopyPracticeInput(char key, LGFX& tft) {
   // Waiting for input
   if (cwaCopyWaitingForInput) {
     if (key == ' ') {  // Space bar for replay
-      // Replay the morse code
-      playMorseString(cwaCopyTarget.c_str(), cwSpeed, cwTone);
+      // Cancel any active playback first
+      if (isMorsePlaybackActive()) {
+        cancelMorsePlayback();
+      }
+      // Replay the morse code (async)
+      cwaCopyPlaybackState = CWACOPY_PLAYBACK_PLAYING;
+      cwaCopyWaitingForInput = false;  // Will be set true when playback completes
+      requestPlayMorseString(cwaCopyTarget.c_str(), cwSpeed, cwTone);
       beep(TONE_MENU_NAV, BEEP_SHORT);
-      return 0;  // No redraw needed
+      return 2;  // Redraw to show "Listening..."
 
     } else if (key == KEY_ENTER || key == KEY_ENTER_ALT) {
       // Submit answer

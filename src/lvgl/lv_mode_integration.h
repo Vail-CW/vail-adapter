@@ -135,6 +135,22 @@
 #define LVGL_MODE_SPARK_WATCH_SETTINGS   87
 #define LVGL_MODE_SPARK_WATCH_STATS      88
 
+// LICW Training modes
+#define LVGL_MODE_LICW_CAROUSEL_SELECT   120
+#define LVGL_MODE_LICW_LESSON_SELECT     121
+#define LVGL_MODE_LICW_PRACTICE_TYPE     122
+#define LVGL_MODE_LICW_COPY_PRACTICE     123
+#define LVGL_MODE_LICW_SEND_PRACTICE     124
+#define LVGL_MODE_LICW_TTR_PRACTICE      125
+#define LVGL_MODE_LICW_IFR_PRACTICE      126
+#define LVGL_MODE_LICW_CSF_INTRO         127
+#define LVGL_MODE_LICW_WORD_DISCOVERY    128
+#define LVGL_MODE_LICW_QSO_PRACTICE      129
+#define LVGL_MODE_LICW_SETTINGS          130
+#define LVGL_MODE_LICW_PROGRESS          131
+#define LVGL_MODE_LICW_CFP_PRACTICE      132
+#define LVGL_MODE_LICW_ADVERSE_COPY      133
+
 // ============================================
 // Forward declarations from main file
 // ============================================
@@ -196,6 +212,15 @@ extern struct LicenseStudySession licenseSession;
 // ============================================
 
 // LVGL is the only UI system - no legacy rendering available
+
+// ============================================
+// Global Hotkey State
+// ============================================
+
+// Track if volume was accessed via global "V" shortcut
+// When true, ESC returns to returnToModeAfterVolume instead of normal parent
+static bool volumeViaShortcut = false;
+static int returnToModeAfterVolume = LVGL_MODE_MAIN_MENU;
 
 // ============================================
 // Mode Category Detection
@@ -414,6 +439,16 @@ void initializeModeInt(int mode) {
             startVailMaster(tft);
             break;
 
+        // LICW Training modes
+        case LVGL_MODE_LICW_CAROUSEL_SELECT:
+            Serial.println("[ModeInit] Starting LICW Carousel Select");
+            initLICWTraining();  // Load saved progress
+            break;
+        case LVGL_MODE_LICW_COPY_PRACTICE:
+            Serial.println("[ModeInit] Starting LICW Copy Practice");
+            // Session reset handled in screen creation
+            break;
+
         // Game modes
         case LVGL_MODE_MORSE_SHOOTER:
             // Just load preferences, game starts when user presses START on settings screen
@@ -581,6 +616,40 @@ void initializeModeInt(int mode) {
     }
 }
 
+// ============================================
+// Global Hotkey Handler
+// ============================================
+
+/*
+ * Handle global hotkeys before LVGL processing
+ * Returns true if key was handled (should not pass to LVGL)
+ *
+ * Currently supported hotkeys:
+ *   V/v - Volume Settings (from any menu screen)
+ */
+bool handleGlobalHotkey(char key) {
+    int currentModeInt = getCurrentModeAsInt();
+
+    // V key = Volume shortcut (only from menu screens)
+    if ((key == 'V' || key == 'v') && isMenuModeInt(currentModeInt)) {
+        Serial.printf("[Hotkey] V pressed in menu mode %d, opening Volume Settings\n", currentModeInt);
+
+        // Store current mode to return to after ESC
+        volumeViaShortcut = true;
+        returnToModeAfterVolume = currentModeInt;
+
+        // Navigate to volume settings (plays beep, creates screen)
+        onLVGLMenuSelect(LVGL_MODE_VOLUME_SETTINGS);
+        return true;
+    }
+
+    return false;
+}
+
+// ============================================
+// Menu Selection Handler
+// ============================================
+
 /*
  * Handler for menu item selection from LVGL menus
  * Called when user selects a menu item
@@ -657,6 +726,15 @@ void onLVGLMenuSelect(int target_mode) {
  * Get the parent mode for a given mode (for back navigation)
  */
 int getParentModeInt(int mode) {
+    // Special case: Volume accessed via global "V" shortcut
+    // Returns to the menu the user was on, not the normal parent
+    if (mode == LVGL_MODE_VOLUME_SETTINGS && volumeViaShortcut) {
+        int returnMode = returnToModeAfterVolume;
+        volumeViaShortcut = false;  // Reset flag for next time
+        Serial.printf("[ModeIntegration] Returning from Volume shortcut to mode %d\n", returnMode);
+        return returnMode;
+    }
+
     switch (mode) {
         // Main menu has no parent
         case LVGL_MODE_MAIN_MENU:
@@ -817,6 +895,27 @@ int getParentModeInt(int mode) {
         case LVGL_MODE_LICENSE_SD_ERROR:
         case LVGL_MODE_LICENSE_ALL_STATS:
             return LVGL_MODE_LICENSE_SELECT;
+
+        // LICW Training hierarchy
+        case LVGL_MODE_LICW_CAROUSEL_SELECT:
+            return LVGL_MODE_TRAINING_MENU;
+        case LVGL_MODE_LICW_LESSON_SELECT:
+            return LVGL_MODE_LICW_CAROUSEL_SELECT;
+        case LVGL_MODE_LICW_PRACTICE_TYPE:
+            return LVGL_MODE_LICW_LESSON_SELECT;
+        case LVGL_MODE_LICW_COPY_PRACTICE:
+        case LVGL_MODE_LICW_SEND_PRACTICE:
+        case LVGL_MODE_LICW_TTR_PRACTICE:
+        case LVGL_MODE_LICW_IFR_PRACTICE:
+        case LVGL_MODE_LICW_CSF_INTRO:
+        case LVGL_MODE_LICW_WORD_DISCOVERY:
+        case LVGL_MODE_LICW_QSO_PRACTICE:
+        case LVGL_MODE_LICW_CFP_PRACTICE:
+        case LVGL_MODE_LICW_ADVERSE_COPY:
+            return LVGL_MODE_LICW_PRACTICE_TYPE;
+        case LVGL_MODE_LICW_SETTINGS:
+        case LVGL_MODE_LICW_PROGRESS:
+            return LVGL_MODE_LICW_CAROUSEL_SELECT;
 
         default:
             return LVGL_MODE_MAIN_MENU;

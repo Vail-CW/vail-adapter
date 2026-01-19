@@ -47,14 +47,9 @@ This project uses modular documentation. For detailed information on specific to
 
 **Arduino ESP32 Core:** Version 2.0.14 (required for ST7796S display compatibility)
 
-**Arduino CLI Compilation:**
-```bash
-arduino-cli compile \
-  --fqbn "esp32:esp32:adafruit_feather_esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,PSRAM=enabled,FlashSize=4M" \
-  vail-summit/
-```
+### Standalone Arduino CLI Environment (REQUIRED)
 
-### Standalone Arduino CLI Environment
+**⚠️ IMPORTANT:** This project MUST be compiled using the standalone Arduino CLI environment at `C:\vail-cli`. Do NOT use a global Arduino installation or Arduino IDE - they will have incompatible library versions (especially ESP32 core 3.x vs required 2.0.14).
 
 This project includes a standalone Arduino CLI environment with all required libraries pre-installed at specific versions. This ensures consistent builds without affecting your global Arduino installation.
 
@@ -65,13 +60,13 @@ This project includes a standalone Arduino CLI environment with all required lib
 - **Isolation:** Won't conflict with other Arduino projects that need different library versions
 - **Reproducible builds:** Same environment for all developers
 
-**Build Scripts:**
+**Build Scripts (Recommended):**
 - `build.bat` - Windows batch script
 - `build.ps1` - PowerShell script (with colored output)
 
 **Quick Start:**
 ```bash
-# Compile firmware
+# Compile firmware (from project root)
 .\build.bat                      # or: .\build.ps1
 
 # Upload to device (replace COM31 with your port)
@@ -85,6 +80,18 @@ This project includes a standalone Arduino CLI environment with all required lib
 
 # Clean build directory
 .\build.bat clean                # or: .\build.ps1 clean
+```
+
+**Manual Compilation (if needed):**
+```powershell
+# Must run from C:\vail-cli directory due to Windows path length limits
+Push-Location 'C:\vail-cli'
+.\arduino-cli.exe compile `
+    --config-file arduino-cli.yaml `
+    --fqbn "esp32:esp32:adafruit_feather_esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,PSRAM=enabled,FlashSize=4M" `
+    --output-dir "$env:PROJECT_DIR\build" `
+    "c:\Users\brett\Documents\Coding Projects\vail-summit"
+Pop-Location
 ```
 
 **Installed Libraries:**

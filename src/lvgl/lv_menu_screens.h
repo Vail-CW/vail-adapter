@@ -57,9 +57,10 @@ static const LVMenuItem trainingMenuItems[] = {
     {LV_SYMBOL_EDIT, "Vail Master", 70},       // MODE_VAIL_MASTER (LVGL_MODE_VAIL_MASTER)
     {LV_SYMBOL_AUDIO, "Hear It Type It", 2},   // MODE_HEAR_IT_MENU
     {LV_SYMBOL_LOOP, "Koch Method", 7},        // MODE_KOCH_METHOD
-    {LV_SYMBOL_FILE, "CW Academy", 8}          // MODE_CW_ACADEMY_TRACK_SELECT
+    {LV_SYMBOL_FILE, "CW Academy", 8},         // MODE_CW_ACADEMY_TRACK_SELECT
+    {LV_SYMBOL_SHUFFLE, "LICW Training", 120}  // LVGL_MODE_LICW_CAROUSEL_SELECT
 };
-#define TRAINING_MENU_COUNT 4
+#define TRAINING_MENU_COUNT 5
 
 // Games submenu items
 static const LVMenuItem gamesMenuItems[] = {

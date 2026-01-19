@@ -19,6 +19,7 @@
 #include "../training/training_license_stats.h"
 #include "../training/training_license_downloader.h"
 #include "lv_vail_master_screens.h"
+#include "lv_licw_screens.h"
 
 // External state from training modules
 extern int cwSpeed;
@@ -1449,8 +1450,13 @@ static void hear_it_start_btn_cb(lv_event_t* e) {
 
 
 lv_obj_t* createHearItTypeItScreen() {
+    // Load saved settings BEFORE copying to temp (fixes mode display bug)
+    loadHearItSettings();
+
     // Copy current settings to temp for editing
     tempSettings = hearItSettings;
+    Serial.printf("[HearIt] Screen create: hearItSettings.mode=%d, tempSettings.mode=%d\n",
+                  (int)hearItSettings.mode, (int)tempSettings.mode);
 
     lv_obj_t* screen = createScreen();
     applyScreenStyle(screen);
@@ -6682,9 +6688,15 @@ lv_obj_t* createTrainingScreenForMode(int mode) {
         case 60: // MODE_LICENSE_ALL_STATS
             return createLicenseAllStatsScreen();
         default:
-            Serial.printf("[TrainingScreens] Unknown training mode: %d\n", mode);
-            return NULL;
+            break;
     }
+
+    // Check for LICW Training modes (120-133)
+    lv_obj_t* licwScreen = createLICWScreenForMode(mode);
+    if (licwScreen != NULL) return licwScreen;
+
+    Serial.printf("[TrainingScreens] Unknown training mode: %d\n", mode);
+    return NULL;
 }
 
 #endif // LV_TRAINING_SCREENS_H

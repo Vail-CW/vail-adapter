@@ -463,6 +463,26 @@ void loop() {
     }
   }
 
+  // Update Hear It Type It async playback
+  if (currentMode == MODE_HEAR_IT_TYPE_IT) {
+    updateHearItTypeIt();
+  }
+
+  // Update CW Academy Copy Practice async playback
+  if (currentMode == MODE_CW_ACADEMY_COPY_PRACTICE) {
+    updateCWACopyPractice();
+  }
+
+  // Update Koch Method async playback
+  if (currentMode == MODE_KOCH_METHOD) {
+    updateKochMethod();
+  }
+
+  // Update CW Academy QSO Practice async playback
+  if (currentMode == MODE_CW_ACADEMY_QSO_PRACTICE) {
+    updateCWAQSOPractice();
+  }
+
   // Update CW Academy sending practice (paddle input processing with dual-core audio)
   if (currentMode == MODE_CW_ACADEMY_SENDING_PRACTICE) {
     if (cwaUseLVGL) {

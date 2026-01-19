@@ -7,6 +7,7 @@
 #define TRAINING_HEAR_IT_TYPE_IT_H
 
 #include "../core/morse_code.h"
+#include "../core/task_manager.h"
 #include <Preferences.h>
 
 // Forward declarations for LVGL feedback functions (defined in lv_training_screens.h)
@@ -93,6 +94,14 @@ HearItSettingsState settingsState = {
   false,                 // Preset selector not open
   0                      // Preset selection index 0
 };
+
+// Async playback state for dual-core audio
+enum HearItPlaybackState {
+  HEARIT_PLAYBACK_IDLE,      // No playback active
+  HEARIT_PLAYBACK_PLAYING,   // Morse playback in progress
+  HEARIT_PLAYBACK_COMPLETE   // Playback just finished
+};
+HearItPlaybackState hearItPlaybackState = HEARIT_PLAYBACK_IDLE;
 
 // Training state
 String currentCallsign = "";
@@ -238,19 +247,35 @@ void startNewCallsign() {
   Serial.println(" WPM");
 }
 
-// Play the current callsign
+// Play the current callsign (async - non-blocking)
 void playCurrentCallsign() {
   waitingForInput = false;
+  hearItPlaybackState = HEARIT_PLAYBACK_PLAYING;
 
   // Debug output to serial (for troubleshooting/cheating)
-  Serial.print(">>> PLAYING CALLSIGN: ");
+  Serial.print(">>> PLAYING CALLSIGN (async): ");
   Serial.print(currentCallsign);
   Serial.print(" @ ");
   Serial.print(currentWPM);
   Serial.println(" WPM");
 
-  playMorseString(currentCallsign.c_str(), currentWPM);
-  waitingForInput = true;
+  // Use async playback - returns immediately
+  requestPlayMorseString(currentCallsign.c_str(), currentWPM, TONE_SIDETONE);
+  // Note: waitingForInput will be set to true when playback completes
+  // in updateHearItTypeIt()
+}
+
+// Update function for Hear It Type It - polls async playback status
+// Called from main loop when this mode is active
+void updateHearItTypeIt() {
+  // Check if async playback has completed
+  if (hearItPlaybackState == HEARIT_PLAYBACK_PLAYING) {
+    if (isMorsePlaybackComplete()) {
+      hearItPlaybackState = HEARIT_PLAYBACK_IDLE;
+      waitingForInput = true;
+      Serial.println("[HearIt] Playback complete, waiting for input");
+    }
+  }
 }
 
 // Initialize and start Hear It Type It mode (called from lv_mode_integration.h)
@@ -1055,9 +1080,9 @@ int handleSettingsInput(char key, LGFX& tft) {
     // Start first challenge
     startNewCallsign();
     drawHearItTypeItUI(tft);
-    delay(500);
+    // Reset playback state and start async playback
+    hearItPlaybackState = HEARIT_PLAYBACK_IDLE;
     playCurrentCallsign();
-    drawHearItTypeItUI(tft);
 
     beep(TONE_SELECT, BEEP_LONG);
     return 2;  // Full redraw
@@ -1122,6 +1147,11 @@ int handleHearItTypeItInput(char key, LGFX& tft) {
   }
 
   if (key == KEY_ESC) {
+    // Cancel any active playback
+    if (isMorsePlaybackActive()) {
+      cancelMorsePlayback();
+      hearItPlaybackState = HEARIT_PLAYBACK_IDLE;
+    }
     // ESC during training: Return to settings (preserve stats)
     currentHearItState = HEAR_IT_STATE_SETTINGS;
     inSettingsMode = true;
@@ -1142,20 +1172,26 @@ int handleHearItTypeItInput(char key, LGFX& tft) {
   } else if (key == KEY_LEFT) {
     // Replay the callsign
     beep(TONE_MENU_NAV, BEEP_SHORT);
+    // Cancel any active playback first
+    if (isMorsePlaybackActive()) {
+      cancelMorsePlayback();
+    }
     drawHearItTypeItUI(tft);
-    delay(500);
+    // Start async playback (no blocking delay needed)
     playCurrentCallsign();
-    drawHearItTypeItUI(tft);
     return 2;
 
   } else if (key == KEY_TAB) {
     // Skip to next callsign
     beep(TONE_MENU_NAV, BEEP_SHORT);
+    // Cancel any active playback first
+    if (isMorsePlaybackActive()) {
+      cancelMorsePlayback();
+    }
     startNewCallsign();
     drawHearItTypeItUI(tft);
-    delay(500);
+    // Start async playback (no blocking delay needed)
     playCurrentCallsign();
-    drawHearItTypeItUI(tft);
     return 2;
 
   } else if (key == KEY_ENTER || key == KEY_ENTER_ALT) {
@@ -1210,9 +1246,8 @@ int handleHearItTypeItInput(char key, LGFX& tft) {
         // Move to next callsign (legacy mode only)
         startNewCallsign();
         drawHearItTypeItUI(tft);
-        delay(500);
+        // Async playback - no blocking delay needed
         playCurrentCallsign();
-        drawHearItTypeItUI(tft);
         return 2;
       }
 
@@ -1258,9 +1293,8 @@ int handleHearItTypeItInput(char key, LGFX& tft) {
         // Clear user input and replay (legacy mode only)
         userInput = "";
         drawHearItTypeItUI(tft);
-        delay(500);
+        // Async playback - no blocking delay needed
         playCurrentCallsign();
-        drawHearItTypeItUI(tft);
         return 2;
       }
     }

@@ -81,6 +81,120 @@ struct PaddleState {
 static volatile PaddleState paddleState = {false, false, 0, 0};
 
 // ============================================
+// Async Morse String Playback
+// ============================================
+
+#define MORSE_PLAYBACK_MAX_LENGTH 128  // Max string length for async playback
+
+// Morse playback state machine
+enum MorsePlaybackState {
+    MORSE_IDLE = 0,           // No playback active
+    MORSE_PLAYING_ELEMENT,    // Playing a dit or dah
+    MORSE_ELEMENT_GAP,        // Gap between dits/dahs in same letter
+    MORSE_LETTER_GAP,         // Gap between letters
+    MORSE_WORD_GAP,           // Gap between words
+    MORSE_COMPLETE            // Playback finished
+};
+
+// Morse playback request structure
+struct MorsePlaybackRequest {
+    volatile bool active;           // Playback in progress
+    volatile bool cancelled;        // Cancellation requested
+    char text[MORSE_PLAYBACK_MAX_LENGTH];  // Text to play
+    volatile int textLength;        // Length of text
+    volatile int wpm;               // Words per minute
+    volatile int toneHz;            // Tone frequency
+    volatile int charIndex;         // Current character in text
+    volatile int elementIndex;      // Current element in character pattern
+    volatile MorsePlaybackState state;  // Current state
+    volatile unsigned long stateEndTime;  // When current state ends
+    volatile bool complete;         // Playback finished flag
+};
+
+static volatile MorsePlaybackRequest morsePlayback = {
+    false, false, "", 0, 0, 0, 0, 0, MORSE_IDLE, 0, false
+};
+
+// Morse code lookup table (matches morse_code.h)
+static const char* morseTableInternal[] = {
+    ".-",    // A
+    "-...",  // B
+    "-.-.",  // C
+    "-..",   // D
+    ".",     // E
+    "..-.",  // F
+    "--.",   // G
+    "....",  // H
+    "..",    // I
+    ".---",  // J
+    "-.-",   // K
+    ".-..",  // L
+    "--",    // M
+    "-.",    // N
+    "---",   // O
+    ".--.",  // P
+    "--.-",  // Q
+    ".-.",   // R
+    "...",   // S
+    "-",     // T
+    "..-",   // U
+    "...-",  // V
+    ".--",   // W
+    "-..-",  // X
+    "-.--",  // Y
+    "--..",  // Z
+    "-----", // 0
+    ".----", // 1
+    "..---", // 2
+    "...--", // 3
+    "....-", // 4
+    ".....", // 5
+    "-....", // 6
+    "--...", // 7
+    "---..", // 8
+    "----.", // 9
+    ".-.-.-", // Period
+    "--..--", // Comma
+    "..--..", // Question mark
+    ".----.", // Apostrophe
+    "-.-.--", // Exclamation
+    "-..-.",  // Slash
+    "-.--.",  // Parenthesis (
+    "-.--.-", // Parenthesis )
+    ".-...",  // Ampersand
+    "---...", // Colon
+    "-.-.-.", // Semicolon
+    "-...-",  // Equals
+    ".-.-.",  // Plus
+    "-....-", // Hyphen/Minus
+    "..--.-", // Underscore
+    ".-..-.", // Quote
+    "...-..-", // Dollar
+    ".--.-."  // At sign
+};
+
+// Get morse pattern for a character (internal version for audio task)
+static const char* getMorsePatternInternal(char c) {
+    c = toupper(c);
+    if (c >= 'A' && c <= 'Z') {
+        return morseTableInternal[c - 'A'];
+    } else if (c >= '0' && c <= '9') {
+        return morseTableInternal[26 + (c - '0')];
+    } else if (c == '.') {
+        return morseTableInternal[36];
+    } else if (c == ',') {
+        return morseTableInternal[37];
+    } else if (c == '?') {
+        return morseTableInternal[38];
+    } else if (c == '/') {
+        return morseTableInternal[41];
+    } else if (c == '-') {
+        return morseTableInternal[47];
+    }
+    return nullptr;
+}
+
+// ============================================
 // Thread-Safe API Functions (called from UI core)
 // ============================================
 
@@ -153,6 +267,99 @@ char getDecodedChar() {
 bool hasDecodedChars() {
     if (decodedCharQueue == NULL) return false;
     return uxQueueMessagesWaiting(decodedCharQueue) > 0;
+}
+
+// ============================================
+// Async Morse String Playback API (called from UI core)
+// ============================================
+
+/*
+ * Request to play a morse string asynchronously
+ * Non-blocking - returns immediately, audio task handles playback
+ */
+void requestPlayMorseString(const char* str, int wpm, int toneHz = TONE_SIDETONE) {
+    if (str == nullptr || strlen(str) == 0) return;
+
+    if (xSemaphoreTake(audioMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+        // Stop any current playback
+        morsePlayback.cancelled = true;
+
+        // Wait a moment for audio task to see cancellation
+        xSemaphoreGive(audioMutex);
+        vTaskDelay(pdMS_TO_TICKS(10));
+
+        // Now set up new playback
+        if (xSemaphoreTake(audioMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+            // Copy text (safely)
+            int len = strlen(str);
+            if (len > MORSE_PLAYBACK_MAX_LENGTH - 1) {
+                len = MORSE_PLAYBACK_MAX_LENGTH - 1;
+            }
+            strncpy((char*)morsePlayback.text, str, len);
+            ((char*)morsePlayback.text)[len] = '\0';
+
+            morsePlayback.textLength = len;
+            morsePlayback.wpm = wpm;
+            morsePlayback.toneHz = toneHz;
+            morsePlayback.charIndex = 0;
+            morsePlayback.elementIndex = 0;
+            morsePlayback.state = MORSE_IDLE;  // Will start on next audio task cycle
+            morsePlayback.stateEndTime = 0;
+            morsePlayback.complete = false;
+            morsePlayback.cancelled = false;
+            morsePlayback.active = true;
+
+            Serial.printf("[MorsePlayback] Started: '%s' @ %d WPM, %d Hz\n", str, wpm, toneHz);
+            xSemaphoreGive(audioMutex);
+        }
+    }
+}
+
+/*
+ * Check if morse playback is currently active
+ */
+bool isMorsePlaybackActive() {
+    return morsePlayback.active && !morsePlayback.complete;
+}
+
+/*
+ * Check if morse playback has completed
+ */
+bool isMorsePlaybackComplete() {
+    return morsePlayback.complete;
+}
+
+/*
+ * Cancel current morse playback
+ */
+void cancelMorsePlayback() {
+    if (xSemaphoreTake(audioMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        morsePlayback.cancelled = true;
+        xSemaphoreGive(audioMutex);
+    }
+}
+
+/*
+ * Get current playback progress (0.0 to 1.0)
+ */
+float getMorsePlaybackProgress() {
+    if (!morsePlayback.active || morsePlayback.textLength == 0) return 0.0f;
+    return (float)morsePlayback.charIndex / (float)morsePlayback.textLength;
+}
+
+/*
+ * Reset morse playback state (call when entering modes)
+ */
+void resetMorsePlayback() {
+    if (xSemaphoreTake(audioMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+        morsePlayback.active = false;
+        morsePlayback.cancelled = false;
+        morsePlayback.complete = false;
+        morsePlayback.charIndex = 0;
+        morsePlayback.elementIndex = 0;
+        morsePlayback.state = MORSE_IDLE;
+        xSemaphoreGive(audioMutex);
+    }
 }
 
 // ============================================
@@ -259,6 +466,180 @@ void getPaddleState(bool* dit, bool* dah) {
     *dah = paddleState.dahPressed;
 }
 
+/*
+ * Process morse string playback state machine
+ * Called by audio task - runs non-blocking state machine for async playback
+ */
+void processMorsePlayback() {
+    // Skip if no active playback
+    if (!morsePlayback.active) return;
+
+    // Check for cancellation
+    if (morsePlayback.cancelled) {
+        stopToneInternal();
+        morsePlayback.active = false;
+        morsePlayback.complete = true;
+        morsePlayback.cancelled = false;
+        Serial.println("[MorsePlayback] Cancelled");
+        return;
+    }
+
+    unsigned long now = millis();
+    int ditDuration = 1200 / morsePlayback.wpm;
+    int dahDuration = ditDuration * 3;
+    int elementGap = ditDuration;
+    int letterGap = ditDuration * 3;
+    int wordGap = ditDuration * 7;
+
+    // State machine
+    switch (morsePlayback.state) {
+        case MORSE_IDLE: {
+            // Start playing - find first valid character
+            while (morsePlayback.charIndex < morsePlayback.textLength) {
+                char c = morsePlayback.text[morsePlayback.charIndex];
+
+                if (c == ' ') {
+                    // Word gap - transition to MORSE_WORD_GAP
+                    morsePlayback.state = MORSE_WORD_GAP;
+                    morsePlayback.stateEndTime = now + (wordGap - letterGap);  // Subtract letter gap already added
+                    morsePlayback.charIndex++;
+                    return;
+                }
+
+                const char* pattern = getMorsePatternInternal(c);
+                if (pattern != nullptr) {
+                    // Valid character - start playing first element
+                    morsePlayback.elementIndex = 0;
+                    char element = pattern[0];
+
+                    if (element == '.') {
+                        startToneInternal(morsePlayback.toneHz);
+                        morsePlayback.state = MORSE_PLAYING_ELEMENT;
+                        morsePlayback.stateEndTime = now + ditDuration;
+                    } else if (element == '-') {
+                        startToneInternal(morsePlayback.toneHz);
+                        morsePlayback.state = MORSE_PLAYING_ELEMENT;
+                        morsePlayback.stateEndTime = now + dahDuration;
+                    }
+                    return;
+                }
+
+                // Unknown character - skip it
+                morsePlayback.charIndex++;
+            }
+
+            // No more characters - playback complete
+            morsePlayback.state = MORSE_COMPLETE;
+            morsePlayback.complete = true;
+            morsePlayback.active = false;
+            Serial.println("[MorsePlayback] Complete");
+            break;
+        }
+
+        case MORSE_PLAYING_ELEMENT: {
+            // Keep I2S buffer filled during tone
+            continueToneInternal(morsePlayback.toneHz);
+
+            // Check if element duration has elapsed
+            if (now >= morsePlayback.stateEndTime) {
+                stopToneInternal();
+
+                // Get current character pattern
+                char c = morsePlayback.text[morsePlayback.charIndex];
+                const char* pattern = getMorsePatternInternal(c);
+
+                if (pattern == nullptr) {
+                    // Should not happen, but handle gracefully
+                    morsePlayback.charIndex++;
+                    morsePlayback.state = MORSE_IDLE;
+                    return;
+                }
+
+                // Move to next element
+                morsePlayback.elementIndex++;
+
+                if (pattern[morsePlayback.elementIndex] != '\0') {
+                    // More elements in this character - add element gap
+                    morsePlayback.state = MORSE_ELEMENT_GAP;
+                    morsePlayback.stateEndTime = now + elementGap;
+                } else {
+                    // Character complete - move to next character
+                    morsePlayback.charIndex++;
+
+                    if (morsePlayback.charIndex >= morsePlayback.textLength) {
+                        // All done
+                        morsePlayback.state = MORSE_COMPLETE;
+                        morsePlayback.complete = true;
+                        morsePlayback.active = false;
+                        Serial.println("[MorsePlayback] Complete");
+                    } else if (morsePlayback.text[morsePlayback.charIndex] == ' ') {
+                        // Next is space - word gap (already have letter gap implicitly)
+                        morsePlayback.charIndex++;
+                        morsePlayback.state = MORSE_WORD_GAP;
+                        morsePlayback.stateEndTime = now + wordGap;
+                    } else {
+                        // Next is a character - letter gap
+                        morsePlayback.state = MORSE_LETTER_GAP;
+                        morsePlayback.stateEndTime = now + letterGap;
+                    }
+                }
+            }
+            break;
+        }
+
+        case MORSE_ELEMENT_GAP: {
+            // Wait for element gap to complete
+            if (now >= morsePlayback.stateEndTime) {
+                // Start next element
+                char c = morsePlayback.text[morsePlayback.charIndex];
+                const char* pattern = getMorsePatternInternal(c);
+
+                if (pattern != nullptr && pattern[morsePlayback.elementIndex] != '\0') {
+                    char element = pattern[morsePlayback.elementIndex];
+
+                    if (element == '.') {
+                        startToneInternal(morsePlayback.toneHz);
+                        morsePlayback.state = MORSE_PLAYING_ELEMENT;
+                        morsePlayback.stateEndTime = now + ditDuration;
+                    } else if (element == '-') {
+                        startToneInternal(morsePlayback.toneHz);
+                        morsePlayback.state = MORSE_PLAYING_ELEMENT;
+                        morsePlayback.stateEndTime = now + dahDuration;
+                    }
+                } else {
+                    // Pattern ended unexpectedly - move to next char
+                    morsePlayback.charIndex++;
+                    morsePlayback.state = MORSE_IDLE;
+                }
+            }
+            break;
+        }
+
+        case MORSE_LETTER_GAP: {
+            // Wait for letter gap to complete
+            if (now >= morsePlayback.stateEndTime) {
+                // Start next character
+                morsePlayback.state = MORSE_IDLE;
+            }
+            break;
+        }
+
+        case MORSE_WORD_GAP: {
+            // Wait for word gap to complete
+            if (now >= morsePlayback.stateEndTime) {
+                // Continue to next character
+                morsePlayback.state = MORSE_IDLE;
+            }
+            break;
+        }
+
+        case MORSE_COMPLETE: {
+            // Nothing to do - playback finished
+            break;
+        }
+    }
+}
+
 // ============================================
 // Audio Task
 // ============================================
@@ -272,8 +653,11 @@ void audioTask(void* parameter) {
     audioTaskRunning = true;
 
     while (true) {
-        // Process any pending audio requests
+        // Process any pending audio requests (single tone API)
         processAudioRequests();
+
+        // Process morse string playback (async playback API)
+        processMorsePlayback();
 
         // Sample paddle input with precise timing
         samplePaddleInput();

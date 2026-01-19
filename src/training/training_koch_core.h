@@ -7,6 +7,7 @@
 #define TRAINING_KOCH_CORE_H
 
 #include "../core/morse_code.h"
+#include "../core/task_manager.h"
 #include <Preferences.h>
 
 // ============================================
@@ -55,6 +56,14 @@ KochProgress kochProgress = {
   0,
   0
 };
+
+// Async playback state for dual-core audio
+enum KochPlaybackState {
+  KOCH_PLAYBACK_IDLE,      // No playback active
+  KOCH_PLAYBACK_PLAYING,   // Morse playback in progress
+  KOCH_PLAYBACK_COMPLETE   // Playback just finished
+};
+KochPlaybackState kochPlaybackState = KOCH_PLAYBACK_IDLE;
 
 // Training state
 String kochCurrentGroup = "";
@@ -379,13 +388,28 @@ void startNewKochGroup() {
   Serial.println(")");
 }
 
-// Play current group
+// Play current group (async - non-blocking)
 void playKochGroup() {
   kochWaitingForInput = false;
-  Serial.print("Playing: ");
+  kochPlaybackState = KOCH_PLAYBACK_PLAYING;
+  Serial.print("Playing (async): ");
   Serial.println(kochCurrentGroup);
-  playMorseString(kochCurrentGroup.c_str(), kochProgress.wpm);
-  kochWaitingForInput = true;
+  requestPlayMorseString(kochCurrentGroup.c_str(), kochProgress.wpm, TONE_SIDETONE);
+  // Note: kochWaitingForInput will be set to true when playback completes
+  // in updateKochMethod()
+}
+
+// Update function for Koch Method - polls async playback status
+// Called from main loop when this mode is active
+void updateKochMethod() {
+  // Check if async playback has completed
+  if (kochPlaybackState == KOCH_PLAYBACK_PLAYING) {
+    if (isMorsePlaybackComplete()) {
+      kochPlaybackState = KOCH_PLAYBACK_IDLE;
+      kochWaitingForInput = true;
+      Serial.println("[Koch] Playback complete, waiting for input");
+    }
+  }
 }
 
 // Check user's answer
