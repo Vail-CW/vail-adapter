@@ -12,11 +12,12 @@ class ESP32Flasher {
         this.esptoolModule = null;
         this.bootloaderModeReady = false;
 
-        // Firmware file paths (relative to docs/)
+        // Firmware file URLs from the Vail Summit repository
+        const summitFirmwareBase = 'https://raw.githubusercontent.com/Vail-CW/vail-summit/main/firmware_files/';
         this.firmwareFiles = [
-            { address: 0x0, file: 'firmware_files/summit/bootloader.bin' },
-            { address: 0x8000, file: 'firmware_files/summit/partitions.bin' },
-            { address: 0x10000, file: 'firmware_files/summit/vail-summit.bin' }
+            { address: 0x0, file: summitFirmwareBase + 'bootloader.bin' },
+            { address: 0x8000, file: summitFirmwareBase + 'partitions.bin' },
+            { address: 0x10000, file: summitFirmwareBase + 'vail-summit.bin' }
         ];
     }
 
