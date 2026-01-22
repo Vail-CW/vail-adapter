@@ -265,11 +265,32 @@ async function fetchRecentUpdates(deviceType) {
         const meaningfulCommits = commits.filter(commit => {
             const message = commit.commit.message.toLowerCase();
             // Skip CI commits, merge commits, and minor fixes
-            return !message.includes('[skip ci]') &&
-                   !message.includes('merge pull request') &&
-                   !message.includes('merge branch') &&
-                   !message.startsWith('update summit firmware from') &&
-                   !message.startsWith('co-authored-by:');
+            if (message.includes('[skip ci]') ||
+                message.includes('merge pull request') ||
+                message.includes('merge branch') ||
+                message.startsWith('update summit firmware from') ||
+                message.startsWith('co-authored-by:')) {
+                return false;
+            }
+
+            // For adapter repo, also skip website/updater-related commits
+            if (deviceType === 'adapter') {
+                if (message.includes('favicon') ||
+                    message.includes('updater') ||
+                    message.includes("what's new") ||
+                    message.includes('whats new') ||
+                    message.includes('button hat warning') ||
+                    message.includes('esp flasher') ||
+                    message.includes('esp32 flasher') ||
+                    message.includes('summit flasher') ||
+                    message.includes('web flasher') ||
+                    message.includes('github pages') ||
+                    message.includes('website')) {
+                    return false;
+                }
+            }
+
+            return true;
         });
 
         if (meaningfulCommits.length === 0) {
