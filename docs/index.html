@@ -26,17 +26,17 @@
         <p style="margin-top: 10px; font-size: 14px; color: #ffda6a;"><strong>Note:</strong> This applies to Vail Adapter only (not Summit) and only button hats purchased in 2025. Button hats from 2026 onward will use updated PCBs and will not require this modification. If you don't have a button hat, you can ignore this warning and proceed with the update.</p>
     </div>
 
-    <!-- What's New Section -->
-    <details class="whats-new">
+    <!-- What's New Section (hidden until device selected) -->
+    <details class="whats-new" id="whatsNewSection" style="display: none;">
         <summary>
             <span class="expand-icon">▶</span>
-            <strong>Last Update:</strong> <span id="lastUpdateDate">Loading...</span>
+            <strong><span id="whatsNewDevice">Vail</span> Updates:</strong> <span id="lastUpdateDate">Loading...</span>
             <span class="click-hint">— Click to see what's new</span>
         </summary>
         <ul id="recentCommitsList">
             <li>Loading recent updates...</li>
         </ul>
-        <p class="manual-link">📖 <a href="https://vailadapter.com/manual" target="_blank">View User Manual</a></p>
+        <p class="manual-link" id="manualLink">📖 <a href="https://vailadapter.com/manual" target="_blank">View User Manual</a></p>
     </details>
 
     <!-- Progress Indicator -->

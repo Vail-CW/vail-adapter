@@ -224,9 +224,31 @@ async function triggerBootloaderViaWebSerial() {
 }
 
 // Fetch recent commits from GitHub for "What's New" section
-async function fetchRecentUpdates() {
+// deviceType: 'adapter' or 'summit'
+async function fetchRecentUpdates(deviceType) {
+    const repoName = deviceType === 'summit' ? 'vail-summit' : 'vail-adapter';
+    const deviceLabel = deviceType === 'summit' ? 'Vail Summit' : 'Vail Adapter';
+
+    // Show the section
+    const section = document.getElementById('whatsNewSection');
+    if (section) {
+        section.style.display = 'block';
+    }
+
+    // Update the device name in the header
+    const deviceElement = document.getElementById('whatsNewDevice');
+    if (deviceElement) {
+        deviceElement.textContent = deviceLabel;
+    }
+
+    // Update manual link (hide for Summit since it doesn't have a manual page)
+    const manualLink = document.getElementById('manualLink');
+    if (manualLink) {
+        manualLink.style.display = deviceType === 'adapter' ? 'block' : 'none';
+    }
+
     try {
-        const response = await fetch('https://api.github.com/repos/Vail-CW/vail-adapter/commits?per_page=20');
+        const response = await fetch(`https://api.github.com/repos/Vail-CW/${repoName}/commits?per_page=20`);
         if (!response.ok) {
             console.log('Could not fetch commits');
             return;
@@ -280,10 +302,16 @@ async function fetchRecentUpdates() {
     }
 }
 
+// Hide the What's New section
+function hideWhatsNew() {
+    const section = document.getElementById('whatsNewSection');
+    if (section) {
+        section.style.display = 'none';
+    }
+}
+
 // Initialize wizard on page load
 document.addEventListener('DOMContentLoaded', () => {
-    // Fetch recent updates for "What's New" section
-    fetchRecentUpdates();
     // Step 1: Device selection (Adapter vs Summit)
     document.querySelectorAll('#step1 .selection-card').forEach(card => {
         card.addEventListener('click', () => {
@@ -301,9 +329,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (wizardState.device === 'adapter') {
                     // Go to adapter model selection (step 1.5)
                     goToStep(1.5);
+                    fetchRecentUpdates('adapter');
                 } else if (wizardState.device === 'summit') {
                     // Go directly to Summit flash page (step 4)
                     goToStep(4);
+                    fetchRecentUpdates('summit');
                 }
             }, 300);
         });
@@ -357,6 +387,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Back buttons
     document.getElementById('backToStep1FromModel')?.addEventListener('click', () => {
+        hideWhatsNew();
         goToStep(1);
     });
 
@@ -374,6 +405,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('backToStep1FromSummit')?.addEventListener('click', () => {
+        hideWhatsNew();
         goToStep(1);
     });
 
@@ -385,6 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.selection-card').forEach(card => {
             card.classList.remove('selected');
         });
+        hideWhatsNew();
         goToStep(1);
     });
 
@@ -395,6 +428,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.selection-card').forEach(card => {
             card.classList.remove('selected');
         });
+        hideWhatsNew();
         goToStep(1);
     });
 
