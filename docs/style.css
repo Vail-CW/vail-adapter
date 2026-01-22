@@ -596,6 +596,19 @@ code {
     color: #ffda6a;
 }
 
+/* Firmware version badge */
+.firmware-version {
+    font-size: 0.6em;
+    font-weight: normal;
+    background: linear-gradient(135deg, #2d5a2d 0%, #1e3d1e 100%);
+    color: #7fff7f;
+    padding: 0.25em 0.6em;
+    border-radius: 6px;
+    border: 1px solid #4a9f4a;
+    vertical-align: middle;
+    margin-left: 0.5em;
+}
+
 /* Lists */
 ol, ul {
     padding-left: 1.5rem;

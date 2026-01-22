@@ -12,6 +12,7 @@ class ESP32Flasher {
         this.esptoolModule = null;
         this.bootloaderModeReady = false;
         this.manualBootloaderMode = false;
+        this.firmwareVersion = null;
 
         // Firmware file URLs from the Vail Summit repository
         const summitFirmwareBase = 'https://raw.githubusercontent.com/Vail-CW/vail-summit/main/firmware_files/';
@@ -20,6 +21,40 @@ class ESP32Flasher {
             { address: 0x8000, file: summitFirmwareBase + 'partitions.bin' },
             { address: 0x10000, file: summitFirmwareBase + 'vail-summit.bin' }
         ];
+
+        // Fetch firmware version on init
+        this.fetchFirmwareVersion();
+    }
+
+    // Fetch the current firmware version from GitHub
+    async fetchFirmwareVersion() {
+        try {
+            const configUrl = 'https://raw.githubusercontent.com/Vail-CW/vail-summit/main/src/core/config.h';
+            const response = await fetch(configUrl);
+            if (!response.ok) {
+                console.log('Could not fetch firmware version');
+                return;
+            }
+            const content = await response.text();
+
+            // Parse FIRMWARE_VERSION from config.h
+            const match = content.match(/#define\s+FIRMWARE_VERSION\s+"([^"]+)"/);
+            if (match) {
+                this.firmwareVersion = match[1];
+                this.updateVersionDisplay();
+            }
+        } catch (err) {
+            console.log('Error fetching firmware version:', err.message);
+        }
+    }
+
+    // Update the version display in the UI
+    updateVersionDisplay() {
+        const versionElement = document.getElementById('summitFirmwareVersion');
+        if (versionElement && this.firmwareVersion) {
+            versionElement.textContent = `v${this.firmwareVersion}`;
+            versionElement.style.display = 'inline';
+        }
     }
 
     // Direct connect - for manual bootloader mode, skips auto-reset
