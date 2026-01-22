@@ -37,13 +37,8 @@ class ESP32Flasher {
         this.bootloaderModeReady = true;
         this.device = null; // Force new device selection
 
-        // Go directly to connect and then flash
-        const connected = await this.connect();
-        if (connected) {
-            // Automatically start flashing after successful connection
-            await this.flashFirmware();
-        }
-        return connected;
+        // Connect to device (shows flash options after connection)
+        return await this.connect();
     }
 
     // Try alternative reset using DTR/RTS signals
@@ -284,13 +279,10 @@ class ESP32Flasher {
             this.log("✓ Device ready in bootloader mode");
             this.bootloaderModeReady = true;
 
-            // Automatically connect and flash
+            // Connect to device (shows flash options after connection)
             this.log("");
-            this.log("Proceeding to connect and flash...");
-            const connected = await this.connect();
-            if (connected) {
-                await this.flashFirmware();
-            }
+            this.log("Proceeding to connect...");
+            await this.connect();
 
             return true;
 
@@ -736,7 +728,7 @@ function initializeESPFlasher() {
             const success = await espFlasher.enterBootloaderMode();
 
             enterBootloaderButton.disabled = false;
-            enterBootloaderButton.textContent = '🔌 Connect & Flash Summit';
+            enterBootloaderButton.textContent = '🔌 Connect to Summit';
         });
     }
 
@@ -748,10 +740,10 @@ function initializeESPFlasher() {
         directConnectButton.addEventListener('click', async () => {
             console.log('ESP Flasher: Direct connect button clicked!');
             directConnectButton.disabled = true;
-            directConnectButton.textContent = 'Connecting & Flashing...';
+            directConnectButton.textContent = 'Connecting...';
             await espFlasher.directConnect();
             directConnectButton.disabled = false;
-            directConnectButton.textContent = "I'm in Bootloader Mode - Connect Now";
+            directConnectButton.textContent = "I'm in Bootloader Mode - Connect";
         });
     }
 
