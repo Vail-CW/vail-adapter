@@ -223,8 +223,67 @@ async function triggerBootloaderViaWebSerial() {
     }
 }
 
+// Fetch recent commits from GitHub for "What's New" section
+async function fetchRecentUpdates() {
+    try {
+        const response = await fetch('https://api.github.com/repos/Vail-CW/vail-adapter/commits?per_page=20');
+        if (!response.ok) {
+            console.log('Could not fetch commits');
+            return;
+        }
+        const commits = await response.json();
+
+        // Filter out automated/CI commits and get meaningful ones
+        const meaningfulCommits = commits.filter(commit => {
+            const message = commit.commit.message.toLowerCase();
+            // Skip CI commits, merge commits, and minor fixes
+            return !message.includes('[skip ci]') &&
+                   !message.includes('merge pull request') &&
+                   !message.includes('merge branch') &&
+                   !message.startsWith('update summit firmware from') &&
+                   !message.startsWith('co-authored-by:');
+        });
+
+        if (meaningfulCommits.length === 0) {
+            return;
+        }
+
+        // Get the most recent commit date
+        const latestDate = new Date(meaningfulCommits[0].commit.author.date);
+        const dateStr = latestDate.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+
+        // Update the date display
+        const dateElement = document.getElementById('lastUpdateDate');
+        if (dateElement) {
+            dateElement.textContent = dateStr;
+        }
+
+        // Build the commit list (show up to 5 recent meaningful commits)
+        const listElement = document.getElementById('recentCommitsList');
+        if (listElement) {
+            const items = meaningfulCommits.slice(0, 5).map(commit => {
+                // Get first line of commit message
+                const message = commit.commit.message.split('\n')[0];
+                // Truncate if too long
+                const displayMsg = message.length > 100 ? message.substring(0, 100) + '...' : message;
+                return `<li>${displayMsg}</li>`;
+            });
+            listElement.innerHTML = items.join('');
+        }
+    } catch (err) {
+        console.log('Error fetching commits:', err.message);
+        // Leave the loading text, it will just show "Loading..."
+    }
+}
+
 // Initialize wizard on page load
 document.addEventListener('DOMContentLoaded', () => {
+    // Fetch recent updates for "What's New" section
+    fetchRecentUpdates();
     // Step 1: Device selection (Adapter vs Summit)
     document.querySelectorAll('#step1 .selection-card').forEach(card => {
         card.addEventListener('click', () => {
