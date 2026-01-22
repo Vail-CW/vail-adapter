@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Background circle -->
+  <circle cx="16" cy="16" r="15" fill="#1a1a2e" stroke="#ffc107" stroke-width="1.5"/>
+
+  <!-- Morse code "V" (···−) stylized as dots and dash -->
+  <!-- Three dots -->
+  <circle cx="6" cy="16" r="2.5" fill="#ffc107"/>
+  <circle cx="12" cy="16" r="2.5" fill="#ffc107"/>
+  <circle cx="18" cy="16" r="2.5" fill="#ffc107"/>
+
+  <!-- One dash -->
+  <rect x="22" y="13.5" width="6" height="5" rx="2" fill="#ffc107"/>
+</svg>
