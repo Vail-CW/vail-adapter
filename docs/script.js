@@ -247,6 +247,12 @@ async function fetchRecentUpdates(deviceType) {
         manualLink.style.display = deviceType === 'adapter' ? 'block' : 'none';
     }
 
+    // Show/hide Button Hat warning (only for Adapter)
+    const buttonHatWarning = document.getElementById('buttonHatWarning');
+    if (buttonHatWarning) {
+        buttonHatWarning.style.display = deviceType === 'adapter' ? 'block' : 'none';
+    }
+
     try {
         const response = await fetch(`https://api.github.com/repos/Vail-CW/${repoName}/commits?per_page=20`);
         if (!response.ok) {
@@ -302,11 +308,15 @@ async function fetchRecentUpdates(deviceType) {
     }
 }
 
-// Hide the What's New section
+// Hide the What's New section and Button Hat warning
 function hideWhatsNew() {
     const section = document.getElementById('whatsNewSection');
     if (section) {
         section.style.display = 'none';
+    }
+    const buttonHatWarning = document.getElementById('buttonHatWarning');
+    if (buttonHatWarning) {
+        buttonHatWarning.style.display = 'none';
     }
 }
 
