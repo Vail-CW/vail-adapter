@@ -22,30 +22,28 @@ class ESP32Flasher {
         ];
     }
 
-    // Direct connect - bypasses 1200 baud reset, lets esptool try its own sync
+    // Direct connect - for manual bootloader mode, skips auto-reset
     async directConnect() {
         this.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        this.log("DIRECT CONNECT MODE");
+        this.log("MANUAL BOOTLOADER MODE");
         this.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         this.log("");
-        this.log("This mode skips the 1200 baud reset and tries to connect directly.");
-        this.log("It will use esptool's built-in sync mechanism which may work");
-        this.log("with devices that don't respond to the standard reset sequence.");
-        this.log("");
-        this.log("Select your device when prompted...");
+        this.log("You indicated your device is in bootloader mode.");
+        this.log("Select your device when prompted - it should show as");
+        this.log("'USB JTAG/Serial' (not 'TinyUSB CDC').");
         this.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
         this.manualBootloaderMode = true;
         this.bootloaderModeReady = true;
         this.device = null; // Force new device selection
 
-        // Update UI - go directly to connect
-        document.getElementById('enterBootloaderButton').style.display = 'none';
-        document.getElementById('directConnectButton').style.display = 'none';
-        document.getElementById('alternativeResetButton').style.display = 'none';
-        document.getElementById('connectButton').style.display = 'inline-block';
-
-        return true;
+        // Go directly to connect and then flash
+        const connected = await this.connect();
+        if (connected) {
+            // Automatically start flashing after successful connection
+            await this.flashFirmware();
+        }
+        return connected;
     }
 
     // Try alternative reset using DTR/RTS signals
@@ -243,31 +241,26 @@ class ESP32Flasher {
                 this.log("• Windows driver conflict with the device");
                 this.log("• Device uses TinyUSB which may not support auto-reset");
                 this.log("");
-                this.log("TRY THESE ALTERNATIVES:");
+                this.log("TRY MANUAL BOOTLOADER ENTRY:");
                 this.log("");
-                this.log("1. 'Alternative Reset' - Uses DTR/RTS signals instead of 1200 baud.");
-                this.log("   This works with some devices that don't support the standard reset.");
+                this.log("1. Hold down the BOOT button on your Summit");
+                this.log("2. While holding BOOT, press and release RESET");
+                this.log("3. Release the BOOT button");
+                this.log("4. Click 'I'm in Bootloader Mode - Connect Now' below");
                 this.log("");
-                this.log("2. 'Direct Connect' - Skips the reset entirely and tries to connect.");
-                this.log("   Use this if your device is already in bootloader mode or if the");
-                this.log("   reset methods don't work.");
-                this.log("");
-                this.log("3. Check Windows Device Manager:");
+                this.log("Alternative: Check Windows Device Manager:");
                 this.log("   - Find your COM port, right-click → Disable device");
                 this.log("   - Wait 2 seconds, then right-click → Enable device");
-                this.log("   - Try the reset again");
+                this.log("   - Try the auto flash again");
                 this.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
-                // Show the alternative buttons
-                const altBtn = document.getElementById('alternativeResetButton');
-                const dcBtn = document.getElementById('directConnectButton');
-                if (altBtn) {
-                    altBtn.style.display = 'inline-block';
-                    altBtn.classList.add('highlight-button');
+                // Open the manual fallback section
+                const manualFallback = document.querySelector('.manual-fallback');
+                if (manualFallback) {
+                    manualFallback.open = true;
                 }
-                if (dcBtn) dcBtn.style.display = 'inline-block';
 
-                throw new Error("Port access failed - try 'Alternative Reset' or 'Direct Connect'");
+                throw new Error("Port access failed - try manual bootloader entry");
             }
 
             // Wait for new port to appear
@@ -291,9 +284,13 @@ class ESP32Flasher {
             this.log("✓ Device ready in bootloader mode");
             this.bootloaderModeReady = true;
 
-            // Skip step 2, go directly to connect
-            document.getElementById('enterBootloaderButton').style.display = 'none';
-            document.getElementById('connectButton').style.display = 'inline-block';
+            // Automatically connect and flash
+            this.log("");
+            this.log("Proceeding to connect and flash...");
+            const connected = await this.connect();
+            if (connected) {
+                await this.flashFirmware();
+            }
 
             return true;
 
@@ -726,26 +723,24 @@ function initializeESPFlasher() {
         espFlasher = new ESP32Flasher();
     }
 
-    // Enter Bootloader button (Step 1)
+    // Main Connect & Flash button
     const enterBootloaderButton = document.getElementById('enterBootloaderButton');
     if (enterBootloaderButton && !enterBootloaderButton.dataset.listenerAttached) {
         enterBootloaderButton.dataset.listenerAttached = 'true';
-        console.log('ESP Flasher: Attaching click listener to enter bootloader button');
+        console.log('ESP Flasher: Attaching click listener to main flash button');
         enterBootloaderButton.addEventListener('click', async () => {
-            console.log('ESP Flasher: Enter bootloader button clicked!');
+            console.log('ESP Flasher: Connect & Flash button clicked!');
             enterBootloaderButton.disabled = true;
-            enterBootloaderButton.textContent = 'Triggering bootloader...';
+            enterBootloaderButton.textContent = 'Connecting...';
 
             const success = await espFlasher.enterBootloaderMode();
 
-            if (!success) {
-                enterBootloaderButton.disabled = false;
-                enterBootloaderButton.textContent = 'Enter Bootloader Mode (Auto)';
-            }
+            enterBootloaderButton.disabled = false;
+            enterBootloaderButton.textContent = '🔌 Connect & Flash Summit';
         });
     }
 
-    // Direct Connect button - bypasses reset, connects directly
+    // Direct Connect button - for manual bootloader mode
     const directConnectButton = document.getElementById('directConnectButton');
     if (directConnectButton && !directConnectButton.dataset.listenerAttached) {
         directConnectButton.dataset.listenerAttached = 'true';
@@ -753,58 +748,14 @@ function initializeESPFlasher() {
         directConnectButton.addEventListener('click', async () => {
             console.log('ESP Flasher: Direct connect button clicked!');
             directConnectButton.disabled = true;
-            directConnectButton.textContent = 'Preparing...';
+            directConnectButton.textContent = 'Connecting & Flashing...';
             await espFlasher.directConnect();
             directConnectButton.disabled = false;
-            directConnectButton.textContent = 'Direct Connect (Skip Reset)';
+            directConnectButton.textContent = "I'm in Bootloader Mode - Connect Now";
         });
     }
 
-    // Alternative Reset button - uses DTR/RTS instead of 1200 baud
-    const alternativeResetButton = document.getElementById('alternativeResetButton');
-    if (alternativeResetButton && !alternativeResetButton.dataset.listenerAttached) {
-        alternativeResetButton.dataset.listenerAttached = 'true';
-        console.log('ESP Flasher: Attaching click listener to alternative reset button');
-        alternativeResetButton.addEventListener('click', async () => {
-            console.log('ESP Flasher: Alternative reset button clicked!');
-            alternativeResetButton.disabled = true;
-            alternativeResetButton.textContent = 'Sending reset signals...';
-            const success = await espFlasher.alternativeReset();
-            alternativeResetButton.disabled = false;
-            alternativeResetButton.textContent = 'Alternative Reset (DTR/RTS)';
-        });
-    }
-
-    // Manual Bootloader button - user has already entered bootloader mode via hardware buttons
-    const manualBootloaderButton = document.getElementById('manualBootloaderButton');
-    if (manualBootloaderButton && !manualBootloaderButton.dataset.listenerAttached) {
-        manualBootloaderButton.dataset.listenerAttached = 'true';
-        console.log('ESP Flasher: Attaching click listener to manual bootloader button');
-        manualBootloaderButton.addEventListener('click', async () => {
-            console.log('ESP Flasher: Manual bootloader button clicked!');
-            espFlasher.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            espFlasher.log("MANUAL BOOTLOADER MODE");
-            espFlasher.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            espFlasher.log("");
-            espFlasher.log("You indicated your device is in bootloader mode.");
-            espFlasher.log("Select your device when prompted - it may show as a");
-            espFlasher.log("different name than before (like 'USB JTAG/Serial').");
-            espFlasher.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-            espFlasher.manualBootloaderMode = true;
-            espFlasher.bootloaderModeReady = true;
-            espFlasher.device = null; // Force new device selection
-
-            // Hide the auto buttons, show connect
-            document.getElementById('enterBootloaderButton').style.display = 'none';
-            document.getElementById('alternativeResetButton').style.display = 'none';
-            document.getElementById('directConnectButton').style.display = 'none';
-            document.getElementById('manualBootloaderSection').style.display = 'none';
-            document.getElementById('connectButton').style.display = 'inline-block';
-        });
-    }
-
-    // Connect button (Step 2)
+    // Connect button (used internally after bootloader entry)
     const connectButton = document.getElementById('connectButton');
     if (connectButton && !connectButton.dataset.listenerAttached) {
         connectButton.dataset.listenerAttached = 'true';

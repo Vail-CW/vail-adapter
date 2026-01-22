@@ -261,10 +261,7 @@
                 <span class="step-badge">1</span>
                 <h3>Connect Your Device</h3>
             </div>
-            <p>Make sure your Vail Summit is plugged in via USB.</p>
-            <div class="info-box">
-                <strong>Note:</strong> The Summit requires you to manually enter bootloader mode before flashing. This is a quick two-button process explained below. Once in bootloader mode, your device will appear as "USB JTAG/Serial" instead of "TinyUSB CDC".
-            </div>
+            <p>Make sure your Vail Summit is plugged in via USB-C.</p>
         </div>
 
         <!-- ESP32 Flash Interface -->
@@ -275,29 +272,24 @@
             </div>
 
             <div id="espFlasherContainer">
-                <!-- Primary Method: Manual Bootloader Entry -->
-                <div class="manual-bootloader-callout" id="manualBootloaderSection">
-                    <h4>Step 1: Enter Bootloader Mode (Required)</h4>
-                    <p style="margin: 0.5rem 0 1rem; color: #ccc;">The Summit uses TinyUSB which requires manual bootloader entry for each update.</p>
-                    <ol>
-                        <li>Hold down the <strong>BOOT</strong> button on your Summit</li>
-                        <li>While holding BOOT, press and release <strong>RESET</strong></li>
-                        <li>Release the <strong>BOOT</strong> button</li>
-                        <li>Your device will now show as "USB JTAG/Serial" instead of "TinyUSB CDC"</li>
-                    </ol>
-                    <button id="manualBootloaderButton" class="btn-warning" style="margin-top: 0.5rem;">I'm in Bootloader Mode - Continue to Flashing</button>
+                <!-- Primary Method: Automatic Connection -->
+                <div class="auto-flash-section">
+                    <p style="margin-bottom: 1rem;">Click the button below to connect and flash your Summit. The flasher will automatically enter bootloader mode.</p>
+                    <button id="enterBootloaderButton" class="btn-primary highlight-button">🔌 Connect & Flash Summit</button>
                 </div>
 
-                <!-- Alternative: Auto Reset (Hidden by default, shown for those who want to try) -->
-                <details style="margin-bottom: 1rem;">
-                    <summary style="cursor: pointer; color: #888; font-size: 0.9rem;">Try automatic bootloader entry (may not work with all devices)</summary>
-                    <div style="padding: 1rem 0;">
-                        <p style="font-size: 0.9rem; color: #aaa; margin-bottom: 1rem;">Some devices support automatic bootloader entry. If the manual method is inconvenient, you can try these alternatives:</p>
-                        <div class="button-group">
-                            <button id="enterBootloaderButton" class="btn-secondary">Auto Reset (1200 baud)</button>
-                            <button id="alternativeResetButton" class="btn-secondary">Alternative Reset (DTR/RTS)</button>
-                            <button id="directConnectButton" class="btn-secondary">Direct Connect</button>
-                        </div>
+                <!-- Fallback: Manual Bootloader Entry -->
+                <details class="manual-fallback" style="margin-top: 1.5rem;">
+                    <summary style="cursor: pointer; color: #ffc107; font-weight: 500;">⚠️ Connection not working? Try manual bootloader entry</summary>
+                    <div class="manual-bootloader-instructions" style="padding: 1rem; margin-top: 0.5rem; background: rgba(255, 193, 7, 0.1); border-radius: 8px; border: 1px solid rgba(255, 193, 7, 0.3);">
+                        <p style="margin: 0 0 1rem; color: #ccc;">If automatic connection fails (e.g., "port in use" error), manually enter bootloader mode:</p>
+                        <ol style="margin: 0 0 1rem; padding-left: 1.5rem;">
+                            <li>Hold down the <strong>BOOT</strong> button on your Summit</li>
+                            <li>While holding BOOT, press and release <strong>RESET</strong></li>
+                            <li>Release the <strong>BOOT</strong> button</li>
+                            <li>Your device will now show as "USB JTAG/Serial" instead of "TinyUSB CDC"</li>
+                        </ol>
+                        <button id="directConnectButton" class="btn-warning">I'm in Bootloader Mode - Connect Now</button>
                     </div>
                 </details>
                 <button id="connectButton" class="btn-primary" style="display: none;">Connect and Flash</button>
@@ -349,10 +341,9 @@
 
             <details>
                 <summary>"Port in use" or "Cannot access COM port" error</summary>
-                <p>This is a common issue, especially on Windows. Try these solutions in order:</p>
+                <p>This is common on Windows. Try these solutions:</p>
                 <ol>
-                    <li><strong>Try Alternative Reset:</strong> Click the "Alternative Reset (DTR/RTS)" button - it uses a different method to enter bootloader mode.</li>
-                    <li><strong>Try Direct Connect:</strong> Click "Direct Connect (Skip Reset)" - this bypasses the reset entirely and tries to connect directly.</li>
+                    <li><strong>Use manual bootloader entry:</strong> Expand the yellow section above and follow the BOOT + RESET instructions.</li>
                     <li><strong>Close other programs:</strong> Make sure Arduino IDE, PuTTY, or any other serial terminal is completely closed.</li>
                     <li><strong>Windows Device Manager fix:</strong>
                         <ul>
@@ -364,53 +355,29 @@
                         </ul>
                     </li>
                     <li><strong>Try a different USB port</strong> - preferably a USB 2.0 port if available.</li>
-                    <li><strong>Unplug and replug the device</strong> while the browser dialog is open.</li>
                 </ol>
             </details>
 
             <details>
-                <summary>Device shows as "TinyUSB CDC" but won't connect / future updates fail</summary>
-                <p>If your device shows as "TinyUSB CDC" and you have persistent connection issues, the flash may have stale USB configuration data. Use the <strong>"Full Erase & Flash"</strong> option:</p>
+                <summary>Device shows as "TinyUSB CDC" but won't connect</summary>
+                <p>Some devices use TinyUSB which doesn't support automatic bootloader entry. Use manual bootloader entry:</p>
                 <ol>
-                    <li>Enter bootloader mode manually (BOOT + RESET)</li>
-                    <li>Click "I'm in Bootloader Mode - Continue to Flashing"</li>
-                    <li>After connecting, click <strong>"Full Erase & Flash"</strong> instead of regular "Flash Firmware"</li>
-                    <li>This completely erases the device including old USB settings, then flashes fresh firmware</li>
-                    <li>Unplug and replug the device after flashing</li>
+                    <li>Hold down the <strong>BOOT</strong> button</li>
+                    <li>While holding BOOT, press and release <strong>RESET</strong></li>
+                    <li>Release the BOOT button</li>
+                    <li>Device will now show as "USB JTAG/Serial"</li>
+                    <li>Click "I'm in Bootloader Mode - Connect Now"</li>
                 </ol>
-                <p style="margin-top: 1rem;">If web flashing doesn't work at all, you can use the Python esptool:</p>
-                <pre style="background: #1a1a2e; padding: 10px; border-radius: 4px; overflow-x: auto;">pip install esptool
-esptool.py --chip esp32s3 --port COM5 erase_flash
-esptool.py --chip esp32s3 --port COM5 write_flash 0x0 bootloader.bin 0x8000 partitions.bin 0x10000 vail-summit.bin</pre>
-                <p style="font-size: 12px; margin-top: 5px;">Download firmware files from: <a href="https://github.com/Vail-CW/vail-summit/tree/main/firmware_files" target="_blank">GitHub</a></p>
-            </details>
-
-            <details>
-                <summary>Device shows as "USB JTAG/Serial" instead of "TinyUSB CDC"</summary>
-                <p>This is actually good - it means your device is already in bootloader mode (or uses native USB). You can click "Direct Connect" to connect and flash immediately.</p>
             </details>
 
             <details>
                 <summary>Flashing failed or stuck</summary>
                 <p>If flashing fails:</p>
                 <ul>
-                    <li>Click "Erase Flash" and try again</li>
                     <li>Unplug the device, wait 5 seconds, and reconnect</li>
+                    <li>Try manual bootloader entry (BOOT + RESET)</li>
                     <li>Try a different USB cable (some cables are charge-only)</li>
                 </ul>
-            </details>
-
-            <details>
-                <summary>Nothing works - need manual bootloader entry</summary>
-                <p>If all software methods fail, you can enter bootloader mode manually (one time only):</p>
-                <ol>
-                    <li>Hold down the <strong>BOOT</strong> button on the device</li>
-                    <li>While holding BOOT, press and release <strong>RESET</strong></li>
-                    <li>Release the BOOT button</li>
-                    <li>The device should now appear as "USB JTAG/Serial"</li>
-                    <li>Click "Direct Connect" to flash</li>
-                </ol>
-                <p style="font-size: 12px; margin-top: 5px;"><em>After flashing the new firmware, automatic bootloader entry should work for future updates.</em></p>
             </details>
         </div>
 
