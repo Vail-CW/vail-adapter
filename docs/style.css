@@ -598,15 +598,187 @@ code {
 
 /* Firmware version badge */
 .firmware-version {
-    font-size: 0.6em;
-    font-weight: normal;
+    font-size: 0.85rem;
+    font-weight: 600;
     background: linear-gradient(135deg, #2d5a2d 0%, #1e3d1e 100%);
     color: #7fff7f;
     padding: 0.25em 0.6em;
     border-radius: 6px;
     border: 1px solid #4a9f4a;
     vertical-align: middle;
-    margin-left: 0.5em;
+}
+
+.firmware-version.test-version {
+    background: linear-gradient(135deg, #5a4a2d 0%, #3d351e 100%);
+    color: #ffc107;
+    border-color: #8a7a3a;
+}
+
+/* Version Selector */
+.version-selector-container {
+    margin-top: 1rem;
+}
+
+.version-selector-row {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.version-select {
+    flex: 1;
+    min-width: 250px;
+    padding: 10px 14px;
+    font-size: 1rem;
+    background-color: #2c2c2c;
+    color: #e0e0e0;
+    border: 2px solid #484848;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.3s ease;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23888' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+}
+
+.version-select:hover,
+.version-select:focus {
+    border-color: #0d6efd;
+    outline: none;
+}
+
+.version-select:disabled {
+    opacity: 0.5;
+    cursor: wait;
+}
+
+.version-select option {
+    background-color: #2c2c2c;
+    color: #e0e0e0;
+    padding: 8px;
+}
+
+.test-release-option {
+    color: #ffc107 !important;
+}
+
+/* Test Release Toggle */
+.test-release-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    white-space: nowrap;
+    user-select: none;
+}
+
+.test-release-toggle input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #ffc107;
+    cursor: pointer;
+}
+
+.toggle-label {
+    font-size: 0.95rem;
+    color: #aaa;
+    transition: color 0.2s;
+}
+
+.test-release-toggle:hover .toggle-label {
+    color: #e0e0e0;
+}
+
+/* Test Release Warning */
+.test-release-warning {
+    margin-top: 0.75rem;
+    padding: 0.75rem 1rem;
+    background-color: rgba(255, 193, 7, 0.1);
+    border: 1px solid rgba(255, 193, 7, 0.4);
+    border-radius: 8px;
+    color: #ffda6a;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+/* Release Info Panel */
+.release-info {
+    margin-top: 1rem;
+    padding: 1rem 1.25rem;
+    background-color: #2c2c2c;
+    border: 1px solid #484848;
+    border-radius: 8px;
+}
+
+.release-info-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid #3a3a3a;
+}
+
+.release-date {
+    font-size: 0.9rem;
+    color: #888;
+}
+
+/* Release Notes */
+.release-notes {
+    font-size: 0.9rem;
+    color: #ccc;
+    line-height: 1.6;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.release-notes h3 {
+    font-size: 1.1rem;
+    color: #6cb2f7;
+    margin: 1rem 0 0.5rem;
+}
+
+.release-notes h3:first-child {
+    margin-top: 0;
+}
+
+.release-notes h4 {
+    font-size: 1rem;
+    color: #aaa;
+    margin: 0.75rem 0 0.4rem;
+}
+
+.release-notes ul {
+    margin: 0.4rem 0 0.75rem 1.25rem;
+    padding: 0;
+}
+
+.release-notes li {
+    margin-bottom: 0.3rem;
+}
+
+.release-notes p {
+    margin: 0.5rem 0;
+}
+
+.release-notes strong {
+    color: #e0e0e0;
+}
+
+.release-notes code {
+    background-color: #1a1a1a;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.85em;
+}
+
+.no-notes {
+    color: #666;
+    font-style: italic;
 }
 
 /* Lists */
@@ -710,6 +882,16 @@ nav ul li a:hover {
 
     .btn-secondary {
         margin-right: 0;
+    }
+
+    .version-selector-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+    }
+
+    .version-select {
+        min-width: unset;
     }
 }
 

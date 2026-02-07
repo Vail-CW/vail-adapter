@@ -12,49 +12,257 @@ class ESP32Flasher {
         this.esptoolModule = null;
         this.bootloaderModeReady = false;
         this.manualBootloaderMode = false;
-        this.firmwareVersion = null;
 
-        // Firmware file URLs from the Vail Summit repository
-        const summitFirmwareBase = 'https://raw.githubusercontent.com/Vail-CW/vail-summit/main/firmware_files/';
-        this.firmwareFiles = [
-            { address: 0x0, file: summitFirmwareBase + 'bootloader.bin' },
-            { address: 0x8000, file: summitFirmwareBase + 'partitions.bin' },
-            { address: 0x10000, file: summitFirmwareBase + 'vail-summit.bin' }
-        ];
+        // Releases data
+        this.releases = [];        // Stable releases (>= v0.51)
+        this.testRelease = null;   // Most recent pre-release
+        this.selectedRelease = null;
 
-        // Fetch firmware version on init
-        this.fetchFirmwareVersion();
+        // Firmware files will be set when a release is selected
+        this.firmwareFiles = [];
+
+        // Fetch releases on init
+        this.fetchReleases();
     }
 
-    // Fetch the current firmware version from GitHub
-    async fetchFirmwareVersion() {
+    // Parse version string like "v0.51" or "0.51" into a comparable number
+    parseVersion(tagName) {
+        const match = tagName.match(/v?(\d+)\.(\d+)/);
+        if (!match) return 0;
+        return parseFloat(`${match[1]}.${match[2]}`);
+    }
+
+    // Fetch available releases from GitHub
+    async fetchReleases() {
         try {
-            const configUrl = 'https://raw.githubusercontent.com/Vail-CW/vail-summit/main/src/core/config.h';
-            const response = await fetch(configUrl);
+            const response = await fetch('https://api.github.com/repos/Vail-CW/vail-summit/releases?per_page=50');
             if (!response.ok) {
-                console.log('Could not fetch firmware version');
+                console.log('Could not fetch releases');
+                this.setFallbackFirmware();
                 return;
             }
-            const content = await response.text();
+            const allReleases = await response.json();
 
-            // Parse FIRMWARE_VERSION from config.h
-            const match = content.match(/#define\s+FIRMWARE_VERSION\s+"([^"]+)"/);
-            if (match) {
-                this.firmwareVersion = match[1];
-                this.updateVersionDisplay();
+            // Separate stable and pre-releases, filtering to >= v0.51
+            const minVersion = 0.51;
+
+            this.releases = allReleases.filter(r =>
+                !r.prerelease &&
+                !r.draft &&
+                this.parseVersion(r.tag_name) >= minVersion &&
+                r.assets && r.assets.length >= 3
+            );
+
+            // Find the most recent pre-release (test release)
+            const preReleases = allReleases.filter(r =>
+                r.prerelease &&
+                !r.draft &&
+                r.assets && r.assets.length >= 3
+            );
+            this.testRelease = preReleases.length > 0 ? preReleases[0] : null;
+
+            this.populateVersionSelector();
+
+            // Auto-select the latest stable release
+            if (this.releases.length > 0) {
+                this.selectRelease(this.releases[0]);
+            } else {
+                this.setFallbackFirmware();
             }
         } catch (err) {
-            console.log('Error fetching firmware version:', err.message);
+            console.log('Error fetching releases:', err.message);
+            this.setFallbackFirmware();
         }
     }
 
-    // Update the version display in the UI
-    updateVersionDisplay() {
-        const versionElement = document.getElementById('summitFirmwareVersion');
-        if (versionElement && this.firmwareVersion) {
-            versionElement.textContent = `v${this.firmwareVersion}`;
-            versionElement.style.display = 'inline';
+    // Fallback to raw GitHub URLs if releases API fails
+    setFallbackFirmware() {
+        const base = 'https://raw.githubusercontent.com/Vail-CW/vail-summit/main/firmware_files/';
+        this.firmwareFiles = [
+            { address: 0x0, file: base + 'bootloader.bin' },
+            { address: 0x8000, file: base + 'partitions.bin' },
+            { address: 0x10000, file: base + 'vail-summit.bin' }
+        ];
+
+        const select = document.getElementById('versionSelect');
+        if (select) {
+            select.innerHTML = '<option value="fallback">Latest (from repository)</option>';
+            select.disabled = false;
         }
+    }
+
+    // Populate the version dropdown
+    populateVersionSelector() {
+        const select = document.getElementById('versionSelect');
+        if (!select) return;
+
+        select.innerHTML = '';
+
+        // Add stable releases
+        this.releases.forEach((release, index) => {
+            const option = document.createElement('option');
+            option.value = release.tag_name;
+            const date = new Date(release.published_at).toLocaleDateString('en-US', {
+                year: 'numeric', month: 'short', day: 'numeric'
+            });
+            const label = release.name || release.tag_name;
+            option.textContent = `${label} (${date})${index === 0 ? ' — Latest' : ''}`;
+            select.appendChild(option);
+        });
+
+        select.disabled = false;
+
+        // Listen for changes
+        select.addEventListener('change', () => {
+            const tag = select.value;
+            if (tag === '__test__') {
+                this.selectRelease(this.testRelease);
+            } else {
+                const release = this.releases.find(r => r.tag_name === tag);
+                if (release) this.selectRelease(release);
+            }
+        });
+
+        // Set up test release checkbox
+        const checkbox = document.getElementById('showTestRelease');
+        if (checkbox) {
+            // Hide checkbox entirely if no test release exists
+            const toggleContainer = checkbox.closest('.test-release-toggle');
+            if (!this.testRelease && toggleContainer) {
+                toggleContainer.style.display = 'none';
+            }
+
+            checkbox.addEventListener('change', () => {
+                this.toggleTestRelease(checkbox.checked);
+            });
+        }
+    }
+
+    // Toggle test release visibility in the dropdown
+    toggleTestRelease(show) {
+        const select = document.getElementById('versionSelect');
+        const warning = document.getElementById('testReleaseWarning');
+        if (!select) return;
+
+        // Remove existing test release option
+        const existing = select.querySelector('option[value="__test__"]');
+        if (existing) existing.remove();
+
+        if (show && this.testRelease) {
+            // Add test release at the top
+            const option = document.createElement('option');
+            option.value = '__test__';
+            const date = new Date(this.testRelease.published_at).toLocaleDateString('en-US', {
+                year: 'numeric', month: 'short', day: 'numeric'
+            });
+            const label = this.testRelease.name || this.testRelease.tag_name;
+            option.textContent = `${label} (${date}) — Test Release`;
+            option.className = 'test-release-option';
+            select.insertBefore(option, select.firstChild);
+            select.value = '__test__';
+            this.selectRelease(this.testRelease);
+
+            if (warning) warning.style.display = 'block';
+        } else {
+            // Revert to latest stable
+            if (this.releases.length > 0) {
+                select.value = this.releases[0].tag_name;
+                this.selectRelease(this.releases[0]);
+            }
+            if (warning) warning.style.display = 'none';
+        }
+    }
+
+    // Select a specific release and update firmware URLs + UI
+    selectRelease(release) {
+        this.selectedRelease = release;
+
+        // Build firmware file URLs from release assets
+        const bootloader = release.assets.find(a => a.name === 'bootloader.bin');
+        const partitions = release.assets.find(a => a.name === 'partitions.bin');
+        const app = release.assets.find(a => a.name === 'vail-summit.bin');
+
+        if (bootloader && partitions && app) {
+            this.firmwareFiles = [
+                { address: 0x0, file: bootloader.browser_download_url },
+                { address: 0x8000, file: partitions.browser_download_url },
+                { address: 0x10000, file: app.browser_download_url }
+            ];
+        }
+
+        // Update release info display
+        this.updateReleaseInfo(release);
+    }
+
+    // Update the release notes and date display
+    updateReleaseInfo(release) {
+        const infoContainer = document.getElementById('releaseInfo');
+        const versionBadge = document.getElementById('releaseVersionBadge');
+        const dateDisplay = document.getElementById('releaseDateDisplay');
+        const notesContainer = document.getElementById('releaseNotes');
+
+        if (!infoContainer) return;
+
+        infoContainer.style.display = 'block';
+
+        if (versionBadge) {
+            versionBadge.textContent = release.tag_name;
+            // Color the badge differently for test releases
+            if (release.prerelease) {
+                versionBadge.className = 'firmware-version test-version';
+            } else {
+                versionBadge.className = 'firmware-version';
+            }
+        }
+
+        if (dateDisplay) {
+            const date = new Date(release.published_at);
+            dateDisplay.textContent = 'Released ' + date.toLocaleDateString('en-US', {
+                year: 'numeric', month: 'long', day: 'numeric'
+            });
+        }
+
+        if (notesContainer) {
+            if (release.body) {
+                // Convert markdown-like text to simple HTML
+                notesContainer.innerHTML = this.renderReleaseNotes(release.body);
+            } else {
+                notesContainer.innerHTML = '<p class="no-notes">No release notes available.</p>';
+            }
+        }
+    }
+
+    // Simple markdown-to-HTML renderer for release notes
+    renderReleaseNotes(markdown) {
+        let html = markdown
+            // Escape HTML
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            // Headers
+            .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+            .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+            // Bold
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            // Italic
+            .replace(/\*(.+?)\*/g, '<em>$1</em>')
+            // Inline code
+            .replace(/`(.+?)`/g, '<code>$1</code>')
+            // Unordered list items
+            .replace(/^[-*] (.+)$/gm, '<li>$1</li>')
+            // Wrap consecutive <li> in <ul>
+            .replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>')
+            // Paragraphs (double newlines)
+            .replace(/\n\n/g, '</p><p>')
+            // Single newlines within paragraphs
+            .replace(/\n/g, '<br>');
+
+        // Wrap in paragraph if not already wrapped
+        if (!html.startsWith('<h') && !html.startsWith('<ul') && !html.startsWith('<p')) {
+            html = '<p>' + html + '</p>';
+        }
+
+        return html;
     }
 
     // Direct connect - for manual bootloader mode, skips auto-reset
@@ -430,6 +638,12 @@ class ESP32Flasher {
 
             this.connected = true;
 
+            // Log which version is being flashed
+            if (this.selectedRelease) {
+                const label = this.selectedRelease.name || this.selectedRelease.tag_name;
+                this.log(`Selected firmware: ${label}${this.selectedRelease.prerelease ? ' (Test Release)' : ''}`);
+            }
+
             // Update UI
             document.getElementById('connectButton').style.display = 'none';
             document.getElementById('disconnectButton').style.display = 'inline-block';
@@ -448,7 +662,7 @@ class ESP32Flasher {
     }
 
     async loadFirmwareFile(url) {
-        this.log(`Downloading ${url}...`);
+        this.log(`Downloading ${url.split('/').pop()}...`);
         try {
             const response = await fetch(url);
             if (!response.ok) {
@@ -464,10 +678,10 @@ class ESP32Flasher {
                 binaryString += String.fromCharCode(bytes[i]);
             }
 
-            this.log(`Downloaded ${url} (${binaryString.length} bytes)`);
+            this.log(`Downloaded ${url.split('/').pop()} (${binaryString.length} bytes)`);
             return binaryString;
         } catch (err) {
-            this.log(`Error downloading ${url}: ${err.message}`);
+            this.log(`Error downloading ${url.split('/').pop()}: ${err.message}`);
             throw err;
         }
     }
@@ -486,11 +700,11 @@ class ESP32Flasher {
             const fileArray = [];
             for (let i = 0; i < this.firmwareFiles.length; i++) {
                 const { address, file } = this.firmwareFiles[i];
-                this.updateProgress((i / this.firmwareFiles.length) * 20, `Loading ${file}...`);
+                this.updateProgress((i / this.firmwareFiles.length) * 20, `Loading ${file.split('/').pop()}...`);
 
                 const data = await this.loadFirmwareFile(file);
 
-                this.log(`Prepared ${file}: ${data.length} bytes at 0x${address.toString(16)}`);
+                this.log(`Prepared ${file.split('/').pop()}: ${data.length} bytes at 0x${address.toString(16)}`);
 
                 fileArray.push({
                     data: data,
@@ -518,7 +732,7 @@ class ESP32Flasher {
                         const totalProgress = baseProgress + fileProgress;
                         this.updateProgress(
                             totalProgress,
-                            `Flashing ${this.firmwareFiles[fileIndex].file}...`
+                            `Flashing ${this.firmwareFiles[fileIndex].file.split('/').pop()}...`
                         );
                     }
                 }

@@ -251,13 +251,46 @@
 
     <!-- Step 4: Flash Summit Firmware (ESP32 Web Flasher) -->
     <section id="step4" class="wizard-step">
-        <h2>Flash Vail Summit Firmware <span id="summitFirmwareVersion" class="firmware-version" style="display: none;"></span></h2>
+        <h2>Flash Vail Summit Firmware</h2>
         <p class="step-description">Web-based ESP32 flasher for the Vail Summit</p>
+
+        <!-- Version Selection -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">1</span>
+                <h3>Select Firmware Version</h3>
+            </div>
+            <p>Choose which firmware version to flash. The latest stable release is selected by default.</p>
+
+            <div class="version-selector-container">
+                <div class="version-selector-row">
+                    <select id="versionSelect" class="version-select" disabled>
+                        <option value="">Loading releases...</option>
+                    </select>
+                    <label class="test-release-toggle">
+                        <input type="checkbox" id="showTestRelease">
+                        <span class="toggle-label">Show test release</span>
+                    </label>
+                </div>
+
+                <div id="testReleaseWarning" class="test-release-warning" style="display: none;">
+                    <strong>Warning:</strong> Test releases may not be stable and could contain bugs. They include features currently being developed. Use at your own risk.
+                </div>
+
+                <div id="releaseInfo" class="release-info" style="display: none;">
+                    <div class="release-info-header">
+                        <span id="releaseVersionBadge" class="firmware-version"></span>
+                        <span id="releaseDateDisplay" class="release-date"></span>
+                    </div>
+                    <div id="releaseNotes" class="release-notes"></div>
+                </div>
+            </div>
+        </div>
 
         <!-- Flash Instructions -->
         <div class="flash-step">
             <div class="step-header">
-                <span class="step-badge">1</span>
+                <span class="step-badge">2</span>
                 <h3>Connect Your Device</h3>
             </div>
             <p>Make sure your Vail Summit is plugged in via USB-C.</p>
@@ -266,7 +299,7 @@
         <!-- ESP32 Flash Interface -->
         <div class="flash-step">
             <div class="step-header">
-                <span class="step-badge">2</span>
+                <span class="step-badge">3</span>
                 <h3>Flash Firmware</h3>
             </div>
 
@@ -315,7 +348,7 @@
         <!-- Finalize -->
         <div class="flash-step">
             <div class="step-header">
-                <span class="step-badge">3</span>
+                <span class="step-badge">4</span>
                 <h3>Complete!</h3>
             </div>
             <p>Once flashing is complete, your device will automatically restart with the new firmware. If it doesn't restart automatically:</p>
