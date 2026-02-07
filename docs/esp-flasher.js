@@ -1,6 +1,10 @@
 // ESP32 Web Flasher for Vail Summit
 // Uses esptool-js for web-based ESP32 flashing
 
+// CORS proxy for GitHub release asset downloads
+// Deploy the Cloudflare Worker in tools/firmware-proxy/ and set this URL
+const FIRMWARE_PROXY_URL = 'https://vail-firmware-proxy.brett-hollifield.workers.dev';
+
 class ESP32Flasher {
     constructor() {
         this.port = null;
@@ -177,10 +181,8 @@ class ESP32Flasher {
     selectRelease(release) {
         this.selectedRelease = release;
 
-        // Build firmware URLs using raw.githubusercontent.com with the release tag
-        // GitHub release asset URLs (both browser_download_url and API asset URLs)
-        // lack CORS headers, but raw.githubusercontent.com supports CORS
-        const base = `https://raw.githubusercontent.com/Vail-CW/vail-summit/${release.tag_name}/firmware_files/`;
+        // Build firmware URLs via CORS proxy pointed at GitHub release assets
+        const base = `${FIRMWARE_PROXY_URL}/${release.tag_name}/`;
         this.firmwareFiles = [
             { address: 0x0, file: base + 'bootloader.bin', name: 'bootloader.bin' },
             { address: 0x8000, file: base + 'partitions.bin', name: 'partitions.bin' },
