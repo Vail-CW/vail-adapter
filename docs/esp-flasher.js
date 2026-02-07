@@ -178,15 +178,17 @@ class ESP32Flasher {
         this.selectedRelease = release;
 
         // Build firmware file URLs from release assets
+        // Use the GitHub API asset URL (api.github.com) instead of browser_download_url
+        // (github.com) because browser_download_url lacks CORS headers
         const bootloader = release.assets.find(a => a.name === 'bootloader.bin');
         const partitions = release.assets.find(a => a.name === 'partitions.bin');
         const app = release.assets.find(a => a.name === 'vail-summit.bin');
 
         if (bootloader && partitions && app) {
             this.firmwareFiles = [
-                { address: 0x0, file: bootloader.browser_download_url },
-                { address: 0x8000, file: partitions.browser_download_url },
-                { address: 0x10000, file: app.browser_download_url }
+                { address: 0x0, file: bootloader.url, name: bootloader.name },
+                { address: 0x8000, file: partitions.url, name: partitions.name },
+                { address: 0x10000, file: app.url, name: app.name }
             ];
         }
 
@@ -661,10 +663,17 @@ class ESP32Flasher {
         }
     }
 
-    async loadFirmwareFile(url) {
-        this.log(`Downloading ${url.split('/').pop()}...`);
+    async loadFirmwareFile(url, displayName) {
+        const label = displayName || url.split('/').pop();
+        this.log(`Downloading ${label}...`);
         try {
-            const response = await fetch(url);
+            // Use Accept: application/octet-stream header for GitHub API asset URLs
+            // This triggers a redirect to a CORS-enabled CDN
+            const headers = {};
+            if (url.includes('api.github.com')) {
+                headers['Accept'] = 'application/octet-stream';
+            }
+            const response = await fetch(url, { headers });
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
@@ -678,10 +687,10 @@ class ESP32Flasher {
                 binaryString += String.fromCharCode(bytes[i]);
             }
 
-            this.log(`Downloaded ${url.split('/').pop()} (${binaryString.length} bytes)`);
+            this.log(`Downloaded ${label} (${binaryString.length} bytes)`);
             return binaryString;
         } catch (err) {
-            this.log(`Error downloading ${url.split('/').pop()}: ${err.message}`);
+            this.log(`Error downloading ${label}: ${err.message}`);
             throw err;
         }
     }
@@ -699,16 +708,17 @@ class ESP32Flasher {
             // Load all firmware files
             const fileArray = [];
             for (let i = 0; i < this.firmwareFiles.length; i++) {
-                const { address, file } = this.firmwareFiles[i];
-                this.updateProgress((i / this.firmwareFiles.length) * 20, `Loading ${file.split('/').pop()}...`);
+                const fw = this.firmwareFiles[i];
+                const label = fw.name || fw.file.split('/').pop();
+                this.updateProgress((i / this.firmwareFiles.length) * 20, `Loading ${label}...`);
 
-                const data = await this.loadFirmwareFile(file);
+                const data = await this.loadFirmwareFile(fw.file, fw.name);
 
-                this.log(`Prepared ${file.split('/').pop()}: ${data.length} bytes at 0x${address.toString(16)}`);
+                this.log(`Prepared ${label}: ${data.length} bytes at 0x${fw.address.toString(16)}`);
 
                 fileArray.push({
                     data: data,
-                    address: address
+                    address: fw.address
                 });
             }
 
@@ -730,10 +740,8 @@ class ESP32Flasher {
                         const baseProgress = 25 + (fileIndex * 25);
                         const fileProgress = (written / total) * 25;
                         const totalProgress = baseProgress + fileProgress;
-                        this.updateProgress(
-                            totalProgress,
-                            `Flashing ${this.firmwareFiles[fileIndex].file.split('/').pop()}...`
-                        );
+                        const fwLabel = this.firmwareFiles[fileIndex].name || this.firmwareFiles[fileIndex].file.split('/').pop();
+                        this.updateProgress(totalProgress, `Flashing ${fwLabel}...`);
                     }
                 }
             };
@@ -856,17 +864,18 @@ class ESP32Flasher {
         // Load all firmware files
         const fileArray = [];
         for (let i = 0; i < this.firmwareFiles.length; i++) {
-            const { address, file } = this.firmwareFiles[i];
+            const fw = this.firmwareFiles[i];
+            const label = fw.name || fw.file.split('/').pop();
             const progress = 20 + (i / this.firmwareFiles.length) * 15;
-            this.updateProgress(progress, `Loading ${file.split('/').pop()}...`);
+            this.updateProgress(progress, `Loading ${label}...`);
 
-            const data = await this.loadFirmwareFile(file);
+            const data = await this.loadFirmwareFile(fw.file, fw.name);
 
-            this.log(`Loaded ${file.split('/').pop()}: ${data.length} bytes at 0x${address.toString(16)}`);
+            this.log(`Loaded ${label}: ${data.length} bytes at 0x${fw.address.toString(16)}`);
 
             fileArray.push({
                 data: data,
-                address: address
+                address: fw.address
             });
         }
 
@@ -886,10 +895,8 @@ class ESP32Flasher {
                     const baseProgress = 40 + (fileIndex * 20);
                     const fileProgress = (written / total) * 20;
                     const totalProgress = baseProgress + fileProgress;
-                    this.updateProgress(
-                        totalProgress,
-                        `Flashing ${this.firmwareFiles[fileIndex].file.split('/').pop()}...`
-                    );
+                    const fwLabel = this.firmwareFiles[fileIndex].name || this.firmwareFiles[fileIndex].file.split('/').pop();
+                    this.updateProgress(totalProgress, `Flashing ${fwLabel}...`);
                 }
             }
         };
