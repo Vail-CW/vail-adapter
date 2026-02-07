@@ -177,20 +177,15 @@ class ESP32Flasher {
     selectRelease(release) {
         this.selectedRelease = release;
 
-        // Build firmware file URLs from release assets
-        // Use the GitHub API asset URL (api.github.com) instead of browser_download_url
-        // (github.com) because browser_download_url lacks CORS headers
-        const bootloader = release.assets.find(a => a.name === 'bootloader.bin');
-        const partitions = release.assets.find(a => a.name === 'partitions.bin');
-        const app = release.assets.find(a => a.name === 'vail-summit.bin');
-
-        if (bootloader && partitions && app) {
-            this.firmwareFiles = [
-                { address: 0x0, file: bootloader.url, name: bootloader.name },
-                { address: 0x8000, file: partitions.url, name: partitions.name },
-                { address: 0x10000, file: app.url, name: app.name }
-            ];
-        }
+        // Build firmware URLs using raw.githubusercontent.com with the release tag
+        // GitHub release asset URLs (both browser_download_url and API asset URLs)
+        // lack CORS headers, but raw.githubusercontent.com supports CORS
+        const base = `https://raw.githubusercontent.com/Vail-CW/vail-summit/${release.tag_name}/firmware_files/`;
+        this.firmwareFiles = [
+            { address: 0x0, file: base + 'bootloader.bin', name: 'bootloader.bin' },
+            { address: 0x8000, file: base + 'partitions.bin', name: 'partitions.bin' },
+            { address: 0x10000, file: base + 'vail-summit.bin', name: 'vail-summit.bin' }
+        ];
 
         // Update release info display
         this.updateReleaseInfo(release);
@@ -667,13 +662,7 @@ class ESP32Flasher {
         const label = displayName || url.split('/').pop();
         this.log(`Downloading ${label}...`);
         try {
-            // Use Accept: application/octet-stream header for GitHub API asset URLs
-            // This triggers a redirect to a CORS-enabled CDN
-            const headers = {};
-            if (url.includes('api.github.com')) {
-                headers['Accept'] = 'application/octet-stream';
-            }
-            const response = await fetch(url, { headers });
+            const response = await fetch(url);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
