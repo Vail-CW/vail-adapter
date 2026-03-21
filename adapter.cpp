@@ -17,10 +17,13 @@ VailAdapter::VailAdapter(unsigned int PiezoPin) {
 this->buzzer = new PolyBuzzer(PiezoPin);
 this->buzzerEnabled = true;
 this->radioModeActive = false;
+this->radioKeyerMode = false;
 this->keyIsPressed = false;
 this->keyPressStartTime = 0;
 this->ditHoldStartTime = 0;
 this->ditIsHeld = false;
+this->dahHoldStartTime = 0;
+this->dahIsHeld = false;
 this->lastCapDahTime = 0;
 this->capDahPressCount = 0;
 this->radioDitState = false;
@@ -32,6 +35,8 @@ this->ditDuration = DEFAULT_ADAPTER_DIT_DURATION_MS;
 this->txRelays[0] = false; // dit
 this->txRelays[1] = false; // dah
 this->lastPaddlePressed = PADDLE_DIT;
+this->ditKeyPressed = false;
+this->dahKeyPressed = false;
 }
 
 bool VailAdapter::KeyboardMode() {
@@ -50,12 +55,24 @@ uint8_t VailAdapter::getTxNote() const {
 return this->txNote;
 }
 
+void VailAdapter::setRecordingState(RecordingState* state) {
+    this->recordingState = state;
+}
+
 bool VailAdapter::isBuzzerEnabled() const {
 return this->buzzerEnabled;
 }
 
 bool VailAdapter::isRadioModeActive() const {
 return this->radioModeActive;
+}
+
+bool VailAdapter::isRadioKeyerMode() const {
+return this->radioKeyerMode;
+}
+
+void VailAdapter::SetRadioKeyerMode(bool enabled) {
+this->radioKeyerMode = enabled;
 }
 
 void VailAdapter::ResetDitCounter() {
@@ -65,6 +82,11 @@ this->ditHoldStartTime = 0;
 
 void VailAdapter::ResetDahCounter() {
 this->capDahPressCount = 0;
+}
+
+void VailAdapter::ResetDahHoldCounter() {
+this->dahIsHeld = false;
+this->dahHoldStartTime = 0;
 }
 
 // Corrected MIDI key event function
@@ -91,9 +113,45 @@ MidiUSB.flush();
 void VailAdapter::keyboardKey(uint8_t key, bool down) {
 if (down) {
 Keyboard.press(key);
+// Track which keys we've pressed
+if (key == DIT_KEYBOARD_KEY) this->ditKeyPressed = true;
+if (key == DAH_KEYBOARD_KEY) this->dahKeyPressed = true;
 } else {
 Keyboard.release(key);
+// Track which keys we've released
+if (key == DIT_KEYBOARD_KEY) this->ditKeyPressed = false;
+if (key == DAH_KEYBOARD_KEY) this->dahKeyPressed = false;
 }
+}
+
+void VailAdapter::ReleaseAllKeys() {
+// Release all keyboard keys that might be stuck
+if (this->keyboardMode) {
+if (this->ditKeyPressed) {
+Keyboard.release(DIT_KEYBOARD_KEY);
+this->ditKeyPressed = false;
+}
+if (this->dahKeyPressed) {
+Keyboard.release(DAH_KEYBOARD_KEY);
+this->dahKeyPressed = false;
+}
+// Also send release for both keys as a safety measure
+Keyboard.release(DIT_KEYBOARD_KEY);
+Keyboard.release(DAH_KEYBOARD_KEY);
+}
+// Release MIDI notes if in MIDI mode
+if (!this->keyboardMode) {
+this->midiKey(0, false);
+this->midiKey(1, false);
+this->midiKey(2, false);
+}
+// Reset state tracking
+this->ditKeyPressed = false;
+this->dahKeyPressed = false;
+this->keyIsPressed = false;
+this->txRelays[0] = false;
+this->txRelays[1] = false;
+Serial.println("All keys released");
 }
 
 #ifdef HAS_RADIO_OUTPUT
@@ -125,9 +183,40 @@ void VailAdapter::Tx(int relay, bool closed) {
             }
         }
 
+        // Record key event if recording is active - CHECK THIS FIRST before any output
+        if (recordingState != nullptr && recordingState->isRecording) {
+            // Map relay to paddle: relay 0 = DIT, relay 1 = DAH
+            uint8_t paddle = (relay == 0) ? PADDLE_DIT_FLAG : PADDLE_DAH_FLAG;
+            recordKeyEvent(*recordingState, true, paddle);  // Key down
+            // During recording: always play sidetone for feedback, even in radio mode
+            this->buzzer->Note(0, this->txNote);
+            return;  // Skip ALL output (radio, MIDI, keyboard) during recording
+        }
+
         if (this->buzzerEnabled && !this->radioModeActive) {
             this->buzzer->Note(0, this->txNote);
         }
+
+#ifdef HAS_RADIO_OUTPUT
+        if (this->radioModeActive) {
+            // In radio mode, output to hardware pins
+            if (this->radioKeyerMode) {
+                // Radio Keyer Mode: All keying on DIT pin only
+                radioDitState = true;
+                setRadioDit(true);
+            } else {
+                // Normal Radio Mode: Route to appropriate pin
+                if (relay == PADDLE_DIT) {
+                    radioDitState = true;
+                    setRadioDit(true);
+                } else if (relay == PADDLE_DAH) {
+                    radioDahState = true;
+                    setRadioDah(true);
+                }
+            }
+            return;  // Skip keyboard/MIDI output in radio mode
+        }
+#endif
 
         if (!this->radioModeActive) {
             // Send the appropriate key based on which relay is active
@@ -152,16 +241,48 @@ void VailAdapter::Tx(int relay, bool closed) {
             this->keyPressStartTime = 0;
         }
 
+        // Record key event if recording is active
+        if (recordingState != nullptr && recordingState->isRecording) {
+            // Map relay to paddle: relay 0 = DIT, relay 1 = DAH
+            uint8_t paddle = (relay == 0) ? PADDLE_DIT_FLAG : PADDLE_DAH_FLAG;
+            recordKeyEvent(*recordingState, false, paddle);  // Key up
+            // During recording: only stop sidetone, don't send MIDI/keyboard/radio output
+            this->buzzer->NoTone(0);
+            return;  // Skip normal output during recording
+        }
+
         this->buzzer->NoTone(0);
 
-        if (!this->radioModeActive) {
-            // Release all keys
-            if (this->keyboardMode) {
-                this->keyboardKey(DIT_KEYBOARD_KEY, false);
-                this->keyboardKey(DAH_KEYBOARD_KEY, false);
+#ifdef HAS_RADIO_OUTPUT
+        if (this->radioModeActive) {
+            // In radio mode, release hardware pins
+            if (this->radioKeyerMode) {
+                // Radio Keyer Mode: Release DIT pin
+                radioDitState = false;
+                setRadioDit(false);
             } else {
-                this->midiKey(1, false);
-                this->midiKey(2, false);
+                // Normal Radio Mode: Release appropriate pin
+                if (relay == PADDLE_DIT) {
+                    radioDitState = false;
+                    setRadioDit(false);
+                } else if (relay == PADDLE_DAH) {
+                    radioDahState = false;
+                    setRadioDah(false);
+                }
+            }
+            return;  // Skip keyboard/MIDI output in radio mode
+        }
+#endif
+
+        if (!this->radioModeActive) {
+            // Release only the keys that were pressed
+            if (this->keyboardMode) {
+                if (this->ditKeyPressed) this->keyboardKey(DIT_KEYBOARD_KEY, false);
+                if (this->dahKeyPressed) this->keyboardKey(DAH_KEYBOARD_KEY, false);
+            } else {
+                // In MIDI mode, release the notes that were sent
+                if (this->txRelays[PADDLE_DIT]) this->midiKey(1, false);
+                if (this->txRelays[PADDLE_DAH]) this->midiKey(2, false);
             }
         }
     }
@@ -177,9 +298,29 @@ this->keyPressStartTime = millis();
 }
 }
 
+// Record key event if recording is active
+if (recordingState != nullptr && recordingState->isRecording) {
+    // No relay info available, default to DIT paddle
+    recordKeyEvent(*recordingState, true, PADDLE_DIT_FLAG);  // Key down
+    // During recording: always play sidetone for feedback, even in radio mode
+    // Don't send MIDI/keyboard/radio output
+    this->buzzer->Note(0, this->txNote);
+    return;  // Skip normal output during recording
+}
+
 if (this->buzzerEnabled && !this->radioModeActive) {
     this->buzzer->Note(0, this->txNote);
 }
+
+// Handle output based on current mode
+#ifdef HAS_RADIO_OUTPUT
+if (this->radioModeActive) {
+    // Memory playback in radio mode: key DIT pin only (like straight key)
+    radioDitState = true;
+    setRadioDit(true);
+    return;  // Skip keyboard/MIDI output in radio mode
+}
+#endif
 
 if (!this->radioModeActive) {
     if (this->keyboardMode) {
@@ -201,7 +342,26 @@ this->keyPressStartTime = 0;
 }
 }
 
+// Record key event if recording is active
+if (recordingState != nullptr && recordingState->isRecording) {
+    // No relay info available, default to DIT paddle
+    recordKeyEvent(*recordingState, false, PADDLE_DIT_FLAG);  // Key up
+    // During recording: only stop sidetone, don't send MIDI/keyboard/radio output
+    this->buzzer->NoTone(0);
+    return;  // Skip normal output during recording
+}
+
 this->buzzer->NoTone(0);
+
+// Handle output based on current mode
+#ifdef HAS_RADIO_OUTPUT
+if (this->radioModeActive) {
+    // Memory playback in radio mode: release DIT pin
+    radioDitState = false;
+    setRadioDit(false);
+    return;  // Skip keyboard/MIDI output in radio mode
+}
+#endif
 
 if (!this->radioModeActive) {
     if (this->keyboardMode) {
@@ -222,9 +382,48 @@ this->keyPressStartTime = millis();
 }
 }
 
+// Record key event if recording is active - CHECK THIS FIRST before any output
+if (recordingState != nullptr && recordingState->isRecording) {
+    // Map relay to paddle: relay 0 = DIT, relay 1 = DAH
+    uint8_t paddle = (relay == PADDLE_DIT) ? PADDLE_DIT_FLAG : PADDLE_DAH_FLAG;
+    recordKeyEvent(*recordingState, true, paddle);  // Key down
+    // During recording: always play sidetone for feedback, even in radio mode
+    // Don't send MIDI/keyboard/radio output
+    this->buzzer->Note(0, this->txNote);
+    return;  // Skip ALL output (radio, MIDI, keyboard) during recording
+}
+
 if (this->buzzerEnabled && !this->radioModeActive) {
     this->buzzer->Note(0, this->txNote);
 }
+
+#ifdef HAS_RADIO_OUTPUT
+if (this->radioModeActive) {
+    // In radio mode, output to hardware pins
+    if (this->radioKeyerMode) {
+        // Radio Keyer Mode: All keying on DIT pin only
+        Serial.println("BeginTx: Radio Keyer Mode - Setting DIT pin ACTIVE");
+        radioDitState = true;
+        setRadioDit(true);
+    } else {
+        // Normal Radio Mode: Route to appropriate pin
+        if (relay == PADDLE_DIT) {
+            Serial.println("BeginTx: Radio Mode - Setting DIT pin ACTIVE (paddle=DIT)");
+            radioDitState = true;
+            setRadioDit(true);
+        } else if (relay == PADDLE_DAH) {
+            Serial.println("BeginTx: Radio Mode - Setting DAH pin ACTIVE (paddle=DAH)");
+            radioDahState = true;
+            setRadioDah(true);
+        } else {
+            Serial.println("BeginTx: Radio Mode - Setting DIT pin ACTIVE (straight key fallback)");
+            radioDitState = true;
+            setRadioDit(true); // straight key on DIT
+        }
+    }
+    return;
+}
+#endif
 
 if (!this->radioModeActive) {
     if (this->keyboardMode) {
@@ -255,7 +454,45 @@ this->keyPressStartTime = 0;
 }
 }
 
+// Record key event if recording is active
+if (recordingState != nullptr && recordingState->isRecording) {
+    // Map relay to paddle: relay 0 = DIT, relay 1 = DAH
+    uint8_t paddle = (relay == PADDLE_DIT) ? PADDLE_DIT_FLAG : PADDLE_DAH_FLAG;
+    recordKeyEvent(*recordingState, false, paddle);  // Key up
+    // During recording: only stop sidetone, don't send MIDI/keyboard/radio output
+    this->buzzer->NoTone(0);
+    return;  // Skip normal output during recording
+}
+
 this->buzzer->NoTone(0);
+
+#ifdef HAS_RADIO_OUTPUT
+if (this->radioModeActive) {
+    // In radio mode, output to hardware pins
+    if (this->radioKeyerMode) {
+        // Radio Keyer Mode: All keying on DIT pin only
+        Serial.println("EndTx: Radio Keyer Mode - Setting DIT pin INACTIVE");
+        radioDitState = false;
+        setRadioDit(false);
+    } else {
+        // Normal Radio Mode: Route to appropriate pin
+        if (relay == PADDLE_DIT) {
+            Serial.println("EndTx: Radio Mode - Setting DIT pin INACTIVE (paddle=DIT)");
+            radioDitState = false;
+            setRadioDit(false);
+        } else if (relay == PADDLE_DAH) {
+            Serial.println("EndTx: Radio Mode - Setting DAH pin INACTIVE (paddle=DAH)");
+            radioDahState = false;
+            setRadioDah(false);
+        } else {
+            Serial.println("EndTx: Radio Mode - Setting DIT pin INACTIVE (straight key fallback)");
+            radioDitState = false;
+            setRadioDit(false); // straight key on DIT
+        }
+    }
+    return;
+}
+#endif
 
 if (!this->radioModeActive) {
     if (this->keyboardMode) {
@@ -292,18 +529,27 @@ void VailAdapter::ToggleRadioMode() {
 #ifdef HAS_RADIO_OUTPUT
 this->radioModeActive = !this->radioModeActive;
 
-if (keyer) keyer->Release(); 
-if (keyIsPressed) EndTx(); 
+if (keyer) keyer->Release();
+if (keyIsPressed) EndTx();
 
-setRadioDit(false); 
+// Ensure all keyboard keys are released
+ReleaseAllKeys();
+
+setRadioDit(false);
 setRadioDah(false);
 radioDitState = false;
 radioDahState = false;
-keyIsPressed = false; 
+keyIsPressed = false;
+
+// Restore the keyer's dit duration after releasing
+if (this->keyer) {
+    this->keyer->SetDitDuration(this->ditDuration);
+    Serial.print("Keyer dit duration restored to: "); Serial.println(this->ditDuration);
+}
 
 if (this->radioModeActive) {
     Serial.println("Radio Mode Activated (Sidetone Disabled)");
-    this->buzzer->NoTone(0); 
+    this->buzzer->NoTone(0);
     this->buzzer->Note(1, 60); delay(100);
     this->buzzer->Note(1, 65); delay(100);
     this->buzzer->Note(1, 70); delay(100);
@@ -314,13 +560,77 @@ if (this->radioModeActive) {
     this->buzzer->Note(1, 65); delay(100);
     this->buzzer->Note(1, 60); delay(100);
     this->buzzer->NoTone(1);
-    delay(100); 
-    
-    NVIC_SystemReset(); 
+    delay(100);
+
+    NVIC_SystemReset();
 }
 #else
 Serial.println("Radio output not configured. Radio mode unavailable.");
 this->buzzer->Tone(1, 100); delay(200); this->buzzer->NoTone(1);
+#endif
+}
+
+void VailAdapter::ToggleRadioKeyerMode() {
+#ifdef HAS_RADIO_OUTPUT
+if (!this->radioModeActive) {
+    Serial.println("Cannot toggle Radio Keyer Mode: Not in Radio Mode");
+    return;
+}
+
+this->radioKeyerMode = !this->radioKeyerMode;
+
+if (keyer) keyer->Release();
+if (keyIsPressed) EndTx();
+
+// Ensure all keyboard keys are released
+ReleaseAllKeys();
+
+setRadioDit(false);
+setRadioDah(false);
+radioDitState = false;
+radioDahState = false;
+keyIsPressed = false;
+
+// Restore the keyer's dit duration after releasing
+if (this->keyer) {
+    this->keyer->SetDitDuration(this->ditDuration);
+    Serial.print("Keyer dit duration restored to: "); Serial.println(this->ditDuration);
+}
+
+extern void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote);
+extern void saveRadioKeyerModeToEEPROM(bool radioKeyerMode);
+saveRadioKeyerModeToEEPROM(this->radioKeyerMode);
+
+if (this->radioKeyerMode) {
+    Serial.println("Radio Keyer Mode Activated - Keyer output on DIT pin only");
+    // Play "RK" in morse: R = .-. K = -.-
+    // R: dit-dah-dit
+    this->buzzer->Note(1, this->txNote); delay(60);
+    this->buzzer->NoTone(1); delay(60);
+    this->buzzer->Note(1, this->txNote); delay(180);
+    this->buzzer->NoTone(1); delay(60);
+    this->buzzer->Note(1, this->txNote); delay(60);
+    this->buzzer->NoTone(1); delay(180); // char space
+    // K: dah-dit-dah
+    this->buzzer->Note(1, this->txNote); delay(180);
+    this->buzzer->NoTone(1); delay(60);
+    this->buzzer->Note(1, this->txNote); delay(60);
+    this->buzzer->NoTone(1); delay(60);
+    this->buzzer->Note(1, this->txNote); delay(180);
+    this->buzzer->NoTone(1);
+} else {
+    Serial.println("Radio Keyer Mode Deactivated - Back to normal Radio Mode");
+    // Play "R" in morse: R = .-.
+    // R: dit-dah-dit
+    this->buzzer->Note(1, this->txNote); delay(60);
+    this->buzzer->NoTone(1); delay(60);
+    this->buzzer->Note(1, this->txNote); delay(180);
+    this->buzzer->NoTone(1); delay(60);
+    this->buzzer->Note(1, this->txNote); delay(60);
+    this->buzzer->NoTone(1);
+}
+#else
+Serial.println("Radio output not configured. Radio Keyer mode unavailable.");
 #endif
 }
 
@@ -341,6 +651,23 @@ if (paddle == PADDLE_DIT) {
         Serial.print(holdTime);
         Serial.println("ms");
         this->ditIsHeld = false;
+    }
+}
+
+// Track dah paddle state for hold detection in radio mode
+if (paddle == PADDLE_DAH && isCapacitive && this->radioModeActive) {
+    if (pressed && !this->dahIsHeld) {
+        // Dah just pressed in radio mode - start timer
+        this->dahHoldStartTime = currentTime;
+        this->dahIsHeld = true;
+        Serial.println("Dah hold started (Radio Mode)");
+    } else if (!pressed && this->dahIsHeld) {
+        // Dah released - reset timer
+        unsigned long holdTime = currentTime - this->dahHoldStartTime;
+        Serial.print("Dah released after ");
+        Serial.print(holdTime);
+        Serial.println("ms");
+        this->dahIsHeld = false;
     }
 }
 #ifdef HAS_RADIO_OUTPUT
@@ -364,23 +691,56 @@ this->capDahPressCount = 0;
 
 if (this->radioModeActive) {
 #ifdef HAS_RADIO_OUTPUT
-bool radioKeyIsActiveBefore = radioDitState || radioDahState;
-
-    if (paddle == PADDLE_DIT) {
+    // In radio mode, either use keyer or direct paddle control
+    if (paddle == PADDLE_STRAIGHT) {
+        // Straight key always goes to DIT pin
+        bool radioKeyIsActiveBefore = radioDitState;
         radioDitState = pressed;
-        setRadioDit(radioDitState);
-    } else if (paddle == PADDLE_DAH) {
-        radioDahState = pressed;
-        setRadioDah(radioDahState);
-    } else if (paddle == PADDLE_STRAIGHT) { 
-        radioDitState = pressed; 
         setRadioDit(pressed);
-    }
+        radioDahState = false;
+        keyIsPressed = radioDitState;
+        if (!keyIsPressed && radioKeyIsActiveBefore) {
+            this->buzzer->NoTone(0);
+        }
+    } else {
+        // DIT/DAH paddles
+        bool radioKeyIsActiveBefore = radioDitState || radioDahState;
 
-    keyIsPressed = radioDitState || radioDahState; 
+        if (this->radioKeyerMode) {
+            // Radio Keyer Mode: Use adapter's keyer, output all on DIT pin only
+            if (this->keyer) {
+                // Keyer will call BeginTx(relay)/EndTx(relay) which routes to DIT pin
+                this->keyer->Key(paddle, pressed);
+            } else {
+                // Passthrough mode - directly control DIT pin for both paddles
+                radioDitState = pressed;
+                setRadioDit(radioDitState);
+                radioDahState = false;
+            }
+        } else {
+            // Normal Radio Mode: Passthrough to separate pins (let radio's keyer handle it)
+            Serial.print("Normal Radio Mode Passthrough - paddle=");
+            Serial.print(paddle == PADDLE_DIT ? "DIT" : "DAH");
+            Serial.print(", pressed=");
+            Serial.println(pressed);
 
-    if (!keyIsPressed && radioKeyIsActiveBefore) { 
-         this->buzzer->NoTone(0);
+            if (paddle == PADDLE_DIT) {
+                radioDitState = pressed;
+                setRadioDit(radioDitState);
+                Serial.print("  -> Set DIT pin to ");
+                Serial.println(pressed ? "ACTIVE" : "INACTIVE");
+            } else if (paddle == PADDLE_DAH) {
+                radioDahState = pressed;
+                setRadioDah(radioDahState);
+                Serial.print("  -> Set DAH pin to ");
+                Serial.println(pressed ? "ACTIVE" : "INACTIVE");
+            }
+        }
+
+        keyIsPressed = radioDitState || radioDahState;
+        if (!keyIsPressed && radioKeyIsActiveBefore) {
+            this->buzzer->NoTone(0);
+        }
     }
 #endif
 } else {
@@ -440,9 +800,12 @@ break;
 break;
 case 0xC0:
 if (this->keyer) {
+this->keyer->Reset();  // Clear any held key state before switching
 this->keyer->Release();
 this->keyer = NULL;
 }
+// Ensure all keyboard keys are released when switching keyers
+ReleaseAllKeys();
 this->keyer = GetKeyerByNumber(event.byte2, this);
 if (this->keyer) {
 this->keyer->SetDitDuration(this->ditDuration);
@@ -479,13 +842,27 @@ if (this->ditIsHeld && this->buzzerEnabled) {
     }
 }
 
+// Check for dah hold in radio mode during each tick
+#ifdef HAS_RADIO_OUTPUT
+if (this->dahIsHeld && this->radioModeActive) {
+    unsigned long holdTime = currentMillis - this->dahHoldStartTime;
+    if (holdTime >= DAH_HOLD_RADIO_KEYER_TOGGLE_THRESHOLD) {
+        Serial.print("Dah held for ");
+        Serial.print(holdTime);
+        Serial.println("ms - toggling Radio Keyer Mode");
+        this->ToggleRadioKeyerMode();
+        this->dahIsHeld = false; // Reset to prevent re-triggering
+    }
+}
+#endif
+
 if (!radioModeActive && keyIsPressed && this->buzzerEnabled && this->keyPressStartTime > 0) {
 if (currentMillis - this->keyPressStartTime >= KEY_HOLD_DISABLE_THRESHOLD) {
 this->DisableBuzzer();
 }
 }
 
-if (this->keyer && !this->radioModeActive) {
+if (this->keyer) {
     this->keyer->Tick(currentMillis);
 }
 }

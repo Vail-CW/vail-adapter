@@ -1,4 +1,5 @@
 #include <stddef.h>
+#include <Arduino.h>
 #include "keyers.h"
 
 #define len(t) (sizeof(t)/sizeof(*t))
@@ -214,6 +215,10 @@ public:
         if (this->currentTransmittingElement >= 0) {
             // Pause if we're currently transmitting - end current element
             nextPulse = this->keyDuration(PADDLE_DIT);
+            Serial.print("ElBugKeyer: Ending element ");
+            Serial.print(this->currentTransmittingElement);
+            Serial.print(" nextPulse=");
+            Serial.println(nextPulse);
             this->Tx(this->currentTransmittingElement, false);
             this->currentTransmittingElement = -1;
         } else {
@@ -222,6 +227,10 @@ public:
                 nextPulse = this->keyDuration(next);
                 // Use the correct relay (next) and track it
                 this->currentTransmittingElement = next;
+                Serial.print("ElBugKeyer: Starting element ");
+                Serial.print(next);
+                Serial.print(" duration=");
+                Serial.println(nextPulse);
                 this->Tx(next, true);
             }
         }

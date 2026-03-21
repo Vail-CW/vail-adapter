@@ -4,6 +4,7 @@
 #include "keyers.h"
 #include "polybuzzer.h"
 #include "config.h" // Include config.h
+#include "memory.h" // Include memory.h for recording state
 
 class VailAdapter: public Transmitter {
 private:
@@ -21,14 +22,24 @@ private:
     bool buzzerEnabled = true;
 
     bool radioModeActive = false;
+    bool radioKeyerMode = false;
     unsigned long lastCapDahTime = 0;
     unsigned int capDahPressCount = 0;
+    unsigned long dahHoldStartTime = 0;
+    bool dahIsHeld = false;
     bool radioDitState = false;
     bool radioDahState = false;
 
     // Track which relays are active for proper key mapping
     bool txRelays[2] = {false, false}; // [dit, dah]
     int lastPaddlePressed = PADDLE_DIT; // Track last paddle for keyer transmission
+
+    // Track which keyboard keys are currently pressed
+    bool ditKeyPressed = false;
+    bool dahKeyPressed = false;
+
+    // CW memory recording
+    RecordingState* recordingState = nullptr;
 
     void midiKey(uint8_t key, bool down);
     void keyboardKey(uint8_t key, bool down);
@@ -57,9 +68,19 @@ public:
 
     void ToggleRadioMode();
     bool isRadioModeActive() const;
+    void ToggleRadioKeyerMode();
+    bool isRadioKeyerMode() const;
+    void SetRadioKeyerMode(bool enabled);
     void ResetDahCounter();
+    void ResetDahHoldCounter();
 
     uint8_t getCurrentKeyerType() const;
     uint16_t getDitDuration() const;
     uint8_t getTxNote() const;
+
+    // CW memory recording support
+    void setRecordingState(RecordingState* state);
+
+    // Cleanup method to release all keys
+    void ReleaseAllKeys();
 };

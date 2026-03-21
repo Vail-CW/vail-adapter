@@ -1,0 +1,230 @@
+#include <Arduino.h>
+#include "buttons.h"
+#include "config.h"
+
+// Number of samples to average for noise reduction
+#define BUTTON_SAMPLE_COUNT 10
+
+// ButtonDebouncer implementation
+ButtonDebouncer::ButtonDebouncer() {
+    previousReading = BTN_NONE;
+    debouncedState = BTN_NONE;
+    maxStateDuringPress = BTN_NONE;
+    isPressed = false;
+    pressStartTime = 0;
+    lastPressDuration = 0;
+    longPressNotified = false;
+    comboPressNotified = false;
+    midiSwitchNotified = false;
+    lastReleaseTime = 0;
+    lastReleasedButton = BTN_NONE;
+    doubleClickDetected = false;
+}
+
+bool ButtonDebouncer::update(ButtonState newReading, unsigned long currentTime) {
+    // Require 2 consistent readings for debouncing
+    if (newReading == previousReading) {
+        debouncedState = newReading;
+
+        // Track if we're in a press
+        if (debouncedState != BTN_NONE && !isPressed) {
+            // Button press started
+            isPressed = true;
+            maxStateDuringPress = debouncedState;
+            pressStartTime = currentTime;
+            longPressNotified = false;
+            comboPressNotified = false;
+            midiSwitchNotified = false;
+        }
+        else if (isPressed && debouncedState != BTN_NONE) {
+            // Update max state if current state is "higher" (more buttons pressed)
+            if (debouncedState > maxStateDuringPress) {
+                maxStateDuringPress = debouncedState;
+            }
+        }
+        else if (isPressed && debouncedState == BTN_NONE) {
+            // Button released - complete gesture detected!
+            // Save the duration BEFORE clearing isPressed
+            lastPressDuration = currentTime - pressStartTime;
+
+            // Double-click detection (only for single buttons, not combos)
+            if (maxStateDuringPress == BTN_1 || maxStateDuringPress == BTN_2 || maxStateDuringPress == BTN_3) {
+                // Check if this is the same button released within the double-click window
+                if (maxStateDuringPress == lastReleasedButton &&
+                    (currentTime - lastReleaseTime) <= DOUBLE_CLICK_WINDOW) {
+                    doubleClickDetected = true;
+                }
+
+                // Update tracking for next potential double-click
+                lastReleasedButton = maxStateDuringPress;
+                lastReleaseTime = currentTime;
+            }
+
+            isPressed = false;
+            previousReading = newReading;
+            return true;  // Gesture complete
+        }
+    }
+
+    previousReading = newReading;
+    return false;  // No complete gesture yet
+}
+
+ButtonState ButtonDebouncer::getMaxState() {
+    return maxStateDuringPress;
+}
+
+bool ButtonDebouncer::isLongPress(unsigned long currentTime) {
+    if (!isPressed || longPressNotified) {
+        return false;  // Not pressed or already notified
+    }
+
+    if ((currentTime - pressStartTime) >= 2000) {
+        longPressNotified = true;
+        return true;  // Crossed 2-second threshold
+    }
+
+    return false;
+}
+
+bool ButtonDebouncer::isComboPress(unsigned long currentTime) {
+    if (!isPressed || comboPressNotified) {
+        return false;  // Not pressed or already notified
+    }
+
+    // Only trigger for actual combo button states (not single buttons)
+    if (maxStateDuringPress != BTN_1_2 &&
+        maxStateDuringPress != BTN_1_3 &&
+        maxStateDuringPress != BTN_2_3) {
+        return false;  // Not a combo press
+    }
+
+    if ((currentTime - pressStartTime) >= 500) {
+        comboPressNotified = true;
+        return true;  // Crossed 0.5-second threshold
+    }
+
+    return false;
+}
+
+bool ButtonDebouncer::isMidiSwitchPress(unsigned long currentTime) {
+    if (!isPressed || midiSwitchNotified) {
+        return false;  // Not pressed or already notified
+    }
+
+    // Only trigger for B1+B2 combo
+    if (maxStateDuringPress != BTN_1_2) {
+        return false;  // Not the right combo
+    }
+
+    if ((currentTime - pressStartTime) >= 3000) {
+        midiSwitchNotified = true;
+        return true;  // Crossed 3-second threshold
+    }
+
+    return false;
+}
+
+unsigned long ButtonDebouncer::getLastPressDuration() {
+    return lastPressDuration;
+}
+
+bool ButtonDebouncer::isPressActive() {
+    return isPressed;
+}
+
+bool ButtonDebouncer::isDoubleClick() {
+    if (doubleClickDetected) {
+        doubleClickDetected = false;  // Clear flag after reading
+        return true;
+    }
+    return false;
+}
+
+// Read analog pin and average 10 samples
+int readButtonAnalog() {
+#ifdef BUTTON_PIN
+    long sum = 0;
+    for (int i = 0; i < BUTTON_SAMPLE_COUNT; i++) {
+        sum += analogRead(BUTTON_PIN);
+    }
+    return sum / BUTTON_SAMPLE_COUNT;
+#else
+    return 0;  // No button pin defined
+#endif
+}
+
+// Map analog value to button state based on calibrated thresholds
+// Hardware-specific calibration values
+#ifdef V2_Basic_PCB
+// V2 Basic PCB calibration: NONE=1, B3=512, B2=614, B1=683, B2+3=769, B1+3=820, B1+2=830
+ButtonState getButtonState(int analogValue) {
+    // None: 0-100
+    if (analogValue >= 0 && analogValue <= 100) {
+        return BTN_NONE;
+    }
+    // Button 3: 490-534 (measured: 512)
+    else if (analogValue >= 490 && analogValue <= 534) {
+        return BTN_3;
+    }
+    // Button 2: 592-636 (measured: 614)
+    else if (analogValue >= 592 && analogValue <= 636) {
+        return BTN_2;
+    }
+    // Buttons 2+3: 747-791 (measured: 769)
+    else if (analogValue >= 747 && analogValue <= 791) {
+        return BTN_2_3;
+    }
+    // Button 1: 661-705 (measured: 683)
+    else if (analogValue >= 661 && analogValue <= 705) {
+        return BTN_1;
+    }
+    // Buttons 1+3: 815-821 (measured: 820)
+    else if (analogValue >= 815 && analogValue <= 821) {
+        return BTN_1_3;
+    }
+    // Buttons 1+2: 826-835 (measured: 830)
+    else if (analogValue >= 826 && analogValue <= 835) {
+        return BTN_1_2;
+    }
+
+    // If reading falls outside all ranges, return BTN_NONE as safe default
+    return BTN_NONE;
+}
+#else
+// Advanced PCB calibration (pin 8 with wire mod): NONE=1, B3=514, B2=617, B1=683, B2+3=771, B1+3=821, B1+2=831
+// Wide tolerance ranges to accommodate wire length variations from PCB mod
+ButtonState getButtonState(int analogValue) {
+    // None: 0-255 (very wide range below first button)
+    if (analogValue >= 0 && analogValue <= 255) {
+        return BTN_NONE;
+    }
+    // Button 3: 256-565 (measured: 513-516, avg 514)
+    else if (analogValue >= 256 && analogValue <= 565) {
+        return BTN_3;
+    }
+    // Button 2: 566-649 (measured: 615-620, avg 617)
+    else if (analogValue >= 566 && analogValue <= 649) {
+        return BTN_2;
+    }
+    // Button 1: 650-726 (measured: 683-685, avg 683)
+    else if (analogValue >= 650 && analogValue <= 726) {
+        return BTN_1;
+    }
+    // Buttons 2+3: 727-794 (measured: 770-773, avg 771)
+    else if (analogValue >= 727 && analogValue <= 794) {
+        return BTN_2_3;
+    }
+    // Buttons 1+3: 795-824 (measured: 820-824, avg 821)
+    else if (analogValue >= 795 && analogValue <= 824) {
+        return BTN_1_3;
+    }
+    // Buttons 1+2: 825-1023 (measured: 830-834, avg 831) - wide upper range
+    else if (analogValue >= 825 && analogValue <= 1023) {
+        return BTN_1_2;
+    }
+
+    // If reading falls outside all ranges, return BTN_NONE as safe default
+    return BTN_NONE;
+}
+#endif

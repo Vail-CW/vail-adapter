@@ -35,20 +35,17 @@ License: MIT
 * Buzzer Speaker
 * [Panel Aux Jack](https://www.amazon.com/dp/B01C3RFHDC)
 
+# Vail Lite: Ultra-Compact USB Stick Option
+* [Adafruit TRRS Trinkey M0](https://www.adafruit.com/product/5954) - USB key-sized board with built-in TRRS jack
+* Piezo buzzer (connect via STEMMA QT connector)
+* **Note:** No buttons, capacitive touch, headphone jack, or radio output. Settings changed via MIDI only.
+* See [TRRS_TRINKEY_BUILD.md](TRRS_TRINKEY_BUILD.md) for detailed instructions
+
 # Setting Up
 
 * [Easy Setup](doc/easy-install.md)
 * [Advanced Setup](doc/advanced-install.md)
-
-
-# Future Work
-
-Things I plan to add:
-
-* [x] PCB to ease assembly and make a more robust shippable product
-* [ ] Advanced PCB with capacitive touch built into pcb and enclosure, as well as radio passthrough
-* [ ] Wireless Vail Adapter
-
+* [See some examples others have built here](https://github.com/Vail-CW/vail-adapter/wiki#cool-people-who-have-built-one)
 
 # Contributing
 To contribute to this project please contact ke9bos@pigletradio.org
