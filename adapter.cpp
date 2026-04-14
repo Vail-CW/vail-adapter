@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <Keyboard.h>
 #include <MIDIUSB.h>
-#include <cstddef>
+#include <stddef.h>
 #include "keyers.h"
 #include "adapter.h"
 #include "polybuzzer.h"
@@ -824,7 +824,7 @@ break;
 }
 }
 
-void VailAdapter::Tick(unsigned int currentMillis) {
+void VailAdapter::Tick(unsigned long currentMillis) {
 // Check for dit hold during each tick
 if (this->ditIsHeld && this->buzzerEnabled) {
     unsigned long holdTime = currentMillis - this->ditHoldStartTime;
@@ -832,7 +832,7 @@ if (this->ditIsHeld && this->buzzerEnabled) {
         Serial.print("Dit held for ");
         Serial.print(holdTime);
         Serial.println("ms - disabling buzzer");
-        this->DisableBuzzer();
+        //this->DisableBuzzer();
         this->ditIsHeld = false; // Reset to prevent re-triggering
     } else if (holdTime % 1000 == 0) {
         // Debug: show progress every second

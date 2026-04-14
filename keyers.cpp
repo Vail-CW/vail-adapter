@@ -109,12 +109,12 @@ public:
         this->Tx(key, pressed);
     }
 
-    void Tick(unsigned int millis) {};
+    void Tick(unsigned long millis) {};
 };
 
 class BugKeyer: public StraightKeyer {
 public:
-    unsigned int nextPulse = 0;
+    unsigned long nextPulse = 0;
     bool keyPressed[2];
 
     using StraightKeyer::StraightKeyer;
@@ -135,7 +135,7 @@ public:
         }
     }
 
-    void Tick(unsigned int millis) {
+    void Tick(unsigned long millis) {
         if (this->nextPulse && (millis >= this->nextPulse)) {
             this->pulse(millis);
         }
@@ -147,7 +147,7 @@ public:
         }
     }
 
-    virtual void pulse(unsigned int millis) {
+    virtual void pulse(unsigned long millis) {
         if (this->TxClosed(0)) {
             this->Tx(0, false);
         } else if (this->keyPressed[0]) {
@@ -210,7 +210,7 @@ public:
         return this->nextRepeat;
     }
 
-    virtual void pulse(unsigned int millis) {
+    virtual void pulse(unsigned long millis) {
         int nextPulse = 0;
         if (this->currentTransmittingElement >= 0) {
             // Pause if we're currently transmitting - end current element

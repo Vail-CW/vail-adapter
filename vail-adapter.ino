@@ -2,7 +2,7 @@
 
 #include <MIDIUSB.h>
 #include <Keyboard.h>
-#include <Adafruit_FreeTouch.h>
+// #include <Adafruit_FreeTouch.h>
 #include "bounce2.h"
 #include "touchbounce.h"
 #include "adapter.h"
@@ -165,7 +165,7 @@ void setLED() {
 }
 
 void loop() {
-  unsigned int currentTime = millis();
+  unsigned long currentTime = millis();
   midiEventPacket_t event = MidiUSB.read();
 
   setLED();
