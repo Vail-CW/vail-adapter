@@ -26,7 +26,9 @@ Then compile and upload the sketch.
 
 ## Arduino Micro — Notes and Build
 
-The Arduino Micro is supported as an experimental target. To build for it:
+The Arduino Micro is supported as an experimental DIY/breadboard-only target (there's no Micro PCB variant). It uses 5V logic instead of the SAMD21's 3.3V, and has a micro-USB connector.
+
+### Build
 
 1. In `config.h`, uncomment `#define ARDUINO_MICRO_BOARD` and comment out all other board configs.
 2. Build with:
@@ -37,21 +39,53 @@ The Arduino Micro is supported as an experimental target. To build for it:
    ```
    arduino-cli upload --fqbn arduino:avr:micro -p <PORT> build_output
    ```
-   …or use the web updater at [vailadapter.com](https://vailadapter.com), which will speak the Caterina/AVR109 protocol via WebSerial.
+   …or use the web updater at [vailadapter.com](https://vailadapter.com) (activate the 🧪 Test channel and pick **DIY No PCB → Arduino Micro** in the wizard — it speaks the Caterina/AVR109 protocol via WebSerial).
 
-### Micro pin map
-* D0: Straight Key
-* D1: Dah
-* D2: Dit
-* D10: Piezo/buzzer
-* A2/A3: optional radio output (uncomment `HAS_RADIO_OUTPUT` in config.h — 5V logic!)
+### Micro pinout & wiring
+
+Full pinout diagram and datasheet: [docs.arduino.cc/hardware/micro](https://docs.arduino.cc/hardware/micro).
+
+Required connections:
+
+| Function | Micro pin | Notes |
+|---|---|---|
+| Ground | `GND` | Common for paddle/key, piezo, radio |
+| Dit (paddle) | `D2` | Tie paddle dit contact to D2, ring it to GND through the switch |
+| Dah (paddle) | `D1` | Same pattern as dit |
+| Straight key | `D0` | For a straight key or mono-TRS jack tip |
+| Piezo buzzer | `D10` → piezo `+`, `GND` → piezo `−` | Passive piezo; polarity doesn't matter for tone |
+| Radio output dit (optional) | `A3` | **5V logic** — verify radio tolerance or use a level shifter/transistor |
+| Radio output dah (optional) | `A2` | Same 5V caveat |
+
+The internal pull-ups are enabled, so each input pin (D0/D1/D2) is HIGH when the contact is open and pulled LOW when the paddle/key closes. No external resistors needed on the paddle side.
+
+### Using a 3.5mm TRS headphone jack (straight key or paddle)
+
+Wire the jack exactly like the XIAO version, using the Micro's equivalent pins:
+
+```
+    o  --- D2  (tip   — dit, or straight-key contact)
+   |_| --- D1  (ring  — dah)
+   | | --- GND (sleeve)
+   | |
+```
+
+For a simple mono straight key, wire only tip (`D0`) and sleeve (`GND`).
+
+### Entering the bootloader
+
+The web updater handles this automatically (1200-baud touch), but if you need to do it manually:
+
+- **Double-tap the reset button** on the Micro within ~1 second. A new COM port will appear for ~8 seconds — that's the Caterina bootloader port.
 
 ### Micro limitations
-* No capacitive touch (ATmega32U4 lacks FreeTouch hardware)
-* No button menu (no resistor ladder implementation for AVR)
-* No LED state indicators
-* CW memory: 3 slots × ~12 seconds each (vs. 25 seconds on SAMD21), due to the 1024-byte EEPROM and 2.5 KB RAM budget
-* Radio output pins are 5V — verify your radio's keying line can accept 5V, or use a transistor/level shifter
+
+* **No capacitive touch** — ATmega32U4 lacks the FreeTouch hardware. All paddle/key inputs must use physical switches.
+* **No button menu** — the resistor-ladder menu is SAMD-only. Change settings via MIDI (vailmorse.com) instead.
+* **No LED status indicators** — the onboard LED is not driven by the firmware (RAM is tight; skipped for the AVR port).
+* **CW memory** — 3 slots × ~12 seconds each (vs. 25 seconds on SAMD21), due to the 1024-byte EEPROM and 2.5 KB RAM budget.
+* **5V radio output** — the optional radio pins swing to 5V, not 3.3V. Verify your radio's keying line can accept 5V, or use a transistor/level shifter.
+* **Flashing** — no UF2 drag-and-drop. Use the web updater's test channel, Arduino IDE, or `arduino-cli upload`.
 
 ## Will Not Work!
 
