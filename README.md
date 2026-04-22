@@ -42,15 +42,15 @@ License: MIT
 * See [TRRS_TRINKEY_BUILD.md](TRRS_TRINKEY_BUILD.md) for detailed instructions
 
 # Experimental: Arduino Micro (ATmega32U4)
-* [Arduino Micro](https://store.arduino.cc/products/arduino-micro) — 5V AVR alternative to SAMD21 boards
+* [Arduino Micro](https://store.arduino.cc/products/arduino-micro) — 5V AVR alternative to SAMD21 boards. DIY/breadboard-only; there is no Micro-targeted PCB.
+* **Wiring:** D2 = Dit, D1 = Dah, D0 = Straight Key, D10 = Piezo, GND = ground. Full walkthrough including headphone-jack and optional radio-output wiring → **[doc/advanced-install.md](doc/advanced-install.md#arduino-micro--notes-and-build)**.
 * **Limitations vs. SAMD21:**
   * No capacitive touch (hardware not present on ATmega32U4)
   * No button menu (no resistor ladder support)
   * No LED status indicators
   * CW memory slots shortened: 3 × ~12 seconds (vs. 25 seconds on SAMD21)
   * Radio output on A2/A3 uses 5V logic — check radio tolerance or use a level shifter
-* **Flashing:** uses WebSerial + AVR109 (Caterina bootloader). No UF2 drag-and-drop — flash from [vailadapter.com](https://vailadapter.com) in Chrome/Edge/Opera, or via `arduino-cli upload --fqbn arduino:avr:micro`.
-* See [doc/advanced-install.md](doc/advanced-install.md) for details.
+* **Flashing:** uses WebSerial + AVR109 (Caterina bootloader). No UF2 drag-and-drop — flash from [vailadapter.com](https://vailadapter.com) (activate the 🧪 Test channel, then DIY No PCB → Arduino Micro) in Chrome/Edge/Opera, or via `arduino-cli upload --fqbn arduino:avr:micro`.
 
 # Setting Up
 
