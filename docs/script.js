@@ -54,13 +54,18 @@ function applyTestChannelUI() {
     const microChip = document.getElementById('microTestChip');
     if (microChip) microChip.style.display = active ? 'block' : 'none';
 
-    // The Arduino Micro board card is experimental — only surface it when
-    // the user has opted into the test channel. Keeps stable users from
-    // selecting a board that may not have firmware deployed yet.
+    updateMicroCardVisibility();
+}
+
+// The Arduino Micro card is experimental — only show it when the user
+// has opted into the test channel AND picked the DIY No PCB path. Makes
+// sense: there's no PCB version of the adapter designed for Micro, so
+// the Micro is strictly a DIY/breadboard target.
+function updateMicroCardVisibility() {
     const microCard = document.getElementById('microCard');
-    if (microCard) {
-        microCard.style.display = active ? '' : 'none';
-    }
+    if (!microCard) return;
+    const show = isTestChannelActive() && wizardState.model === 'non_pcb';
+    microCard.style.display = show ? '' : 'none';
 }
 
 // Firmware file mapping — URLs go through firmwareUrl() so the test
@@ -178,6 +183,8 @@ function updateStep2Content() {
             qtpyHint.style.display = 'block';
         }
     }
+    // Micro card visibility depends on both test channel and model
+    updateMicroCardVisibility();
 }
 
 function updateProgressBar(stepNumber) {
@@ -672,7 +679,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (nextState) {
             const ok = confirm(
                 '🧪 Enable the test channel?\n\n' +
-                'You will download pre-release firmware from firmware_files/test/ instead of the stable builds. ' +
+                'You will download pre-release firmware intended for beta testers instead of the stable builds. ' +
                 'Test builds may be incomplete or unstable.\n\n' +
                 'You can switch back at any time.'
             );

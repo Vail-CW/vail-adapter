@@ -22,7 +22,7 @@
         <div style="flex: 1 1 auto; min-width: 240px;">
             <strong style="color: #ff8a8a;">🧪 Test channel active</strong>
             <div style="font-size: 13px; margin-top: 4px;">
-                You're downloading <strong>pre-release firmware</strong> from <code style="background: rgba(0,0,0,0.3); padding: 1px 6px; border-radius: 4px;">firmware_files/test/</code>. Build info is available at <a href="firmware_files/test/BUILD_INFO.txt" target="_blank" style="color: #ffb8b8;">BUILD_INFO.txt</a>.
+                You're downloading <strong>pre-release firmware</strong> intended for beta testers. <a href="firmware_files/test/BUILD_INFO.txt" target="_blank" style="color: #ffb8b8;">View build info</a>.
             </div>
         </div>
         <button id="exitTestChannelButton" class="btn-secondary" style="flex: 0 0 auto; padding: 6px 14px; background: #3a1414; border: 1px solid #ff6b6b; color: #ffd8d8; cursor: pointer; border-radius: 6px;">Switch back to stable</button>
@@ -148,7 +148,7 @@
             <div class="selection-card" data-board="micro" id="microCard">
                 <div class="card-icon">🔸</div>
                 <h3>Arduino Micro</h3>
-                <p>ATmega32U4-based. Community/DIY only.</p>
+                <p>ATmega32U4-based. Breadboard / DIY builds only.</p>
                 <div class="hint">⚠️ Experimental: no capacitive touch, no button menu, limited CW memory length. Flashed via WebSerial (not UF2 drag-and-drop).</div>
             </div>
         </div>
@@ -208,7 +208,7 @@
                 <span id="downloadText">Download UF2 File</span>
             </a>
             <div id="step3TestChip" style="display: none; margin-top: 10px; padding: 8px 12px; background: rgba(255, 107, 107, 0.12); border: 1px solid #ff6b6b; border-radius: 6px; color: #ffb0b0; font-size: 13px;">
-                🧪 <strong>Test channel:</strong> this download comes from <code>firmware_files/test/</code>. Click "Switch back to stable" at the top of the page to exit.
+                🧪 <strong>Test channel:</strong> you're about to download a pre-release build. Click "Switch back to stable" at the top of the page to exit.
             </div>
         </div>
 
@@ -323,7 +323,7 @@
             <p>Once the Micro is in bootloader mode (a new serial port will appear for ~8 seconds), click the button below and select that <strong>new</strong> bootloader port. The firmware will be written directly over the serial connection.</p>
             <button id="microFlashButton" class="btn-primary">⚡ Flash Firmware via WebSerial</button>
             <div id="microTestChip" style="display: none; margin-top: 10px; padding: 8px 12px; background: rgba(255, 107, 107, 0.12); border: 1px solid #ff6b6b; border-radius: 6px; color: #ffb0b0; font-size: 13px;">
-                🧪 <strong>Test channel:</strong> firmware will be fetched from <code>firmware_files/test/arduino_micro.hex</code>.
+                🧪 <strong>Test channel:</strong> this will flash a pre-release build.
             </div>
             <div class="progress-container" id="microProgressContainer" style="display: none; margin-top: 16px;">
                 <div class="progress-label" id="microProgressLabel">Preparing…</div>
