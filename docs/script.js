@@ -6,14 +6,76 @@ const wizardState = {
     board: null,      // 'qtpy' or 'xiao' (for adapter only)
 };
 
-// Firmware file mapping
+// --- Test channel --------------------------------------------------------
+// When active, firmware URLs are routed through docs/firmware_files/test/
+// instead of docs/firmware_files/. Persisted across page loads via
+// localStorage; also togglable via ?test=1 / ?test=0 URL params.
+
+const TEST_CHANNEL_KEY = 'vailAdapter.testChannel';
+
+function isTestChannelActive() {
+    try {
+        return localStorage.getItem(TEST_CHANNEL_KEY) === '1';
+    } catch (e) {
+        return false;
+    }
+}
+
+function setTestChannel(on) {
+    try {
+        if (on) localStorage.setItem(TEST_CHANNEL_KEY, '1');
+        else localStorage.removeItem(TEST_CHANNEL_KEY);
+    } catch (e) { /* ignore quota/disabled */ }
+    applyTestChannelUI();
+    // Refresh any visible download buttons with new URLs
+    if (wizardState.currentStep === 3) updateStep3Content();
+    if (wizardState.currentStep === 3.1) updateStep3MicroContent();
+}
+
+function firmwareUrl(filename) {
+    const prefix = isTestChannelActive() ? 'firmware_files/test/' : 'firmware_files/';
+    return prefix + filename;
+}
+
+function applyTestChannelUI() {
+    const active = isTestChannelActive();
+
+    const banner = document.getElementById('testChannelBanner');
+    if (banner) banner.style.display = active ? 'block' : 'none';
+
+    const toggleLink = document.getElementById('testChannelToggleLink');
+    if (toggleLink) {
+        toggleLink.textContent = active ? '✅ Test channel (on)' : '🧪 Test channel';
+    }
+
+    // Inline chips shown next to each flash button when test mode is on
+    const step3Chip = document.getElementById('step3TestChip');
+    if (step3Chip) step3Chip.style.display = active ? 'block' : 'none';
+    const microChip = document.getElementById('microTestChip');
+    if (microChip) microChip.style.display = active ? 'block' : 'none';
+
+    // The Arduino Micro board card is experimental — only surface it when
+    // the user has opted into the test channel. Keeps stable users from
+    // selecting a board that may not have firmware deployed yet.
+    const microCard = document.getElementById('microCard');
+    if (microCard) {
+        microCard.style.display = active ? '' : 'none';
+    }
+}
+
+// Firmware file mapping — URLs go through firmwareUrl() so the test
+// channel toggle automatically rewrites them to firmware_files/test/.
 function getFirmwareFile() {
     // Vail Lite only has one firmware variant (Trinkey)
     if (wizardState.model === 'vail_lite') {
-        return {
-            url: 'firmware_files/trinkey_vail_adapter.uf2',
-            filename: 'trinkey_vail_adapter.uf2'
-        };
+        const fn = 'trinkey_vail_adapter.uf2';
+        return { url: firmwareUrl(fn), filename: fn };
+    }
+
+    // Arduino Micro ships a single .hex; model selection is ignored for the file
+    if (wizardState.board === 'micro') {
+        const fn = 'arduino_micro.hex';
+        return { url: firmwareUrl(fn), filename: fn };
     }
 
     // Other models require board selection
@@ -30,10 +92,7 @@ function getFirmwareFile() {
         filename = `${wizardState.board}_non_pcb.uf2`;
     }
 
-    return {
-        url: `firmware_files/${filename}`,
-        filename: filename
-    };
+    return { url: firmwareUrl(filename), filename };
 }
 
 // Get friendly names for display
@@ -50,7 +109,8 @@ function getModelName(model) {
 function getBoardName(board) {
     const names = {
         'qtpy': 'Adafruit QT Py SAMD21',
-        'xiao': 'Seeeduino XIAO SAMD21'
+        'xiao': 'Seeeduino XIAO SAMD21',
+        'micro': 'Arduino Micro (experimental)'
     };
     return names[board] || board;
 }
@@ -70,6 +130,11 @@ function goToStep(stepNumber) {
         targetStepId = 'step1_5';
     }
 
+    // Handle step 3.1 (Arduino Micro WebSerial flasher)
+    if (stepNumber === 3.1) {
+        targetStepId = 'step3_micro';
+    }
+
     const targetStep = document.getElementById(targetStepId);
     if (targetStep) {
         targetStep.classList.add('active');
@@ -84,6 +149,11 @@ function goToStep(stepNumber) {
         // Update step 3 content if navigating there
         if (stepNumber === 3) {
             updateStep3Content();
+        }
+
+        // Update Micro step content if navigating there
+        if (stepNumber === 3.1) {
+            updateStep3MicroContent();
         }
 
         // Initialize ESP flasher if navigating to step 4 (Summit)
@@ -123,6 +193,130 @@ function updateProgressBar(stepNumber) {
             step.classList.remove('active', 'completed');
         }
     });
+}
+
+function updateStep3MicroContent() {
+    // Display the selected config on the Micro flash page
+    const configEl = document.getElementById('selectedConfigMicro');
+    if (configEl) {
+        const modelLabel = getModelName(wizardState.model) || 'DIY';
+        configEl.textContent = `${modelLabel} + ${getBoardName('micro')}`;
+    }
+}
+
+// --- Arduino Micro WebSerial flasher state ---
+const microFlasher = {
+    appPort: null,          // running-application serial port (pre-touch)
+    lastLoggedLine: '',
+};
+
+function microLog(message) {
+    console.log('[micro]', message);
+    const logArea = document.getElementById('microFlashLog');
+    if (logArea) {
+        logArea.textContent += message + '\n';
+        logArea.scrollTop = logArea.scrollHeight;
+    }
+}
+
+function microSerialLog(message) {
+    console.log('[micro-boot]', message);
+    const logArea = document.getElementById('microSerialLog');
+    if (logArea) {
+        logArea.textContent += message + '\n';
+        logArea.scrollTop = logArea.scrollHeight;
+    }
+}
+
+async function triggerMicroBootloader() {
+    if (!('serial' in navigator)) {
+        alert('WebSerial API not supported. Please use Chrome, Edge, or Opera.');
+        return;
+    }
+
+    try {
+        microSerialLog('Requesting the Arduino Micro port…');
+        const port = await navigator.serial.requestPort();
+        microSerialLog('Port selected. Performing 1200-baud touch…');
+        await window.avr109Touch1200(port);
+        microSerialLog('✅ Touch sent. The Micro should now re-enumerate as the Caterina bootloader for ~8 seconds.');
+        microSerialLog('Proceed to step 3 and select the NEW port (different COM/ttyACM number).');
+    } catch (err) {
+        microSerialLog(`❌ ${err.message}`);
+        if (err.name !== 'NotFoundError') {
+            alert(`Bootloader touch failed: ${err.message}`);
+        }
+    }
+}
+
+async function flashMicroFirmware() {
+    if (!('serial' in navigator)) {
+        alert('WebSerial API not supported. Please use Chrome, Edge, or Opera.');
+        return;
+    }
+
+    const firmware = getFirmwareFile();
+    if (!firmware) {
+        alert('No firmware file available for this configuration.');
+        return;
+    }
+
+    const progressContainer = document.getElementById('microProgressContainer');
+    const progressBar = document.getElementById('microProgressBar');
+    const progressLabel = document.getElementById('microProgressLabel');
+    const progressPercent = document.getElementById('microProgressPercent');
+
+    let port = null;
+    let flasher = null;
+
+    try {
+        microLog(`Downloading ${firmware.filename} from ${firmware.url}…`);
+        const resp = await fetch(firmware.url, { cache: 'no-cache' });
+        if (!resp.ok) {
+            if (resp.status === 404 && isTestChannelActive()) {
+                throw new Error(
+                    `Firmware not found in test channel (HTTP 404). ` +
+                    `The test build for Arduino Micro has not been deployed yet. ` +
+                    `Switch back to stable or ask a maintainer to run the Actions workflow with deploy_target=test.`
+                );
+            }
+            throw new Error(`Firmware fetch failed: HTTP ${resp.status}`);
+        }
+        const hexText = await resp.text();
+        microLog(`Firmware fetched (${hexText.length} chars of Intel HEX).`);
+
+        microLog('Select the BOOTLOADER port (different from your running-app port).');
+        port = await navigator.serial.requestPort();
+
+        progressContainer.style.display = 'block';
+        progressLabel.textContent = 'Opening bootloader port…';
+
+        flasher = new window.AVR109Flasher({
+            log: microLog,
+            progress: (current, total) => {
+                const pct = Math.round((current / total) * 100);
+                progressBar.style.width = pct + '%';
+                progressPercent.textContent = `${pct}% (block ${current}/${total})`;
+                progressLabel.textContent = 'Writing firmware…';
+            },
+        });
+
+        await flasher.openPort(port, 57600);
+        await flasher.flashHex(hexText);
+
+        progressLabel.textContent = '✅ Done';
+        progressPercent.textContent = '100%';
+        progressBar.style.width = '100%';
+        alert('Firmware flashed successfully! The Micro will restart running the Vail Adapter firmware.');
+    } catch (err) {
+        microLog(`❌ Flash failed: ${err.message}`);
+        progressLabel.textContent = '❌ Error';
+        alert(`Flash failed: ${err.message}`);
+    } finally {
+        if (flasher) {
+            try { await flasher.close(); } catch (e) { /* ignore */ }
+        }
+    }
 }
 
 function updateStep3Content() {
@@ -409,9 +603,10 @@ document.addEventListener('DOMContentLoaded', () => {
             card.classList.add('selected');
             wizardState.board = card.dataset.board;
 
-            // Advance to step 3 after a short delay
+            // Arduino Micro uses a different flash flow (WebSerial AVR109, not UF2)
+            const nextStep = wizardState.board === 'micro' ? 3.1 : 3;
             setTimeout(() => {
-                goToStep(3);
+                goToStep(nextStep);
             }, 300);
         });
     });
@@ -463,8 +658,50 @@ document.addEventListener('DOMContentLoaded', () => {
         goToStep(1);
     });
 
+    // --- Test channel initialization & toggle ---
+    // ?test=1 → enable, ?test=0 → disable, otherwise preserve localStorage
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('test')) {
+        setTestChannel(urlParams.get('test') === '1');
+    }
+    applyTestChannelUI();
+
+    document.getElementById('testChannelToggleLink')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        const nextState = !isTestChannelActive();
+        if (nextState) {
+            const ok = confirm(
+                '🧪 Enable the test channel?\n\n' +
+                'You will download pre-release firmware from firmware_files/test/ instead of the stable builds. ' +
+                'Test builds may be incomplete or unstable.\n\n' +
+                'You can switch back at any time.'
+            );
+            if (!ok) return;
+        }
+        setTestChannel(nextState);
+    });
+
+    document.getElementById('exitTestChannelButton')?.addEventListener('click', () => {
+        setTestChannel(false);
+    });
+
     // Boot mode button
     document.getElementById('bootModeButton')?.addEventListener('click', triggerBootloaderViaWebSerial);
+
+    // Arduino Micro (WebSerial AVR109) buttons
+    document.getElementById('microBootModeButton')?.addEventListener('click', triggerMicroBootloader);
+    document.getElementById('microFlashButton')?.addEventListener('click', flashMicroFirmware);
+    document.getElementById('backToStep2FromMicro')?.addEventListener('click', () => goToStep(2));
+    document.getElementById('startOverFromMicro')?.addEventListener('click', () => {
+        wizardState.device = null;
+        wizardState.model = null;
+        wizardState.board = null;
+        document.querySelectorAll('.selection-card').forEach(card => {
+            card.classList.remove('selected');
+        });
+        hideWhatsNew();
+        goToStep(1);
+    });
 
     // Download button click handler (for disabled state)
     document.getElementById('downloadButton')?.addEventListener('click', function(event) {

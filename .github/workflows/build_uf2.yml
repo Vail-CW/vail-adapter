@@ -13,7 +13,17 @@ on:
       - '.github/workflows/build_uf2.yml'  # This workflow itself
   release:
     types: [published] # Triggers when you publish a new release
-  workflow_dispatch: # Allows manual triggering
+  workflow_dispatch:
+    inputs:
+      deploy_target:
+        description: 'Where to deploy the built firmware'
+        required: true
+        default: 'test'
+        type: choice
+        options:
+          - test    # → docs/firmware_files/test/ (beta channel on live site)
+          - stable  # → docs/firmware_files/ (production; same as master push)
+          - none    # → build only, artifacts only, no commit
 
 jobs:
   build_firmware: # This remains mostly the same
@@ -61,6 +71,11 @@ jobs:
             fqbn: "adafruit:samd:adafruit_TRRStrinkey_m0"
             hw_define: "TRRS_TRINKEY"
             uf2_name: "trinkey_vail_adapter.uf2"
+          # --- Arduino Micro (ATmega32U4) — produces .hex, not .uf2 ---
+          - board_name: "ARDUINO_MICRO"
+            fqbn: "arduino:avr:micro"
+            hw_define: "ARDUINO_MICRO_BOARD"
+            uf2_name: "arduino_micro.hex"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -77,6 +92,7 @@ jobs:
           arduino-cli core update-index
           arduino-cli core install Seeeduino:samd
           arduino-cli core install adafruit:samd
+          arduino-cli core install arduino:avr
           arduino-cli lib update-index
           arduino-cli lib install MIDIUSB
           arduino-cli lib install "Adafruit FreeTouch Library"
@@ -86,7 +102,7 @@ jobs:
         env:
           CONFIG_FILE: "config.h"
           CONFIG_DEFINE: ${{ matrix.hw_define }}
-          DEFINES_LIST: "V1_Basic_PCB V2_Basic_PCB Advanced_PCB NO_PCB_GITHUB_SPECS TRRS_TRINKEY"
+          DEFINES_LIST: "V1_Basic_PCB V2_Basic_PCB Advanced_PCB NO_PCB_GITHUB_SPECS TRRS_TRINKEY ARDUINO_MICRO_BOARD"
         run: |
           echo "Setting Hardware Define to: ${CONFIG_DEFINE} in ${CONFIG_FILE}"
           if [ ! -f "$CONFIG_FILE" ]; then echo "Error: $CONFIG_FILE not found!"; exit 1; fi
@@ -96,67 +112,109 @@ jobs:
         env: { SKETCH_DIR: "." }
         run: arduino-cli compile --fqbn ${{ matrix.fqbn }} --output-dir build_output --export-binaries $SKETCH_DIR
       - name: Find or Clone uf2conv.py
+        if: ${{ !endsWith(matrix.uf2_name, '.hex') }}
         id: find_uf2conv
         run: |
           UF2_CONV_PATH=$(find $HOME/.arduino15/packages/ -name "uf2conv.py" | head -n 1)
           if [ -z "$UF2_CONV_PATH" ]; then
             echo "Cloning Microsoft UF2 repo..."
-            git clone https://github.com/microsoft/uf2.git 
+            git clone https://github.com/microsoft/uf2.git
             if [ -f "uf2/utils/uf2conv.py" ]; then UF2_CONV_PATH="uf2/utils/uf2conv.py"; else echo "Failed to find uf2conv.py."; exit 1; fi
           fi
           echo "UF2_CONV=$UF2_CONV_PATH" >> $GITHUB_ENV
-      - name: Convert to UF2
+      - name: Convert to UF2 (SAMD21 only)
+        if: ${{ !endsWith(matrix.uf2_name, '.hex') }}
         env: { UF2_FAMILY_ID: "0x68ED2B88", UF2_BASE_ADDR: "0x2000" }
         run: |
           BIN_FILE=$(find build_output -name "*.bin" | head -n 1)
           if [ -z "$BIN_FILE" ]; then echo "Error: No .bin file found!"; exit 1; fi
           python3 ${{ env.UF2_CONV }} -c -f ${{ env.UF2_FAMILY_ID }} -b ${{ env.UF2_BASE_ADDR }} "$BIN_FILE" -o "${{ matrix.uf2_name }}"
-      - name: Upload UF2 Artifact
+      - name: Copy HEX file (AVR only)
+        if: ${{ endsWith(matrix.uf2_name, '.hex') }}
+        run: |
+          HEX_FILE=$(find build_output -name "*.hex" | grep -v with_bootloader | head -n 1)
+          if [ -z "$HEX_FILE" ]; then echo "Error: No .hex file found!"; exit 1; fi
+          cp "$HEX_FILE" "${{ matrix.uf2_name }}"
+      - name: Upload Firmware Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.uf2_name }} # Upload each UF2 with its unique name
+          name: ${{ matrix.uf2_name }}
           path: ${{ matrix.uf2_name }}
 
-  deploy: # <--- NEW JOB
+  deploy:
     needs: build_firmware # Runs only after all build_firmware jobs succeed
+    # Skip deploy entirely when user explicitly asked for build-only
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.deploy_target != 'none' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write # Allow writing to repository
     steps:
-      - name: Checkout repository
+      - name: Determine deploy target directory
+        id: target
+        run: |
+          # Default for push / release events: stable
+          TARGET_DIR="firmware_files"
+          COMMIT_MSG="Update firmware files (UF2 + HEX)"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            case "${{ inputs.deploy_target }}" in
+              stable)
+                TARGET_DIR="firmware_files"
+                COMMIT_MSG="Update firmware files (manual dispatch from ${{ github.ref_name }})"
+                ;;
+              test)
+                TARGET_DIR="firmware_files/test"
+                COMMIT_MSG="chore: update TEST firmware from ${{ github.ref_name }} @ ${{ github.sha }}"
+                ;;
+            esac
+          fi
+          echo "dir=$TARGET_DIR" >> $GITHUB_OUTPUT
+          echo "msg=$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "Target directory: docs/$TARGET_DIR"
+
+      # Always commit to master, regardless of the source branch. A test
+      # deploy from a feature branch still updates live-site assets only.
+      - name: Checkout master
         uses: actions/checkout@v4
         with:
+          ref: master
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download all UF2 artifacts
-        uses: actions/download-artifact@v4 # Downloads all artifacts from this run
+      - name: Download all firmware artifacts
+        uses: actions/download-artifact@v4
         with:
-          path: all_uf2_files # Download to this directory
+          path: all_uf2_files
 
       - name: List downloaded files
         run: |
           echo "Listing downloaded artifacts:"
           ls -R all_uf2_files
 
-      - name: Copy UF2 files to docs directory
+      - name: Copy firmware files to docs/${{ steps.target.outputs.dir }}
         run: |
-          echo "Copying UF2 files to docs/firmware_files..."
-          # Create docs directory if it doesn't exist
-          mkdir -p docs/firmware_files
-          # Copy all downloaded UF2 files (they are in subdirs named after artifacts)
-          find all_uf2_files -name "*.uf2" -exec cp {} docs/firmware_files/ \;
-          echo "Files in docs/firmware_files:"
-          ls docs/firmware_files/
+          DEST="docs/${{ steps.target.outputs.dir }}"
+          echo "Copying firmware files to $DEST..."
+          mkdir -p "$DEST"
+          find all_uf2_files -name "*.uf2" -exec cp {} "$DEST/" \;
+          find all_uf2_files -name "*.hex" -exec cp {} "$DEST/" \;
+          # Record build provenance so testers know what they're flashing
+          cat > "$DEST/BUILD_INFO.txt" <<EOF
+          Built from:   ${{ github.ref_name }}
+          Commit:       ${{ github.sha }}
+          Event:        ${{ github.event_name }}
+          Deploy target: ${{ steps.target.outputs.dir }}
+          Built at:     $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          EOF
+          echo "Files in $DEST:"
+          ls "$DEST"
 
       - name: Commit and Push updated firmware files
         run: |
           git config user.name "GitHub Action"
           git config user.email "action@github.com"
-          git add docs/firmware_files/ # Add the firmware files
-          # Only commit & push if there are changes
+          git add docs/${{ steps.target.outputs.dir }}/
           if git diff --staged --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "Update firmware UF2 files"
+            git commit -m "${{ steps.target.outputs.msg }}"
             git push origin master
           fi

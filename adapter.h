@@ -60,7 +60,7 @@ public:
     void EndTx(int relay) override;
     void Tx(int relay, bool closed); // Add Tx method for keyer relay control
 
-    void Tick(unsigned int millis);
+    void Tick(unsigned long millis);
     
     void ResetDitCounter(); 
     void DisableBuzzer(); 

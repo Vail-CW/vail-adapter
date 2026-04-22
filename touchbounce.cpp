@@ -1,3 +1,6 @@
+#include "config.h"
+
+#ifndef NO_CAPACITIVE_TOUCH
 #include "touchbounce.h"
 
 void TouchBounce::attach(int pin, int pressThreshold, int releaseThreshold) {
@@ -28,3 +31,5 @@ bool TouchBounce::readCurrentState() {
 
     return lastState;
 }
+
+#endif // NO_CAPACITIVE_TOUCH

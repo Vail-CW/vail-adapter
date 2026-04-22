@@ -25,7 +25,7 @@ void playMorseDit() {
   uint8_t note = adapter->getTxNote();
   uint16_t ditDur = adapter->getDitDuration();
 
-  tone(piezoPin, equalTemperamentNote[note]);
+  tone(piezoPin, GET_EQUAL_TEMPERAMENT_NOTE(note));
   delay(ditDur);
   noTone(piezoPin);
   delay(ditDur);  // Inter-element space = 1 dit
@@ -36,7 +36,7 @@ void playMorseDah() {
   uint8_t note = adapter->getTxNote();
   uint16_t ditDur = adapter->getDitDuration();
 
-  tone(piezoPin, equalTemperamentNote[note]);
+  tone(piezoPin, GET_EQUAL_TEMPERAMENT_NOTE(note));
   delay(ditDur * 3);
   noTone(piezoPin);
   delay(ditDur);  // Inter-element space = 1 dit
@@ -88,7 +88,7 @@ void playDot(uint8_t noteNumber) {
 #ifndef NO_LED
   digitalWrite(LED_BUILTIN, LED_ON);
 #endif
-  tone(piezoPin, equalTemperamentNote[noteNumber]);
+  tone(piezoPin, GET_EQUAL_TEMPERAMENT_NOTE(noteNumber));
   delay(DOT_DURATION);
 #ifndef NO_LED
   digitalWrite(LED_BUILTIN, LED_OFF);
@@ -101,7 +101,7 @@ void playDash(uint8_t noteNumber) {
 #ifndef NO_LED
   digitalWrite(LED_BUILTIN, LED_ON);
 #endif
-  tone(piezoPin, equalTemperamentNote[noteNumber]);
+  tone(piezoPin, GET_EQUAL_TEMPERAMENT_NOTE(noteNumber));
   delay(DASH_DURATION);
 #ifndef NO_LED
   digitalWrite(LED_BUILTIN, LED_OFF);
@@ -133,11 +133,11 @@ void playAdjustmentBeep(bool isIncrease) {
   if (isIncrease) {
     // Higher tone for increase (3 semitones up)
     uint8_t highNote = min(note + 3, 127);
-    frequency = equalTemperamentNote[highNote];
+    frequency = GET_EQUAL_TEMPERAMENT_NOTE(highNote);
   } else {
     // Lower tone for decrease (3 semitones down)
     uint8_t lowNote = max((int)note - 3, 0);
-    frequency = equalTemperamentNote[lowNote];
+    frequency = GET_EQUAL_TEMPERAMENT_NOTE(lowNote);
   }
 
   tone(piezoPin, frequency);

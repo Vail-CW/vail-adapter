@@ -13,16 +13,45 @@ Then compile and upload the sketch.
 
 * Seeeduino Xiao SAMD21
 * Adafruit Qt Py SAMD21
+* Arduino Micro (select the `ARDUINO_MICRO_BOARD` config — see below)
 
 ## Known to work with source code changes
 
-* Arduino Micro
 * KeeYees Pro Micro
 * Arduino Leonardo
 * Arduino Zero
 * Adafruit Trinket M0
 * Adafruit GEMMA M0
 * Adafruit Feather M0
+
+## Arduino Micro — Notes and Build
+
+The Arduino Micro is supported as an experimental target. To build for it:
+
+1. In `config.h`, uncomment `#define ARDUINO_MICRO_BOARD` and comment out all other board configs.
+2. Build with:
+   ```
+   arduino-cli compile --fqbn arduino:avr:micro --output-dir build_output --export-binaries .
+   ```
+3. Flash with:
+   ```
+   arduino-cli upload --fqbn arduino:avr:micro -p <PORT> build_output
+   ```
+   …or use the web updater at [vailadapter.com](https://vailadapter.com), which will speak the Caterina/AVR109 protocol via WebSerial.
+
+### Micro pin map
+* D0: Straight Key
+* D1: Dah
+* D2: Dit
+* D10: Piezo/buzzer
+* A2/A3: optional radio output (uncomment `HAS_RADIO_OUTPUT` in config.h — 5V logic!)
+
+### Micro limitations
+* No capacitive touch (ATmega32U4 lacks FreeTouch hardware)
+* No button menu (no resistor ladder implementation for AVR)
+* No LED state indicators
+* CW memory: 3 slots × ~12 seconds each (vs. 25 seconds on SAMD21), due to the 1024-byte EEPROM and 2.5 KB RAM budget
+* Radio output pins are 5V — verify your radio's keying line can accept 5V, or use a transistor/level shifter
 
 ## Will Not Work!
 

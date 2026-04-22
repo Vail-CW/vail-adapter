@@ -173,13 +173,13 @@ static void handleQuickPressToneMode(ButtonState gestureDetected) {
     } else {
       applyTemporaryTone(menuState.tempToneNote);  // Apply so user can test
       // Play a quick beep at the new tone
-      tone(PIEZO_PIN, equalTemperamentNote[menuState.tempToneNote]);
+      tone(PIEZO_PIN, GET_EQUAL_TEMPERAMENT_NOTE(menuState.tempToneNote));
       delay(100);
       noTone(PIEZO_PIN);
       Serial.print("  -> Tone increased to MIDI note ");
       Serial.print(menuState.tempToneNote);
       Serial.print(" (");
-      Serial.print(equalTemperamentNote[menuState.tempToneNote]);
+      Serial.print(GET_EQUAL_TEMPERAMENT_NOTE(menuState.tempToneNote));
       Serial.println(" Hz)");
     }
   } else if (gestureDetected == BTN_3) {
@@ -192,13 +192,13 @@ static void handleQuickPressToneMode(ButtonState gestureDetected) {
     } else {
       applyTemporaryTone(menuState.tempToneNote);  // Apply so user can test
       // Play a quick beep at the new tone
-      tone(PIEZO_PIN, equalTemperamentNote[menuState.tempToneNote]);
+      tone(PIEZO_PIN, GET_EQUAL_TEMPERAMENT_NOTE(menuState.tempToneNote));
       delay(100);
       noTone(PIEZO_PIN);
       Serial.print("  -> Tone decreased to MIDI note ");
       Serial.print(menuState.tempToneNote);
       Serial.print(" (");
-      Serial.print(equalTemperamentNote[menuState.tempToneNote]);
+      Serial.print(GET_EQUAL_TEMPERAMENT_NOTE(menuState.tempToneNote));
       Serial.println(" Hz)");
     }
   }
@@ -336,7 +336,7 @@ static void handleLongPressNormalMode(ButtonState currentState, unsigned long cu
       Serial.print("Current tone: MIDI note ");
       Serial.print(menuState.tempToneNote);
       Serial.print(" (");
-      Serial.print(equalTemperamentNote[menuState.tempToneNote]);
+      Serial.print(GET_EQUAL_TEMPERAMENT_NOTE(menuState.tempToneNote));
       Serial.println(" Hz)");
       break;
     case BTN_3:
@@ -411,7 +411,7 @@ static void handleLongPressToneMode(ButtonState currentState) {
     Serial.print("Saved tone: MIDI note ");
     Serial.print(menuState.tempToneNote);
     Serial.print(" (");
-    Serial.print(equalTemperamentNote[menuState.tempToneNote]);
+    Serial.print(GET_EQUAL_TEMPERAMENT_NOTE(menuState.tempToneNote));
     Serial.println(" Hz)");
 
     // Play confirmation and return to normal mode
@@ -514,7 +514,7 @@ static void handleTimeoutToneMode(unsigned long currentTime) {
     Serial.print("Auto-saved tone: MIDI note ");
     Serial.print(menuState.tempToneNote);
     Serial.print(" (");
-    Serial.print(equalTemperamentNote[menuState.tempToneNote]);
+    Serial.print(GET_EQUAL_TEMPERAMENT_NOTE(menuState.tempToneNote));
     Serial.println(" Hz)");
 
     // Play descending tones and return to normal mode

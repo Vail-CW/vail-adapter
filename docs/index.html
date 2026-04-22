@@ -12,8 +12,22 @@
     <ul>
         <li><a href="index.html">Home</a></li>
         <li><a href="https://vailadapter.com/assembly" target="_blank">Assembly Instructions</a></li>
+        <li><a href="#" id="testChannelToggleLink">🧪 Test channel</a></li>
     </ul>
 </nav>
+
+<!-- Test channel banner — hidden unless ?test=1 or localStorage flag set -->
+<div id="testChannelBanner" style="display: none; background: linear-gradient(135deg, #3d1a1a 0%, #5c2424 100%); border: 2px solid #ff6b6b; border-radius: 8px; padding: 14px 18px; margin: 16px auto; max-width: 900px; color: #ffd8d8;">
+    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+        <div style="flex: 1 1 auto; min-width: 240px;">
+            <strong style="color: #ff8a8a;">🧪 Test channel active</strong>
+            <div style="font-size: 13px; margin-top: 4px;">
+                You're downloading <strong>pre-release firmware</strong> from <code style="background: rgba(0,0,0,0.3); padding: 1px 6px; border-radius: 4px;">firmware_files/test/</code>. Build info is available at <a href="firmware_files/test/BUILD_INFO.txt" target="_blank" style="color: #ffb8b8;">BUILD_INFO.txt</a>.
+            </div>
+        </div>
+        <button id="exitTestChannelButton" class="btn-secondary" style="flex: 0 0 auto; padding: 6px 14px; background: #3a1414; border: 1px solid #ff6b6b; color: #ffd8d8; cursor: pointer; border-radius: 6px;">Switch back to stable</button>
+    </div>
+</div>
 
 <div class="container">
     <h1>Vail Adapter Firmware Update</h1>
@@ -130,6 +144,13 @@
                 <h3>Seeeduino XIAO SAMD21</h3>
                 <p>Look for "XIAO" labeling on the board</p>
             </div>
+
+            <div class="selection-card" data-board="micro" id="microCard">
+                <div class="card-icon">🔸</div>
+                <h3>Arduino Micro</h3>
+                <p>ATmega32U4-based. Community/DIY only.</p>
+                <div class="hint">⚠️ Experimental: no capacitive touch, no button menu, limited CW memory length. Flashed via WebSerial (not UF2 drag-and-drop).</div>
+            </div>
         </div>
 
         <button class="btn-secondary" id="backToStep1">← Back</button>
@@ -186,6 +207,9 @@
                 <span class="download-icon">⬇️</span>
                 <span id="downloadText">Download UF2 File</span>
             </a>
+            <div id="step3TestChip" style="display: none; margin-top: 10px; padding: 8px 12px; background: rgba(255, 107, 107, 0.12); border: 1px solid #ff6b6b; border-radius: 6px; color: #ffb0b0; font-size: 13px;">
+                🧪 <strong>Test channel:</strong> this download comes from <code>firmware_files/test/</code>. Click "Switch back to stable" at the top of the page to exit.
+            </div>
         </div>
 
         <!-- Sub-step 4: Copy to Device -->
@@ -247,6 +271,112 @@
 
         <button class="btn-secondary" id="backToStep2">← Back</button>
         <button class="btn-primary" id="startOver">Start Over</button>
+    </section>
+
+    <!-- Step 3 (Micro variant): WebSerial AVR109 flash flow -->
+    <section id="step3_micro" class="wizard-step">
+        <h2>Flash Your Arduino Micro</h2>
+        <p class="step-description">You've selected: <strong id="selectedConfigMicro"></strong></p>
+
+        <div class="warning-box" style="background: linear-gradient(135deg, #3a2a00 0%, #4a3600 100%); border: 2px solid #ffc107; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+            <h3 style="margin-top: 0; color: #ffc107;">⚠️ Experimental board</h3>
+            <ul style="margin: 8px 0 0 18px; color: #e0e0e0;">
+                <li>No capacitive touch, no button menu, no LED status indicators</li>
+                <li>CW memory slots reduced to 3 × ~12 seconds (vs. 25 seconds on SAMD21)</li>
+                <li>Requires Chrome, Edge, or Opera — the flasher uses WebSerial</li>
+                <li>Radio output on A2/A3 is 5V logic — check radio tolerance before wiring</li>
+            </ul>
+        </div>
+
+        <!-- Sub-step 1: Plug In -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">1</span>
+                <h3>Plug In Your Arduino Micro</h3>
+            </div>
+            <p>Connect the Micro to your computer using a micro-USB data cable. Wait a few seconds for your OS to recognize it as a serial device.</p>
+        </div>
+
+        <!-- Sub-step 2: Enter Bootloader -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">2</span>
+                <h3>Enter Bootloader Mode</h3>
+            </div>
+            <p>Click the button below, then select your Arduino Micro in the browser's serial port picker. The browser will briefly open the port at 1200 baud and close it — this signals the Caterina bootloader to take over for ~8 seconds.</p>
+            <button id="microBootModeButton" class="btn-primary">🔌 Trigger Bootloader (1200-baud Touch)</button>
+            <div class="log-container" style="margin-top: 12px;">
+                <h4>Activity Log:</h4>
+                <pre id="microSerialLog"></pre>
+            </div>
+            <div style="margin-top: 10px; font-size: 14px; color: #ccc;">
+                <strong>Alternative:</strong> press the reset button on the Micro twice quickly to force bootloader mode manually.
+            </div>
+        </div>
+
+        <!-- Sub-step 3: Flash -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">3</span>
+                <h3>Flash Firmware</h3>
+            </div>
+            <p>Once the Micro is in bootloader mode (a new serial port will appear for ~8 seconds), click the button below and select that <strong>new</strong> bootloader port. The firmware will be written directly over the serial connection.</p>
+            <button id="microFlashButton" class="btn-primary">⚡ Flash Firmware via WebSerial</button>
+            <div id="microTestChip" style="display: none; margin-top: 10px; padding: 8px 12px; background: rgba(255, 107, 107, 0.12); border: 1px solid #ff6b6b; border-radius: 6px; color: #ffb0b0; font-size: 13px;">
+                🧪 <strong>Test channel:</strong> firmware will be fetched from <code>firmware_files/test/arduino_micro.hex</code>.
+            </div>
+            <div class="progress-container" id="microProgressContainer" style="display: none; margin-top: 16px;">
+                <div class="progress-label" id="microProgressLabel">Preparing…</div>
+                <div style="background: #2a2a2a; border-radius: 8px; overflow: hidden; height: 20px;">
+                    <div id="microProgressBar" style="background: linear-gradient(90deg, #4CAF50, #45a049); height: 100%; width: 0%; transition: width 0.2s;"></div>
+                </div>
+                <div id="microProgressPercent" style="margin-top: 6px; font-size: 13px; color: #999;">0%</div>
+            </div>
+            <div class="log-container" style="margin-top: 16px;">
+                <h4>Flash Log:</h4>
+                <pre id="microFlashLog"></pre>
+            </div>
+        </div>
+
+        <!-- Sub-step 4: Finalize -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">4</span>
+                <h3>Finalize Setup</h3>
+            </div>
+            <ol>
+                <li>Wait for the bootloader to exit and the Micro to re-enumerate as your running application</li>
+                <li>Unplug and reconnect if needed</li>
+                <li>Visit <a href="https://vailmorse.com" target="_blank">vailmorse.com</a> to configure keyer type, speed, and tone via MIDI</li>
+            </ol>
+            <div class="success-message">
+                <strong>✅ You're set!</strong> Your Arduino Micro is now running the Vail Adapter firmware.
+            </div>
+        </div>
+
+        <!-- Troubleshooting -->
+        <div class="troubleshooting">
+            <h3>❓ Troubleshooting</h3>
+            <details>
+                <summary>No new port appears after the 1200-baud touch</summary>
+                <p>The Caterina bootloader only stays active for ~8 seconds. If you miss the window, just click "Trigger Bootloader" again — or double-tap the reset button on the Micro.</p>
+            </details>
+            <details>
+                <summary>"Expected 0x0D" or timeout errors</summary>
+                <p>You likely selected the running-app port instead of the new bootloader port. Re-trigger the bootloader and pick the newer COM/ttyACM number.</p>
+            </details>
+            <details>
+                <summary>WebSerial not supported</summary>
+                <p>Use Chrome, Edge, or Opera. Firefox and Safari do not support the Web Serial API.</p>
+            </details>
+            <details>
+                <summary>Linux: Permission denied</summary>
+                <p>Add your user to the dialout group: <code>sudo usermod -a -G dialout $USER</code> then log out and back in.</p>
+            </details>
+        </div>
+
+        <button class="btn-secondary" id="backToStep2FromMicro">← Back</button>
+        <button class="btn-primary" id="startOverFromMicro">Start Over</button>
     </section>
 
     <!-- Step 4: Flash Summit Firmware (ESP32 Web Flasher) -->
@@ -419,6 +549,7 @@
 </div>
 
 <script src="esp-flasher.js" type="module"></script>
+<script src="avr109-flasher.js"></script>
 <script src="script.js" defer></script>
 </body>
 </html>

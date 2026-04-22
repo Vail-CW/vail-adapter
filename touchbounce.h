@@ -1,5 +1,8 @@
 #pragma once
 
+#include "config.h"
+
+#ifndef NO_CAPACITIVE_TOUCH
 #include <Adafruit_FreeTouch.h>
 #include "bounce2.h"
 
@@ -23,3 +26,5 @@ protected:
     int pressThreshold;
     int releaseThreshold;
 };
+
+#endif // NO_CAPACITIVE_TOUCH

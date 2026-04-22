@@ -42,19 +42,25 @@
 
 #define EEPROM_MEMORY_START_ADDR 6
 
-// Memory slot configuration
+// Memory slot configuration (can be overridden by config.h for constrained targets)
+#ifndef MAX_MEMORY_SLOTS
 #define MAX_MEMORY_SLOTS 3
+#endif
+#ifndef MAX_RECORDING_DURATION_MS
 #define MAX_RECORDING_DURATION_MS 25000  // 25 seconds
+#endif
+#ifndef MAX_TRANSITIONS_PER_MEMORY
 #define MAX_TRANSITIONS_PER_MEMORY 200   // Conservative: ~8 transitions/sec * 25 sec
+#endif
 
 // Each memory slot structure in EEPROM:
 // - 2 bytes: length (number of transitions stored)
-// - 400 bytes: transition data (200 transitions × 2 bytes each)
-// Total per slot: 402 bytes
+// - MAX_TRANSITIONS_PER_MEMORY × 2 bytes: transition data
+// Default: 200 transitions × 2 + 2 length = 402 bytes per slot
 
-#define MEMORY_SLOT_SIZE_BYTES 402
 #define MEMORY_LENGTH_SIZE 2
 #define MEMORY_DATA_SIZE (MAX_TRANSITIONS_PER_MEMORY * 2)
+#define MEMORY_SLOT_SIZE_BYTES (MEMORY_LENGTH_SIZE + MEMORY_DATA_SIZE)
 
 // EEPROM addresses for each memory slot
 #define EEPROM_MEMORY_1_ADDR (EEPROM_MEMORY_START_ADDR)

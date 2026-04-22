@@ -7,14 +7,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This repository contains firmware and tooling for two devices in the Vail ecosystem:
 
 ### Vail Adapter (Master Branch)
-Arduino-based firmware for Morse code key/paddle to USB conversion. It runs on SAMD21-based microcontrollers (Seeeduino XIAO SAMD21, Adafruit QT Py SAMD21, and Adafruit TRRS Trinkey SAMD21) and provides:
+Arduino-based firmware for Morse code key/paddle to USB conversion. It runs on SAMD21-based microcontrollers (Seeeduino XIAO SAMD21, Adafruit QT Py SAMD21, Adafruit TRRS Trinkey SAMD21) and, experimentally, on the AVR Arduino Micro (ATmega32U4). Provides:
 - USB HID keyboard output (Ctrl keys for dit/dah)
 - USB MIDI control and output for DAW integration
 - Multiple keyer modes (straight key, bug, iambic A/B, ultimatic, etc.)
 - Sidetone generation via piezo buzzer
-- Capacitive touch support
+- Capacitive touch support (SAMD21 only)
 - Optional radio output for direct keying of amateur radios
-- CW memory recording and playback (3 slots, 25 seconds each)
+- CW memory recording and playback (3 slots × 25 seconds on SAMD21; 3 slots × ~12 seconds on Arduino Micro due to 1 KB EEPROM)
 
 ### Vail Summit (Vail-Summit Branch)
 ESP32-S3 Feather based standalone morse code trainer with:
@@ -55,8 +55,8 @@ The main firmware files are in the root directory:
 
 The project uses arduino-cli for building. Required libraries:
 - MIDIUSB
-- Adafruit FreeTouch Library
-- FlashStorage_SAMD
+- Adafruit FreeTouch Library (SAMD21 only)
+- FlashStorage_SAMD (SAMD21 only)
 - Keyboard
 
 **Setup arduino-cli (first time only):**
@@ -66,6 +66,7 @@ arduino-cli config add board_manager.additional_urls https://files.seeedstudio.c
 arduino-cli core update-index
 arduino-cli core install Seeeduino:samd
 arduino-cli core install adafruit:samd
+arduino-cli core install arduino:avr   # for Arduino Micro
 arduino-cli lib install MIDIUSB "Adafruit FreeTouch Library" FlashStorage_SAMD Keyboard
 ```
 
@@ -84,19 +85,28 @@ arduino-cli compile --fqbn adafruit:samd:adafruit_qtpy_m0 --output-dir build_out
 arduino-cli compile --fqbn adafruit:samd:adafruit_TRRStrinkey_m0 --output-dir build_output --export-binaries .
 ```
 
-**Convert .bin to .uf2 (for drag-and-drop flashing):**
+**Build for Arduino Micro (ATmega32U4) — experimental:**
+```bash
+arduino-cli compile --fqbn arduino:avr:micro --output-dir build_output --export-binaries .
+```
+
+**Convert .bin to .uf2 (for SAMD21 drag-and-drop flashing):**
 ```bash
 python3 uf2conv.py -c -f 0x68ED2B88 -b 0x2000 build_output/*.bin -o firmware.uf2
 ```
 
+**Flash Arduino Micro (produces .hex, flashed via avrdude/WebSerial):**
+Arduino Micro does not support UF2. Either use `arduino-cli upload --fqbn arduino:avr:micro -p <PORT>`, or flash the generated `.hex` via the web updater at vailadapter.com (WebSerial + AVR109/Caterina protocol).
+
 ### Hardware Configuration
 
 Before building, you MUST edit `config.h` and uncomment exactly ONE hardware configuration:
-- `V1_Basic_PCB` - Original PCB version
-- `V2_Basic_PCB` - Revised PCB with updated pin mappings
-- `Advanced_PCB` - Advanced PCB with radio output pins (A2/A3)
-- `NO_PCB_GITHUB_SPECS` - Breadboard/hand-wired setup
-- `TRRS_TRINKEY` - Adafruit TRRS Trinkey with built-in TRRS jack (see TRRS_TRINKEY_BUILD.md)
+- `V1_Basic_PCB` - Original PCB version (SAMD21)
+- `V2_Basic_PCB` - Revised PCB with updated pin mappings (SAMD21)
+- `Advanced_PCB` - Advanced PCB with radio output pins A2/A3 (SAMD21)
+- `NO_PCB_GITHUB_SPECS` - Breadboard/hand-wired setup (SAMD21)
+- `TRRS_TRINKEY` - Adafruit TRRS Trinkey with built-in TRRS jack (SAMD21; see TRRS_TRINKEY_BUILD.md)
+- `ARDUINO_MICRO_BOARD` - Arduino Micro (ATmega32U4/AVR, experimental; see Arduino Micro Specific Notes below)
 
 Each configuration sets different pin mappings for dit/dah/key inputs, piezo, and optional radio outputs.
 
@@ -108,6 +118,18 @@ Each configuration sets different pin mappings for dit/dah/key inputs, piezo, an
 - No LED control (`NO_LED` defined - NeoPixel requires special library)
 - No button menu (no physical buttons on Trinkey)
 - KEY_PIN not attached to prevent duplicate processing of pin 0 (dit timing fix)
+
+**Arduino Micro Specific Notes:**
+- ATmega32U4, 5V logic, 32 KB Flash, 2.5 KB RAM, 1 KB EEPROM
+- Uses native Arduino `EEPROM.h` (AVR has true EEPROM; no `FlashStorage_SAMD` / no `EEPROM.commit()`)
+- Flashed via Caterina bootloader (AVR109 protocol); **does NOT support UF2 drag-and-drop**
+- Web updater uses WebSerial + a vendored AVR109 implementation (`docs/avr109-flasher.js`)
+- `NO_CAPACITIVE_TOUCH` and `NO_LED` are defined — ATmega32U4 has no FreeTouch
+- `BUTTON_PIN` is intentionally undefined — no button menu on this target
+- `POLYBUZZER_MAX_TONES` degrades to 1 on AVR (SRAM budget); higher-priority slot requests are clamped to slot 0 so feedback tones still play, just without priority stacking
+- `MAX_MEMORY_SLOTS=3`, `MAX_TRANSITIONS_PER_MEMORY=100`, `MAX_RECORDING_DURATION_MS=12000` — EEPROM budget: 3×(100×2 + 2) + 6 settings = 612 bytes / 1024
+- `unsigned long` replaces `unsigned int` in `Tick()` signatures (`adapter.cpp`, `adapter.h`, `keyers.cpp`, `keyers.h`, `vail-adapter.ino`) — `unsigned int` on AVR is 16-bit, which overflows every ~65s
+- `equal_temperament.h` moved to `PROGMEM` (see `equal_temperament.cpp`) to save ~256 bytes SRAM; access via `GET_EQUAL_TEMPERAMENT_NOTE(n)` macro (safe cross-platform — `pgm_read_word` is a no-op deref on ARM)
 
 For Advanced_PCB builds, also configure `RADIO_KEYING_ACTIVE_LOW` in config.h based on your radio's keying polarity.
 
@@ -328,14 +350,39 @@ No automated test suite exists. Manual testing procedures are documented in `doc
 ## CI/CD
 
 GitHub Actions workflow (`.github/workflows/build_uf2.yml`) automatically:
-1. Builds firmware for all 9 hardware configurations (4 configs × 2 boards + Trinkey)
-2. Converts .bin files to .uf2 format
+1. Builds firmware for all 10 hardware configurations (4 configs × 2 SAMD21 boards + Trinkey + Arduino Micro)
+2. Converts .bin → .uf2 for SAMD21 builds; copies .hex directly for the Micro (AVR has no UF2 bootloader)
 3. Commits resulting firmware files to `docs/firmware_files/` on every push to master
 
 Firmware naming convention:
 - `xiao_basic_pcb_v1.uf2`, `xiao_basic_pcb_v2.uf2`, `xiao_advanced_pcb.uf2`, `xiao_non_pcb.uf2`
 - `qtpy_basic_pcb_v1.uf2`, `qtpy_basic_pcb_v2.uf2`, `qtpy_advanced_pcb.uf2`, `qtpy_non_pcb.uf2`
 - `trinkey_vail_adapter.uf2`
+- `arduino_micro.hex` (flashed via WebSerial/AVR109 or arduino-cli)
+
+### Test channel (pre-release firmware)
+
+The web updater has an opt-in test channel for flashing pre-merge firmware. Files live in `docs/firmware_files/test/` and are reachable from the live site when a user activates test mode.
+
+**Deploying a test build:**
+1. GitHub → Actions → *Build and Deploy Arduino UF2 Firmware* → **Run workflow**
+2. Pick the source branch (e.g. a PR branch)
+3. Set `deploy_target = test`
+4. Run
+
+The workflow builds all 10 targets from that branch, checks out `master`, and commits the binaries to `docs/firmware_files/test/` along with a `BUILD_INFO.txt`. Test deploys always push to master — they do not modify the source branch.
+
+Other `deploy_target` values:
+- `stable` — same as a master push (writes to `firmware_files/`)
+- `none`   — build only, artifacts attached to the workflow run, no commit
+
+**Activating on the live site:**
+- Click **🧪 Test channel** in the site nav (confirmation dialog), or
+- Visit `vailadapter.com?test=1`
+
+A red banner appears on every step while active; click **Switch back to stable** to exit. State is persisted in localStorage.
+
+See `docs/firmware_files/test/README.md` for more detail.
 
 ## GitHub Pages Maintenance
 

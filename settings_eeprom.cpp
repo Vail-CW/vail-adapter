@@ -1,7 +1,23 @@
 #include "settings_eeprom.h"
 #include "config.h"
-#include <FlashStorage_SAMD.h>
+#include <Arduino.h>
+#if defined(ARDUINO_ARCH_SAMD)
+  // SAMD21 has no true EEPROM — FlashStorage_SAMD emulates it in Flash
+  // and requires an explicit EEPROM.commit() to flush writes.
+  #include <FlashStorage_SAMD.h>
+  #define EEPROM_NEEDS_COMMIT 1
+#else
+  // AVR (e.g. Arduino Micro ATmega32U4) has native EEPROM; writes are
+  // committed per-byte by the hardware, and EEPROM.commit() is not provided.
+  #include <EEPROM.h>
+#endif
 #include <MIDIUSB.h>
+
+static inline void eeprom_commit() {
+#ifdef EEPROM_NEEDS_COMMIT
+  EEPROM.commit();
+#endif
+}
 
 // ============================================================================
 // Adapter Settings EEPROM Functions
@@ -22,7 +38,7 @@ void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNot
   EEPROM.put(EEPROM_DIT_DURATION_ADDR, ditDuration);
   EEPROM.write(EEPROM_TX_NOTE_ADDR, txNote);
   EEPROM.write(EEPROM_VALID_FLAG_ADDR, EEPROM_VALID_VALUE);
-  EEPROM.commit();
+  eeprom_commit();
   Serial.print("Saved to EEPROM - Keyer: "); Serial.print(keyerType);
   Serial.print(", Dit Duration: "); Serial.print(ditDuration);
   Serial.print(", TX Note: "); Serial.println(txNote);
@@ -30,7 +46,7 @@ void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNot
 
 void saveRadioKeyerModeToEEPROM(bool radioKeyerMode) {
   EEPROM.write(EEPROM_RADIO_KEYER_MODE_ADDR, radioKeyerMode ? 1 : 0);
-  EEPROM.commit();
+  eeprom_commit();
   Serial.print("Saved Radio Keyer Mode to EEPROM: "); Serial.println(radioKeyerMode ? "ON" : "OFF");
 }
 
@@ -80,7 +96,7 @@ void loadSettingsFromEEPROM(VailAdapter& adapter) {
     EEPROM.write(EEPROM_TX_NOTE_ADDR, DEFAULT_TONE_NOTE);
     EEPROM.write(EEPROM_RADIO_KEYER_MODE_ADDR, 0); // Default: Radio Keyer Mode OFF
     EEPROM.write(EEPROM_VALID_FLAG_ADDR, EEPROM_VALID_VALUE);
-    EEPROM.commit();
+    eeprom_commit();
     Serial.println("EEPROM initialized. Loading these defaults now.");
     loadSettingsFromEEPROM(adapter);
   }
@@ -114,7 +130,7 @@ void saveMemoryToEEPROM(uint8_t slotNumber, const CWMemory& memory) {
     EEPROM.put(dataAddr + (i * 2), memory.transitions[i]);
   }
 
-  EEPROM.commit();
+  eeprom_commit();
 
   Serial.print("Saved memory slot ");
   Serial.print(slotNumber + 1);
@@ -172,7 +188,7 @@ void clearMemoryInEEPROM(uint8_t slotNumber) {
   // Write 0 for the transition count
   uint16_t zero = 0;
   EEPROM.put(baseAddr, zero);
-  EEPROM.commit();
+  eeprom_commit();
 
   Serial.print("Cleared memory slot ");
   Serial.println(slotNumber + 1);
