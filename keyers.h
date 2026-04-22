@@ -26,7 +26,7 @@ public:
     virtual bool TxClosed(int relay);
     virtual void Tx(int relay, bool closed);
     virtual void Key(Paddle key, bool pressed);
-    virtual void Tick(unsigned int millis);
+    virtual void Tick(unsigned long millis);
 };
 
 Keyer *GetKeyerByNumber(int n, Transmitter *output);

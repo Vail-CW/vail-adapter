@@ -8,6 +8,7 @@
 // #define Advanced_PCB
 #define NO_PCB_GITHUB_SPECS
 // #define TRRS_TRINKEY
+// #define ARDUINO_MICRO_BOARD
 
 // --- PIN DEFINITIONS BASED ON SELECTION ---
 
@@ -72,6 +73,38 @@
   #define LED_OFF (!LED_ON)
   #define BOARD_NAME "No PCB (GitHub Specs)"
   // Radio pins not defined, so HAS_RADIO_OUTPUT will not be defined
+#endif
+
+#ifdef ARDUINO_MICRO_BOARD
+  // Arduino Micro (ATmega32U4) — AVR/5V board.
+  // This target is memory-constrained and plug-and-play only:
+  //   - No capacitive touch hardware (ATmega32U4 lacks FreeTouch)
+  //   - No button menu (no resistor ladder supported in current design)
+  //   - No built-in LED state changes
+  //   - 1024 bytes EEPROM (vs 16KB Flash-emulated on SAMD21)
+  #define DIT_PIN 2
+  #define DAH_PIN 1
+  #define KEY_PIN 0
+  #define PIEZO_PIN 10
+  // BUTTON_PIN intentionally not defined — no menu on Micro
+  #define NO_CAPACITIVE_TOUCH
+  #define NO_LED
+  #define LED_ON true
+  #define LED_OFF (!LED_ON)
+  #define BOARD_NAME "Arduino Micro"
+  // Optional radio outputs on Micro (A2/A3 are 5V — verify radio tolerance):
+  // #define RADIO_DIT_PIN A3
+  // #define RADIO_DAH_PIN A2
+  // #define HAS_RADIO_OUTPUT
+
+  // EEPROM/RAM-constrained: ATmega32U4 has 1024 bytes EEPROM (vs 16KB on SAMD21)
+  // and only 2560 bytes RAM. Shrink CW memory slot dimensions to fit.
+  //   3 slots × (100 transitions × 2 bytes + 2 length bytes) = 606 bytes EEPROM
+  //   Plus 6 bytes settings = 612 bytes EEPROM used / 1024 available.
+  //   Each in-RAM CWMemory is 202 bytes; 3 slots + RecordingState ≈ ~800 bytes RAM.
+  #define MAX_MEMORY_SLOTS 3
+  #define MAX_TRANSITIONS_PER_MEMORY 100
+  #define MAX_RECORDING_DURATION_MS 12000
 #endif
 
 #ifdef TRRS_TRINKEY

@@ -28,12 +28,22 @@ void PolyBuzzer::update() {
     noTone(this->pin);
 }
 
+// On single-slot builds (AVR), remap any higher-priority slot request to
+// slot 0 so overlay tones still play audibly — just without the priority
+// stacking behavior the SAMD build supports.
+static inline int clampSlot(int slot) {
+    if (slot >= POLYBUZZER_MAX_TONES) return POLYBUZZER_MAX_TONES - 1;
+    if (slot < 0) return 0;
+    return slot;
+}
+
 void PolyBuzzer::Tone(int slot, unsigned int frequency) {
+    slot = clampSlot(slot);
     Serial.print("Setting tone in slot ");
     Serial.print(slot);
     Serial.print(" to frequency: ");
     Serial.println(frequency);
-    
+
     this->tones[slot] = frequency;
     this->update();
 }
@@ -42,22 +52,24 @@ void PolyBuzzer::Note(int slot, uint8_t note) {
     if (note > 127) {
         note = 127;
     }
-    
+    slot = clampSlot(slot);
+
     Serial.print("Setting note in slot ");
     Serial.print(slot);
     Serial.print(" to MIDI note #");
     Serial.print(note);
     Serial.print(" (frequency: ");
-    Serial.print(equalTemperamentNote[note]);
+    Serial.print(GET_EQUAL_TEMPERAMENT_NOTE(note));
     Serial.println("Hz)");
-    
-    this->Tone(slot, equalTemperamentNote[note]);
+
+    this->Tone(slot, GET_EQUAL_TEMPERAMENT_NOTE(note));
 }
 
 void PolyBuzzer::NoTone(int slot) {
+    slot = clampSlot(slot);
     Serial.print("Clearing tone in slot ");
     Serial.println(slot);
-    
+
     tones[slot] = 0;
     this->update();
 }

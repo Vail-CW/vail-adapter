@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <Keyboard.h>
 #include <MIDIUSB.h>
-#include <cstddef>
+#include <stddef.h>
 #include "keyers.h"
 #include "adapter.h"
 #include "polybuzzer.h"
@@ -824,7 +824,7 @@ break;
 }
 }
 
-void VailAdapter::Tick(unsigned int currentMillis) {
+void VailAdapter::Tick(unsigned long currentMillis) {
 // Check for dit hold during each tick
 if (this->ditIsHeld && this->buzzerEnabled) {
     unsigned long holdTime = currentMillis - this->ditHoldStartTime;

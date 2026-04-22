@@ -2,7 +2,9 @@
 
 #include <MIDIUSB.h>
 #include <Keyboard.h>
+#ifndef NO_CAPACITIVE_TOUCH
 #include <Adafruit_FreeTouch.h>
+#endif
 #include "bounce2.h"
 #include "touchbounce.h"
 #include "adapter.h"
@@ -165,7 +167,7 @@ void setLED() {
 }
 
 void loop() {
-  unsigned int currentTime = millis();
+  unsigned long currentTime = millis();
   midiEventPacket_t event = MidiUSB.read();
 
   setLED();
@@ -249,7 +251,7 @@ void loop() {
           // Memory management mode: piezo only (bypass buzzer enable check)
           // Convert MIDI note to frequency
           uint8_t midiNote = adapter.getTxNote();
-          int frequency = equalTemperamentNote[midiNote];
+          int frequency = GET_EQUAL_TEMPERAMENT_NOTE(midiNote);
           tone(PIEZO_PIN, frequency);
         }
       } else {

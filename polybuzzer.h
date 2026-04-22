@@ -1,7 +1,15 @@
 #pragma once
 
 #include <Arduino.h>
-#define POLYBUZZER_MAX_TONES 2
+
+// On memory-constrained AVR boards (e.g. Arduino Micro / ATmega32U4)
+// drop to a single tone slot to save SRAM. SAMD21 keeps 2 slots for
+// the priority overlay behavior used by DisableBuzzer / Morse playback.
+#if defined(__AVR__)
+  #define POLYBUZZER_MAX_TONES 1
+#else
+  #define POLYBUZZER_MAX_TONES 2
+#endif
 
 // PolyBuzzer provides a proritized monophonic buzzer.
 //
