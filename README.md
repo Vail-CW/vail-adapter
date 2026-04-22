@@ -41,6 +41,17 @@ License: MIT
 * **Note:** No buttons, capacitive touch, headphone jack, or radio output. Settings changed via MIDI only.
 * See [TRRS_TRINKEY_BUILD.md](TRRS_TRINKEY_BUILD.md) for detailed instructions
 
+# Experimental: Arduino Micro (ATmega32U4)
+* [Arduino Micro](https://store.arduino.cc/products/arduino-micro) — 5V AVR alternative to SAMD21 boards
+* **Limitations vs. SAMD21:**
+  * No capacitive touch (hardware not present on ATmega32U4)
+  * No button menu (no resistor ladder support)
+  * No LED status indicators
+  * CW memory slots shortened: 3 × ~12 seconds (vs. 25 seconds on SAMD21)
+  * Radio output on A2/A3 uses 5V logic — check radio tolerance or use a level shifter
+* **Flashing:** uses WebSerial + AVR109 (Caterina bootloader). No UF2 drag-and-drop — flash from [vailadapter.com](https://vailadapter.com) in Chrome/Edge/Opera, or via `arduino-cli upload --fqbn arduino:avr:micro`.
+* See [doc/advanced-install.md](doc/advanced-install.md) for details.
+
 # Setting Up
 
 * [Easy Setup](doc/easy-install.md)
