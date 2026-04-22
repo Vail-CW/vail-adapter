@@ -152,7 +152,11 @@
 #define DEFAULT_ADAPTER_DIT_DURATION_MS 100
 
 #define MILLISECOND 1
-#define SECOND (1000 * MILLISECOND)
+// NOTE: a `#define SECOND (1000 * MILLISECOND)` used to live here but was
+// never referenced in the codebase. Recent Adafruit FreeTouch / ASF headers
+// now define SECOND as an enum/constant, which collides with a macro
+// redefinition and breaks every SAMD21 compile that includes FreeTouch.
+// (Trinkey and Micro skip FreeTouch via NO_CAPACITIVE_TOUCH and were fine.)
 
 // Morse code timing at 20 WPM (for startup sound, not for keyer logic directly)
 #define DOT_DURATION 60
