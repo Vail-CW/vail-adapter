@@ -58,6 +58,7 @@ void playMorseChar(char c) {
     case 'R': playMorseDit(); playMorseDah(); playMorseDit(); break;
     case 'S': playMorseDit(); playMorseDit(); playMorseDit(); break;
     case 'T': playMorseDah(); break;
+    case 'V': playMorseDit(); playMorseDit(); playMorseDit(); playMorseDah(); break;
     case 'Y': playMorseDah(); playMorseDit(); playMorseDah(); playMorseDah(); break;
     case '1': playMorseDit(); playMorseDah(); playMorseDah(); playMorseDah(); playMorseDah(); break;
     case '2': playMorseDit(); playMorseDit(); playMorseDah(); playMorseDah(); playMorseDah(); break;

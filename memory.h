@@ -37,10 +37,15 @@
 
 // EEPROM Memory Map
 // -----------------
-// Addresses 0-5: Existing settings (see config.h)
-// Address 6: Start of CW memory storage
+// Addresses 0-6: Existing settings (see config.h)
+// Address 7: Start of CW memory storage
+//
+// NOTE: This start address moved from 6 to 7 when the paddle-swap flag
+// (EEPROM_PADDLES_SWAPPED_ADDR = 6) was added. On first boot after that
+// firmware bump, previously-recorded CW memories will read as invalid
+// counts and be auto-cleared by loadMemoryFromEEPROM().
 
-#define EEPROM_MEMORY_START_ADDR 6
+#define EEPROM_MEMORY_START_ADDR 7
 
 // Memory slot configuration (can be overridden by config.h for constrained targets)
 #ifndef MAX_MEMORY_SLOTS

@@ -171,6 +171,7 @@
 #define EEPROM_TX_NOTE_ADDR 3
 #define EEPROM_VALID_FLAG_ADDR 4
 #define EEPROM_RADIO_KEYER_MODE_ADDR 5
+#define EEPROM_PADDLES_SWAPPED_ADDR 6
 #define EEPROM_VALID_VALUE 0x42
 
 // Feature activation thresholds

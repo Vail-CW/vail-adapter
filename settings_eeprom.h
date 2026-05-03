@@ -8,8 +8,10 @@
 // EEPROM operations for adapter settings
 void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote);
 void saveRadioKeyerModeToEEPROM(bool radioKeyerMode);
+void savePaddlesSwappedToEEPROM(bool paddlesSwapped);
 void loadSettingsFromEEPROM(VailAdapter& adapter);
 void loadRadioKeyerModeFromEEPROM(VailAdapter& adapter);
+void loadPaddlesSwappedFromEEPROM(VailAdapter& adapter);
 uint8_t loadToneFromEEPROM();
 
 // EEPROM operations for CW memory slots

@@ -107,6 +107,7 @@ void setup() {
 
   loadSettingsFromEEPROM(adapter);
   loadRadioKeyerModeFromEEPROM(adapter);
+  loadPaddlesSwappedFromEEPROM(adapter);
 
 #ifdef BUTTON_PIN
   loadMemoriesFromEEPROM(memorySlots);
@@ -122,6 +123,7 @@ void setup() {
   Serial.print("Buzzer initially: "); Serial.println(adapter.isBuzzerEnabled() ? "ON" : "OFF");
   Serial.print("Radio Mode initially: "); Serial.println(adapter.isRadioModeActive() ? "ON" : "OFF");
   Serial.print("Radio Keyer Mode initially: "); Serial.println(adapter.isRadioKeyerMode() ? "ON" : "OFF");
+  Serial.print("Paddles Swapped initially: "); Serial.println(adapter.isPaddlesSwapped() ? "ON" : "OFF");
 
   Keyboard.begin();
   MidiUSB.flush();

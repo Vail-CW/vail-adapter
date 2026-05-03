@@ -23,6 +23,7 @@ private:
 
     bool radioModeActive = false;
     bool radioKeyerMode = false;
+    bool paddlesSwapped = false;
     unsigned long lastCapDahTime = 0;
     unsigned int capDahPressCount = 0;
     unsigned long dahHoldStartTime = 0;
@@ -73,6 +74,9 @@ public:
     void SetRadioKeyerMode(bool enabled);
     void ResetDahCounter();
     void ResetDahHoldCounter();
+
+    bool isPaddlesSwapped() const;
+    void SetPaddlesSwapped(bool swapped, bool announce);
 
     uint8_t getCurrentKeyerType() const;
     uint16_t getDitDuration() const;

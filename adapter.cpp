@@ -5,6 +5,7 @@
 #include "keyers.h"
 #include "adapter.h"
 #include "polybuzzer.h"
+#include "morse_audio.h"
 
 // For SAMD21 software reset if needed by other parts of code
 #if defined(ARDUINO_ARCH_SAMD)
@@ -12,12 +13,14 @@
 #endif
 
 extern void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote);
+extern void savePaddlesSwappedToEEPROM(bool paddlesSwapped);
 
 VailAdapter::VailAdapter(unsigned int PiezoPin) {
 this->buzzer = new PolyBuzzer(PiezoPin);
 this->buzzerEnabled = true;
 this->radioModeActive = false;
 this->radioKeyerMode = false;
+this->paddlesSwapped = false;
 this->keyIsPressed = false;
 this->keyPressStartTime = 0;
 this->ditHoldStartTime = 0;
@@ -73,6 +76,31 @@ return this->radioKeyerMode;
 
 void VailAdapter::SetRadioKeyerMode(bool enabled) {
 this->radioKeyerMode = enabled;
+}
+
+bool VailAdapter::isPaddlesSwapped() const {
+return this->paddlesSwapped;
+}
+
+void VailAdapter::SetPaddlesSwapped(bool swapped, bool announce) {
+if (this->paddlesSwapped == swapped) {
+    return;
+}
+
+// Cleanly stop any in-flight transmission before changing input mapping
+if (this->keyer) this->keyer->Reset();
+if (this->keyer) this->keyer->Release();
+if (this->keyIsPressed) this->EndTx();
+this->ReleaseAllKeys();
+
+this->paddlesSwapped = swapped;
+savePaddlesSwappedToEEPROM(this->paddlesSwapped);
+Serial.print("Paddles swapped: "); Serial.println(this->paddlesSwapped ? "ON" : "OFF");
+
+if (announce) {
+    // Announce the change in Morse: "INVERT"
+    playMorseWord("INVERT");
+}
 }
 
 void VailAdapter::ResetDitCounter() {
@@ -637,6 +665,13 @@ Serial.println("Radio output not configured. Radio Keyer mode unavailable.");
 void VailAdapter::ProcessPaddleInput(Paddle paddle, bool pressed, bool isCapacitive) {
 unsigned long currentTime = millis();
 
+// Apply paddle swap to physical and capacitive dit/dah inputs.
+// Straight key input is intentionally unaffected.
+if (this->paddlesSwapped) {
+    if (paddle == PADDLE_DIT) paddle = PADDLE_DAH;
+    else if (paddle == PADDLE_DAH) paddle = PADDLE_DIT;
+}
+
 // Track dit paddle state for hold detection
 if (paddle == PADDLE_DIT) {
     if (pressed && !this->ditIsHeld) {
@@ -795,6 +830,21 @@ this->txNote = event.byte3;
 Serial.print("TX Note set to: "); Serial.println(this->txNote);
 
 saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote);
+break;
+case 3:
+{
+    // CC3 - Paddle swap.
+    //   0..63   -> swap OFF
+    //   64..126 -> swap ON
+    //   127     -> toggle current state
+    bool desired;
+    if (event.byte3 == 127) {
+        desired = !this->paddlesSwapped;
+    } else {
+        desired = (event.byte3 >= 64);
+    }
+    this->SetPaddlesSwapped(desired, true);
+}
 break;
 }
 break;

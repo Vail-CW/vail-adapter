@@ -290,6 +290,7 @@ See `MIDI_INTEGRATION_SPEC.md` for full protocol details. Key points:
 - **CC0** switches between keyboard and MIDI modes
 - **CC1** sets dit duration (value × 2 milliseconds)
 - **CC2** sets sidetone MIDI note number
+- **CC3** swaps dit/dah input mapping (0-63 = off, 64-126 = on, 127 = toggle); persists in EEPROM and announces "INVERT" in Morse on every state change. Affects physical and capacitive dit/dah inputs only — radio output pin assignments are unchanged.
 - **PC** selects keyer mode (0-9)
 - In MIDI mode with passthrough keyer (mode 0), outputs Note On/Off for C (straight), C# (dit), D (dah)
 
@@ -335,6 +336,7 @@ All EEPROM operations have been consolidated into a dedicated module:
 - TX note (address 3)
 - Valid flag (address 4, value 0x42)
 - Radio keyer mode (address 5)
+- Paddles swapped flag (address 6)
 - CW Memory Slot 1 (EEPROM_MEMORY_1_ADDR): 400 bytes
 - CW Memory Slot 2 (EEPROM_MEMORY_2_ADDR): 400 bytes
 - CW Memory Slot 3 (EEPROM_MEMORY_3_ADDR): 400 bytes

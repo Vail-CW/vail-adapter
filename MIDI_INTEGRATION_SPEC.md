@@ -45,6 +45,23 @@ The Vail Adapter responds to the following MIDI message types:
 - **Notes**: Uses equal temperament tuning
 - **Example**: `B0 02 45` sets sidetone to A2 (110Hz)
 
+#### CC3 - Paddle Swap (Dit/Dah Inversion)
+**Purpose**: Swap which input pad is treated as dit vs. dah. Affects both physical paddle pins (DIT_PIN / DAH_PIN) and the capacitive touch pads (QT_DIT_PIN / QT_DAH_PIN). The straight-key input (PADDLE_STRAIGHT) and the radio output pin assignments (RADIO_DIT_PIN / RADIO_DAH_PIN) are intentionally **not** affected — only the input mapping is inverted.
+
+- **Message**: `B0 03 xx`
+- **Values**:
+  - `00-3F` (0-63): Set paddle swap **OFF** (normal mapping)
+  - `40-7E` (64-126): Set paddle swap **ON** (dit and dah inputs swapped)
+  - `7F` (127): **Toggle** the current swap state
+- **Default**: OFF
+- **Persistence**: Saved to EEPROM and restored on power-up
+- **Audible feedback**: Whenever the state actually changes (in either direction), the adapter plays "INVERT" in Morse code on the sidetone buzzer at the user's current WPM and tone. No tone is played if the command does not change the current state.
+- **Side effects on change**: Any in-flight transmission is ended and all keyboard/MIDI keys are released cleanly before the new mapping takes effect.
+- **Examples**:
+  - `B0 03 7F` → toggle swap (announces "INVERT" if state changed)
+  - `B0 03 00` → force swap OFF
+  - `B0 03 40` → force swap ON
+
 ### Program Change Messages (0xCn)
 
 #### Keyer Mode Selection
