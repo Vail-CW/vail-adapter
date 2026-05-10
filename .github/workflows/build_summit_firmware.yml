@@ -93,10 +93,19 @@ jobs:
       - name: Build firmware
         working-directory: vail-summit
         run: |
+          # -mtext-section-literals is required for sketches that produce a
+          # .text section large enough to overrun the l32r literal-pool range
+          # (~32KB). The ESP32-S3 variant of the platform.txt sets this flag
+          # for compiler.cpp.flags.esp32s3, but on a fresh CI install the s3
+          # variant isn't always picked up — adding it explicitly via
+          # --build-property guarantees the sketch gets it. ArduinoJson 7.0.4
+          # in particular pushes us over the boundary without it.
           arduino-cli compile \
             --fqbn "esp32:esp32:adafruit_feather_esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,PSRAM=enabled,FlashSize=4M,USBMode=hwcdc" \
+            --build-property "compiler.cpp.extra_flags=-mtext-section-literals" \
             --output-dir build \
             --export-binaries \
+            --clean \
             .
 
           echo "Built files:"
