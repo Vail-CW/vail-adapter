@@ -1,0 +1,7 @@
+Vail Summit firmware
+Version:        0.527
+Firmware date:  2026-05-10
+Built from:     Vail-CW/vail-summit @ pr1-merge-and-fix
+Source commit:  f53a920abe63ca3ef7a6854247359a718c612d2e
+Deploy target:  firmware_files/test/summit
+Built at:       2026-05-10T14:34:43Z
