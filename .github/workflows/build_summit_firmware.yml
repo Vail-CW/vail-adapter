@@ -18,6 +18,22 @@ on:
           - stable  # → docs/firmware_files/summit/       (production)
           - none    # → build only, artifacts only, no commit
 
+# Pinned to match the local C:\acli build environment documented in the
+# vail-summit project guidelines. Update versions here AND in the local
+# arduino-cli/user/libraries/ so CI and local stay in sync.
+env:
+  ESP32_CORE_VERSION: "2.0.14"
+  LIB_LOVYANGFX: "1.1.16"
+  LIB_LVGL: "8.3.11"
+  LIB_ADAFRUIT_LC709203F: "1.3.4"
+  LIB_ADAFRUIT_BUSIO: "1.17.4"
+  LIB_ADAFRUIT_MAX1704X: "1.0.3"
+  LIB_ARDUINOJSON: "7.0.4"
+  LIB_WEBSOCKETS: "2.4.1"
+  LIB_ESPASYNCWEBSERVER: "3.6.0"
+  LIB_ASYNCTCP: "3.3.2"
+  LIB_NIMBLE_ARDUINO: "1.4.2"
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -33,19 +49,44 @@ jobs:
           fetch-depth: 1
           path: vail-summit
 
-      - name: Build firmware with bundled arduino-cli
-        working-directory: vail-summit/arduino-cli
+      - name: Setup Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 platform (pinned)
         run: |
-          chmod +x ./arduino-cli
-          ./arduino-cli compile \
-            --config-file arduino-cli.yaml \
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls \
+            https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32@${ESP32_CORE_VERSION}
+
+      - name: Install pinned libraries
+        run: |
+          arduino-cli lib install "LovyanGFX@${LIB_LOVYANGFX}"
+          arduino-cli lib install "lvgl@${LIB_LVGL}"
+          arduino-cli lib install "Adafruit LC709203F@${LIB_ADAFRUIT_LC709203F}"
+          arduino-cli lib install "Adafruit BusIO@${LIB_ADAFRUIT_BUSIO}"
+          arduino-cli lib install "Adafruit MAX1704X@${LIB_ADAFRUIT_MAX1704X}"
+          arduino-cli lib install "ArduinoJson@${LIB_ARDUINOJSON}"
+          arduino-cli lib install "WebSockets@${LIB_WEBSOCKETS}"
+          arduino-cli lib install "ESP Async WebServer@${LIB_ESPASYNCWEBSERVER}"
+          arduino-cli lib install "Async TCP@${LIB_ASYNCTCP}"
+          arduino-cli lib install "NimBLE-Arduino@${LIB_NIMBLE_ARDUINO}"
+
+          echo "Installed libraries:"
+          arduino-cli lib list
+
+      - name: Build firmware
+        working-directory: vail-summit
+        run: |
+          arduino-cli compile \
             --fqbn "esp32:esp32:adafruit_feather_esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,PSRAM=enabled,FlashSize=4M,USBMode=hwcdc" \
-            --output-dir ../build \
+            --output-dir build \
             --export-binaries \
-            ..
+            .
 
           echo "Built files:"
-          ls -lh ../build
+          ls -lh build
 
       - name: Normalize binary filenames
         working-directory: vail-summit/build
@@ -56,7 +97,6 @@ jobs:
               mv "$f" "${f#vail-summit.ino.}"
             fi
           done
-          # Rename merged.bin too if present
           [ -f vail-summit.ino.merged.bin ] && mv vail-summit.ino.merged.bin merged.bin || true
           echo "Final files:"
           ls -lh
