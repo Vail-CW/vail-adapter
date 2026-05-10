@@ -125,15 +125,21 @@ jobs:
           echo "Final files:"
           ls -lh
 
-      - name: Capture firmware version from config.h
+      - name: Capture firmware version + source commit
         id: ver
         working-directory: vail-summit
         run: |
           VER=$(grep -E '^#define[[:space:]]+FIRMWARE_VERSION' src/core/config.h | sed -E 's/.*"([^"]+)".*/\1/')
           DATE=$(grep -E '^#define[[:space:]]+FIRMWARE_DATE' src/core/config.h | sed -E 's/.*"([^"]+)".*/\1/')
+          # Capture the actual checked-out vail-summit SHA. github.sha refers
+          # to the workflow repo (vail-adapter), which is misleading in
+          # BUILD_INFO since the firmware is built from vail-summit source.
+          SOURCE_SHA=$(git rev-parse HEAD)
           echo "version=${VER:-unknown}" >> $GITHUB_OUTPUT
           echo "date=${DATE:-unknown}" >> $GITHUB_OUTPUT
+          echo "source_sha=${SOURCE_SHA}" >> $GITHUB_OUTPUT
           echo "Firmware version: $VER ($DATE)"
+          echo "Source commit (vail-summit): $SOURCE_SHA"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -200,7 +206,8 @@ jobs:
           Version:        ${{ steps.ver.outputs.version }}
           Firmware date:  ${{ steps.ver.outputs.date }}
           Built from:     Vail-CW/vail-summit @ ${{ inputs.source_branch }}
-          Source commit:  ${{ github.sha }}
+          Source commit:  ${{ steps.ver.outputs.source_sha }}
+          Workflow:       Vail-CW/vail-adapter @ ${{ github.sha }}
           Deploy target:  ${{ steps.target.outputs.dir }}
           Built at:       $(date -u +"%Y-%m-%dT%H:%M:%SZ")
           EOF
