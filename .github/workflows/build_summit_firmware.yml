@@ -114,13 +114,14 @@ jobs:
       - name: Normalize binary filenames
         working-directory: vail-summit/build
         run: |
-          # arduino-cli prefixes outputs with "<sketch>.ino." — strip that.
-          for f in vail-summit.ino.bootloader.bin vail-summit.ino.partitions.bin vail-summit.ino.bin; do
-            if [ -f "$f" ]; then
-              mv "$f" "${f#vail-summit.ino.}"
-            fi
-          done
-          [ -f vail-summit.ino.merged.bin ] && mv vail-summit.ino.merged.bin merged.bin || true
+          # arduino-cli emits files prefixed with "<sketch>.ino." — rename to
+          # the names the updater serves. Three explicit renames (a generic
+          # for-loop with parameter expansion would map vail-summit.ino.bin
+          # to "bin" instead of "vail-summit.bin").
+          [ -f vail-summit.ino.bootloader.bin ] && mv vail-summit.ino.bootloader.bin bootloader.bin
+          [ -f vail-summit.ino.partitions.bin ] && mv vail-summit.ino.partitions.bin partitions.bin
+          [ -f vail-summit.ino.bin ]            && mv vail-summit.ino.bin            vail-summit.bin
+          [ -f vail-summit.ino.merged.bin ]     && mv vail-summit.ino.merged.bin     merged.bin || true
           echo "Final files:"
           ls -lh
 
