@@ -170,6 +170,9 @@ jobs:
           ref: master
           token: ${{ secrets.GITHUB_TOKEN }}
           path: vail-adapter
+          # Default cleans GITHUB_WORKSPACE before checkout, which would
+          # wipe the freshly built vail-summit/build/ artifacts. Disable.
+          clean: false
 
       - name: Copy firmware files into vail-adapter
         if: ${{ inputs.deploy_target != 'none' }}
