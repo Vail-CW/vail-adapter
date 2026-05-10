@@ -76,6 +76,20 @@ jobs:
           echo "Installed libraries:"
           arduino-cli lib list
 
+      - name: Place lv_conf.h next to lvgl library
+        # vail-summit ships its lv_conf.h at the repo root. LVGL's
+        # lv_conf_internal.h expects it at "../../lv_conf.h" relative to
+        # src/misc/ — i.e. one level above the lvgl/ library folder. Local
+        # builds put it in arduino-cli/user/libraries/lv_conf.h. Mirror that
+        # by copying the source-controlled copy into ~/Arduino/libraries/.
+        run: |
+          if [ ! -f vail-summit/lv_conf.h ]; then
+            echo "ERROR: vail-summit/lv_conf.h not found in source checkout"
+            exit 1
+          fi
+          cp vail-summit/lv_conf.h ~/Arduino/libraries/lv_conf.h
+          echo "Placed lv_conf.h at: $(ls -l ~/Arduino/libraries/lv_conf.h)"
+
       - name: Build firmware
         working-directory: vail-summit
         run: |
