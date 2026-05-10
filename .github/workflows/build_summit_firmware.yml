@@ -162,6 +162,18 @@ jobs:
           echo "msg=$COMMIT_MSG" >> $GITHUB_OUTPUT
           echo "Target: docs/$TARGET_DIR"
 
+      - name: Stash build outputs outside the workspace before deploy checkout
+        # actions/checkout (run again below for vail-adapter) reliably wipes
+        # GITHUB_WORKSPACE even with clean: false in some scenarios. Move the
+        # built binaries to /tmp where neither checkout will touch them.
+        if: ${{ inputs.deploy_target != 'none' }}
+        run: |
+          mkdir -p /tmp/summit-build
+          cp vail-summit/build/bootloader.bin   /tmp/summit-build/
+          cp vail-summit/build/partitions.bin   /tmp/summit-build/
+          cp vail-summit/build/vail-summit.bin  /tmp/summit-build/
+          ls -lh /tmp/summit-build/
+
       - name: Checkout vail-adapter master for deploy
         if: ${{ inputs.deploy_target != 'none' }}
         uses: actions/checkout@v4
@@ -170,8 +182,6 @@ jobs:
           ref: master
           token: ${{ secrets.GITHUB_TOKEN }}
           path: vail-adapter
-          # Default cleans GITHUB_WORKSPACE before checkout, which would
-          # wipe the freshly built vail-summit/build/ artifacts. Disable.
           clean: false
 
       - name: Copy firmware files into vail-adapter
@@ -179,9 +189,9 @@ jobs:
         run: |
           DEST="vail-adapter/docs/${{ steps.target.outputs.dir }}"
           mkdir -p "$DEST"
-          cp vail-summit/build/bootloader.bin "$DEST/"
-          cp vail-summit/build/partitions.bin "$DEST/"
-          cp vail-summit/build/vail-summit.bin "$DEST/"
+          cp /tmp/summit-build/bootloader.bin   "$DEST/"
+          cp /tmp/summit-build/partitions.bin   "$DEST/"
+          cp /tmp/summit-build/vail-summit.bin  "$DEST/"
 
           # Provenance for testers
           cat > "$DEST/BUILD_INFO.txt" <<EOF
