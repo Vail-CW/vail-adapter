@@ -4,120 +4,144 @@ on:
   workflow_dispatch:
     inputs:
       source_branch:
-        description: 'Branch to build firmware from'
+        description: 'Branch in Vail-CW/vail-summit to build from'
         required: true
-        default: 'vail-summit'
+        default: 'main'
         type: string
+      deploy_target:
+        description: 'Where to deploy the built firmware'
+        required: true
+        default: 'test'
+        type: choice
+        options:
+          - test    # → docs/firmware_files/test/summit/  (beta channel on live site)
+          - stable  # → docs/firmware_files/summit/       (production)
+          - none    # → build only, artifacts only, no commit
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
-      - name: Checkout source branch
+      - name: Checkout vail-summit source branch
         uses: actions/checkout@v4
         with:
+          repository: Vail-CW/vail-summit
           ref: ${{ inputs.source_branch }}
-          fetch-depth: 0  # Fetch all history for all branches
+          fetch-depth: 1
+          path: vail-summit
 
-      - name: Setup Arduino CLI
-        uses: arduino/setup-arduino-cli@v1
-
-      - name: Install ESP32 platform
+      - name: Build firmware with bundled arduino-cli
+        working-directory: vail-summit/arduino-cli
         run: |
-          arduino-cli config init
-          arduino-cli config add board_manager.additional_urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-          arduino-cli core update-index
-          arduino-cli core install esp32:esp32
-
-      - name: Install required libraries
-        run: |
-          arduino-cli lib install "Adafruit GFX Library"
-          arduino-cli lib install "Adafruit ST7735 and ST7789 Library"
-          arduino-cli lib install "Adafruit MAX1704X"
-          arduino-cli lib install "Adafruit LC709203F"
-          arduino-cli lib install "WebSockets"
-          arduino-cli lib install "ArduinoJson"
-
-      - name: Build firmware
-        run: |
-          cd morse_trainer
-          # Arduino requires sketch name to match folder name
-          if [ ! -f "morse_trainer.ino" ]; then
-            # If vail-summit.ino exists, rename it
-            if [ -f "vail-summit.ino" ]; then
-              mv vail-summit.ino morse_trainer.ino
-            fi
-          fi
-
-          # Build for ESP32-S3 Feather
-          arduino-cli compile \
-            --fqbn esp32:esp32:adafruit_feather_esp32s3 \
+          chmod +x ./arduino-cli
+          ./arduino-cli compile \
+            --config-file arduino-cli.yaml \
+            --fqbn "esp32:esp32:adafruit_feather_esp32s3:CDCOnBoot=cdc,PartitionScheme=huge_app,PSRAM=enabled,FlashSize=4M,USBMode=hwcdc" \
             --output-dir ../build \
             --export-binaries \
-            morse_trainer.ino
+            ..
 
-          # List generated files
-          echo "Generated files:"
-          ls -lh ../build/
+          echo "Built files:"
+          ls -lh ../build
 
-      - name: Rename binary files
+      - name: Normalize binary filenames
+        working-directory: vail-summit/build
         run: |
-          cd build
-          # Rename files to standard names
-          mv morse_trainer.ino.bootloader.bin bootloader.bin || true
-          mv morse_trainer.ino.partitions.bin partitions.bin || true
-          mv morse_trainer.ino.bin vail-summit.bin || true
-
-          echo "Renamed files:"
+          # arduino-cli prefixes outputs with "<sketch>.ino." — strip that.
+          for f in vail-summit.ino.bootloader.bin vail-summit.ino.partitions.bin vail-summit.ino.bin; do
+            if [ -f "$f" ]; then
+              mv "$f" "${f#vail-summit.ino.}"
+            fi
+          done
+          # Rename merged.bin too if present
+          [ -f vail-summit.ino.merged.bin ] && mv vail-summit.ino.merged.bin merged.bin || true
+          echo "Final files:"
           ls -lh
 
-      - name: Checkout master branch
+      - name: Capture firmware version from config.h
+        id: ver
+        working-directory: vail-summit
         run: |
-          git fetch origin master:master
-          git checkout master
-
-      - name: Copy binaries to firmware directory
-        run: |
-          mkdir -p docs/firmware_files/summit
-          cp build/bootloader.bin docs/firmware_files/summit/
-          cp build/partitions.bin docs/firmware_files/summit/
-          cp build/vail-summit.bin docs/firmware_files/summit/
-
-          echo "Files copied to docs/firmware_files/summit/:"
-          ls -lh docs/firmware_files/summit/
-
-      - name: Commit and push firmware
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git add docs/firmware_files/summit/*.bin
-
-          # Check if there are changes to commit
-          if git diff --staged --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Update Summit firmware from ${{ inputs.source_branch }} branch [skip ci]
-
-            Built from branch: ${{ inputs.source_branch }}
-            Commit: ${{ github.sha }}
-
-            Firmware files:
-            - bootloader.bin
-            - partitions.bin
-            - vail-summit.bin
-
-            🤖 Generated with GitHub Actions"
-
-            git push origin master
-          fi
+          VER=$(grep -E '^#define[[:space:]]+FIRMWARE_VERSION' src/core/config.h | sed -E 's/.*"([^"]+)".*/\1/')
+          DATE=$(grep -E '^#define[[:space:]]+FIRMWARE_DATE' src/core/config.h | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "version=${VER:-unknown}" >> $GITHUB_OUTPUT
+          echo "date=${DATE:-unknown}" >> $GITHUB_OUTPUT
+          echo "Firmware version: $VER ($DATE)"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: summit-firmware-${{ github.sha }}
+          name: summit-firmware-${{ steps.ver.outputs.version }}-${{ github.sha }}
           path: |
-            build/bootloader.bin
-            build/partitions.bin
-            build/vail-summit.bin
+            vail-summit/build/bootloader.bin
+            vail-summit/build/partitions.bin
+            vail-summit/build/vail-summit.bin
           retention-days: 30
+
+      - name: Determine deploy target directory
+        id: target
+        if: ${{ inputs.deploy_target != 'none' }}
+        run: |
+          case "${{ inputs.deploy_target }}" in
+            stable)
+              TARGET_DIR="firmware_files/summit"
+              COMMIT_MSG="Update Summit firmware to v${{ steps.ver.outputs.version }} (from ${{ inputs.source_branch }})"
+              ;;
+            test)
+              TARGET_DIR="firmware_files/test/summit"
+              COMMIT_MSG="chore: update TEST Summit firmware from ${{ inputs.source_branch }} (v${{ steps.ver.outputs.version }})"
+              ;;
+          esac
+          echo "dir=$TARGET_DIR" >> $GITHUB_OUTPUT
+          echo "msg=$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "Target: docs/$TARGET_DIR"
+
+      - name: Checkout vail-adapter master for deploy
+        if: ${{ inputs.deploy_target != 'none' }}
+        uses: actions/checkout@v4
+        with:
+          repository: Vail-CW/vail-adapter
+          ref: master
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: vail-adapter
+
+      - name: Copy firmware files into vail-adapter
+        if: ${{ inputs.deploy_target != 'none' }}
+        run: |
+          DEST="vail-adapter/docs/${{ steps.target.outputs.dir }}"
+          mkdir -p "$DEST"
+          cp vail-summit/build/bootloader.bin "$DEST/"
+          cp vail-summit/build/partitions.bin "$DEST/"
+          cp vail-summit/build/vail-summit.bin "$DEST/"
+
+          # Provenance for testers
+          cat > "$DEST/BUILD_INFO.txt" <<EOF
+          Vail Summit firmware
+          Version:        ${{ steps.ver.outputs.version }}
+          Firmware date:  ${{ steps.ver.outputs.date }}
+          Built from:     Vail-CW/vail-summit @ ${{ inputs.source_branch }}
+          Source commit:  ${{ github.sha }}
+          Deploy target:  ${{ steps.target.outputs.dir }}
+          Built at:       $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          EOF
+
+          echo "Files in $DEST:"
+          ls -lh "$DEST"
+
+      - name: Commit and push to vail-adapter
+        if: ${{ inputs.deploy_target != 'none' }}
+        working-directory: vail-adapter
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git add docs/${{ steps.target.outputs.dir }}/
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "${{ steps.target.outputs.msg }} [skip ci]"
+            git push origin master
+          fi
