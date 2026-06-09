@@ -424,16 +424,62 @@ async function triggerBootloaderViaWebSerial() {
     }
 }
 
-// Fetch recent commits from GitHub for "What's New" section
+// Escape HTML special characters so release-note text can't inject markup
+function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Strip the small subset of Markdown that shows up in release notes
+function stripMarkdown(s) {
+    return s
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [text](url) -> text
+        .replace(/\*\*([^*]+)\*\*/g, '$1')        // **bold** -> bold
+        .replace(/`([^`]+)`/g, '$1')              // `code` -> code
+        .trim();
+}
+
+// Turn a release-note body (Markdown) into <li> items for the What's New list
+function releaseBodyToItems(body) {
+    const items = [];
+    for (const raw of (body || '').split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line) continue;
+        // Skip the "Go to https://update.vailadapter.com/" promo lines
+        if (/^go to\s+https?:\/\//i.test(line) || /update\.vailadapter\.com/i.test(line)) continue;
+
+        const heading = line.match(/^#{1,6}\s+(.*)$/);
+        if (heading) {
+            const text = escapeHtml(stripMarkdown(heading[1]));
+            items.push(`<li style="list-style:none;margin-left:-20px;font-weight:600;">${text}</li>`);
+            continue;
+        }
+
+        const bullet = line.match(/^[-*]\s+(.*)$/);
+        const text = escapeHtml(stripMarkdown(bullet ? bullet[1] : line));
+        if (text) items.push(`<li>${text}</li>`);
+
+        if (items.length >= 10) break;
+    }
+    return items;
+}
+
+// Populate the "What's New" section from the latest GitHub Release for the
+// selected device. Both repos publish firmware as GitHub Releases; if a repo
+// has no published release yet (e.g. Summit's official channel), the section
+// is hidden rather than falling back to raw commit history.
 // deviceType: 'adapter' or 'summit'
 async function fetchRecentUpdates(deviceType) {
     const repoName = deviceType === 'summit' ? 'vail-summit' : 'vail-adapter';
     const deviceLabel = deviceType === 'summit' ? 'Vail Summit' : 'Vail Adapter';
 
-    // Show the section
     const section = document.getElementById('whatsNewSection');
-    if (section) {
-        section.style.display = 'block';
+    const dateElement = document.getElementById('lastUpdateDate');
+    const listElement = document.getElementById('recentCommitsList');
+
+    // Update the global page title to match the selected device
+    const pageTitle = document.getElementById('pageTitle');
+    if (pageTitle) {
+        pageTitle.textContent = `${deviceLabel} Firmware Update`;
     }
 
     // Update the device name in the header
@@ -448,98 +494,60 @@ async function fetchRecentUpdates(deviceType) {
         manualLink.style.display = deviceType === 'adapter' ? 'block' : 'none';
     }
 
-    // Clear any stale notes/date from a previously selected device so the
-    // other device's releases never show through while this fetch is in flight
-    const staleDate = document.getElementById('lastUpdateDate');
-    if (staleDate) {
-        staleDate.textContent = 'Loading...';
-    }
-    const staleList = document.getElementById('recentCommitsList');
-    if (staleList) {
-        staleList.innerHTML = '<li>Loading recent updates...</li>';
-    }
+    // Show the section in a loading state, clearing any stale content from a
+    // previously selected device so the other device's notes never show through
+    if (section) section.style.display = 'block';
+    if (dateElement) dateElement.textContent = 'Loading...';
+    if (listElement) listElement.innerHTML = '<li>Loading latest release...</li>';
 
     try {
-        const response = await fetch(`https://api.github.com/repos/Vail-CW/${repoName}/commits?per_page=20`);
+        const response = await fetch(`https://api.github.com/repos/Vail-CW/${repoName}/releases/latest`);
+        if (response.status === 404) {
+            // No published release for this device yet — hide the section
+            if (section) section.style.display = 'none';
+            return;
+        }
         if (!response.ok) {
-            console.log('Could not fetch commits');
+            console.log('Could not fetch latest release');
+            if (section) section.style.display = 'none';
             return;
         }
-        const commits = await response.json();
+        const release = await response.json();
 
-        // Filter out automated/CI commits and get meaningful ones
-        const meaningfulCommits = commits.filter(commit => {
-            const message = commit.commit.message.toLowerCase();
-            // Skip CI commits, merge commits, and minor fixes
-            if (message.includes('[skip ci]') ||
-                message.includes('merge pull request') ||
-                message.includes('merge branch') ||
-                message.startsWith('update summit firmware from') ||
-                message.startsWith('co-authored-by:')) {
-                return false;
-            }
-
-            // For adapter repo, also skip website/updater-related commits
-            if (deviceType === 'adapter') {
-                if (message.includes('favicon') ||
-                    message.includes('updater') ||
-                    message.includes("what's new") ||
-                    message.includes('whats new') ||
-                    message.includes('button hat warning') ||
-                    message.includes('esp flasher') ||
-                    message.includes('esp32 flasher') ||
-                    message.includes('summit flasher') ||
-                    message.includes('web flasher') ||
-                    message.includes('github pages') ||
-                    message.includes('website')) {
-                    return false;
-                }
-            }
-
-            return true;
-        });
-
-        if (meaningfulCommits.length === 0) {
-            return;
-        }
-
-        // Get the most recent commit date
-        const latestDate = new Date(meaningfulCommits[0].commit.author.date);
-        const dateStr = latestDate.toLocaleDateString('en-US', {
+        // Header: "<Version> — <date>", e.g. "V4.4 — October 3, 2025"
+        const versionLabel = release.name || release.tag_name || '';
+        const publishedDate = new Date(release.published_at);
+        const dateStr = publishedDate.toLocaleDateString('en-US', {
             year: 'numeric',
             month: 'long',
             day: 'numeric'
         });
-
-        // Update the date display
-        const dateElement = document.getElementById('lastUpdateDate');
         if (dateElement) {
-            dateElement.textContent = dateStr;
+            dateElement.textContent = versionLabel ? `${versionLabel} — ${dateStr}` : dateStr;
         }
 
-        // Build the commit list (show up to 5 recent meaningful commits)
-        const listElement = document.getElementById('recentCommitsList');
+        // Body: render the release notes as a bullet list
         if (listElement) {
-            const items = meaningfulCommits.slice(0, 5).map(commit => {
-                // Get first line of commit message
-                const message = commit.commit.message.split('\n')[0];
-                // Truncate if too long
-                const displayMsg = message.length > 100 ? message.substring(0, 100) + '...' : message;
-                return `<li>${displayMsg}</li>`;
-            });
-            listElement.innerHTML = items.join('');
+            const items = releaseBodyToItems(release.body);
+            listElement.innerHTML = items.length
+                ? items.join('')
+                : '<li>See the release notes on GitHub for details.</li>';
         }
     } catch (err) {
-        console.log('Error fetching commits:', err.message);
-        // Leave the loading text, it will just show "Loading..."
+        console.log('Error fetching latest release:', err.message);
+        if (section) section.style.display = 'none';
     }
 }
 
-// Hide the What's New section
+// Hide the What's New section and reset the page title
 function hideWhatsNew() {
     const section = document.getElementById('whatsNewSection');
     if (section) {
         section.style.display = 'none';
+    }
+    const pageTitle = document.getElementById('pageTitle');
+    if (pageTitle) {
+        pageTitle.textContent = 'Vail Firmware Update';
     }
 }
 
