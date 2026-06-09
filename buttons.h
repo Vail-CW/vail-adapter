@@ -31,13 +31,6 @@ private:
     bool doubleClickDetected;         // Flag to prevent multiple detections
     #define DOUBLE_CLICK_WINDOW 400   // Max time between clicks (ms)
 
-    // Boot-time floating-pin guard: on boards without the button hat,
-    // BUTTON_PIN floats and the ADC parks on a phantom value (often the B3
-    // band), which the debouncer would otherwise treat as a held button.
-    // We refuse to start a press until we've observed a genuine BTN_NONE,
-    // which a floating pin never produces but a real hatted board does at boot.
-    bool seenNoneSinceBoot;
-
 public:
     ButtonDebouncer();
 

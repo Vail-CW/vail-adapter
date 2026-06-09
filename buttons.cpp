@@ -19,7 +19,6 @@ ButtonDebouncer::ButtonDebouncer() {
     lastReleaseTime = 0;
     lastReleasedButton = BTN_NONE;
     doubleClickDetected = false;
-    seenNoneSinceBoot = false;
 }
 
 bool ButtonDebouncer::update(ButtonState newReading, unsigned long currentTime) {
@@ -27,16 +26,8 @@ bool ButtonDebouncer::update(ButtonState newReading, unsigned long currentTime) 
     if (newReading == previousReading) {
         debouncedState = newReading;
 
-        // Once we've seen a genuine release-to-NONE, the button hat is present
-        // and wired correctly; from here on presses are honored normally.
-        if (debouncedState == BTN_NONE) {
-            seenNoneSinceBoot = true;
-        }
-
-        // Track if we're in a press.
-        // Guard with seenNoneSinceBoot so a floating BUTTON_PIN (no hat
-        // installed) parked on a phantom value can never start a phantom press.
-        if (debouncedState != BTN_NONE && !isPressed && seenNoneSinceBoot) {
+        // Track if we're in a press
+        if (debouncedState != BTN_NONE && !isPressed) {
             // Button press started
             isPressed = true;
             maxStateDuringPress = debouncedState;
