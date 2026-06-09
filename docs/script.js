@@ -448,10 +448,15 @@ async function fetchRecentUpdates(deviceType) {
         manualLink.style.display = deviceType === 'adapter' ? 'block' : 'none';
     }
 
-    // Show/hide Button Hat warning (only for Adapter)
-    const buttonHatWarning = document.getElementById('buttonHatWarning');
-    if (buttonHatWarning) {
-        buttonHatWarning.style.display = deviceType === 'adapter' ? 'block' : 'none';
+    // Clear any stale notes/date from a previously selected device so the
+    // other device's releases never show through while this fetch is in flight
+    const staleDate = document.getElementById('lastUpdateDate');
+    if (staleDate) {
+        staleDate.textContent = 'Loading...';
+    }
+    const staleList = document.getElementById('recentCommitsList');
+    if (staleList) {
+        staleList.innerHTML = '<li>Loading recent updates...</li>';
     }
 
     try {
@@ -530,15 +535,11 @@ async function fetchRecentUpdates(deviceType) {
     }
 }
 
-// Hide the What's New section and Button Hat warning
+// Hide the What's New section
 function hideWhatsNew() {
     const section = document.getElementById('whatsNewSection');
     if (section) {
         section.style.display = 'none';
-    }
-    const buttonHatWarning = document.getElementById('buttonHatWarning');
-    if (buttonHatWarning) {
-        buttonHatWarning.style.display = 'none';
     }
 }
 
