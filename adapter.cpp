@@ -37,6 +37,8 @@ this->txRelays[1] = false; // dah
 this->lastPaddlePressed = PADDLE_DIT;
 this->ditKeyPressed = false;
 this->dahKeyPressed = false;
+this->midiEventPreviousTime = millis()-(MAX_MIDI_EVENT_DELTA+1);
+this->sendMidiEventDeltaTimes = false;
 }
 
 bool VailAdapter::KeyboardMode() {
@@ -89,6 +91,40 @@ this->dahIsHeld = false;
 this->dahHoldStartTime = 0;
 }
 
+// The time since the previous key up/down event is encoded into a 14-bit
+// base 126 value. The upper 7 bits of this value are sent in a CC event, while
+// the lower 7 bits are sent in the note event's velocity value, avoiding 0 and 127
+// velocity values. Time values up to 16128 milliseconds can be sent. If the elapsed
+// time exceeds this, a value of 0 is sent for the time, indicating that the timer
+// has been reset. The algorithm is described more fully in the MoMIDI specification.
+// See https://github.com/NetKeyer/MoMIDI-Spec
+//
+// This function sends the CC event with the high 7 bits of the time value
+// and returns the low 7 bits to be sent later with the note on/off event.
+uint8_t VailAdapter::sendMidiEventDeltaTimeHigh(uint8_t key) {
+    uint8_t header;
+    uint8_t status_byte;
+    uint8_t delta_high;
+    uint8_t delta_low;
+    unsigned long currentTime = millis();
+    unsigned long delta = currentTime - this->midiEventPreviousTime;
+
+    this->midiEventPreviousTime = currentTime;
+    if (delta == 0 || delta > MAX_MIDI_EVENT_DELTA) {
+        delta_high = 0;
+        delta_low = 0;
+    } else {
+        delta -= 1; // Subtract 1 for base 126; we only support values in [1, 16128]
+        delta_high = delta / 126;
+        delta_low = delta % 126 + 1; // Add 1 so the value falls in [1, 126]
+    }
+    header = 0x0B; // CIN = 0x0B Change Control
+    status_byte = 0xB0; // Change Control
+    midiEventPacket_t event = {header, status_byte, key, delta_high};
+    MidiUSB.sendMIDI(event);
+    return delta_low;
+}
+
 // Corrected MIDI key event function
 void VailAdapter::midiKey(uint8_t key, bool down) {
 uint8_t header;
@@ -104,6 +140,10 @@ if (down) { // Note On
     status_byte = 0x80; // MIDI Status = 0x80 (Note Off, Channel 1)
     velocity = 0x00;    // Velocity for Note Off (0x00 is common)
 }
+
+if (this->sendMidiEventDeltaTimes)
+    velocity = sendMidiEventDeltaTimeHigh(key);
+
 // Construct the MIDI event packet for MIDIUSB library
 midiEventPacket_t event = {header, status_byte, key, velocity};
 MidiUSB.sendMIDI(event);
@@ -795,6 +835,10 @@ this->txNote = event.byte3;
 Serial.print("TX Note set to: "); Serial.println(this->txNote);
 
 saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote);
+break;
+case 3:
+this->sendMidiEventDeltaTimes = (event.byte3 > 0x3f);
+Serial.print("MIDI timing: "); Serial.println(this->sendMidiEventDeltaTimes ? "ON" : "OFF");
 break;
 }
 break;
