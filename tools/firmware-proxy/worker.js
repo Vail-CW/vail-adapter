@@ -31,7 +31,8 @@ export default {
     let repo, tag, filename;
 
     // New form: /{repo}/{tag}/{file}.(bin|uf2|hex)
-    let match = url.pathname.match(/^\/([\w-]+)\/(v[\d.]+)\/([\w.-]+\.(?:bin|uf2|hex))$/);
+    // Tag allows SemVer pre-release suffixes too, e.g. v5.0.1-beta.1
+    let match = url.pathname.match(/^\/([\w-]+)\/(v[\w.-]+)\/([\w.-]+\.(?:bin|uf2|hex))$/);
     if (match) {
       [, repo, tag, filename] = match;
     } else {
