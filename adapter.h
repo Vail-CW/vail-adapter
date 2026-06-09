@@ -6,6 +6,8 @@
 #include "config.h" // Include config.h
 #include "memory.h" // Include memory.h for recording state
 
+#define MAX_MIDI_EVENT_DELTA 16128 // 2^7 * 126 milliseconds
+
 class VailAdapter: public Transmitter {
 private:
     unsigned int txNote = DEFAULT_TONE_NOTE;
@@ -38,6 +40,10 @@ private:
     bool ditKeyPressed = false;
     bool dahKeyPressed = false;
 
+    // Track last Time a MIDI event was sent
+    unsigned long midiEventPreviousTime = 0;
+    bool sendMidiEventDeltaTimes= false;
+
     // CW memory recording
     RecordingState* recordingState = nullptr;
 
@@ -46,6 +52,8 @@ private:
 
     void setRadioDit(bool active);
     void setRadioDah(bool active);
+
+    uint8_t sendMidiEventDeltaTimeHigh(uint8_t header, uint8_t key);
 
 public:
     VailAdapter(unsigned int PiezoPin);

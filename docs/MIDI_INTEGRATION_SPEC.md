@@ -53,6 +53,16 @@ The Vail Adapter responds to the following MIDI message types:
 - **Tuning**: equal temperament
 - **Example**: `B0 02 2D` sets sidetone to note 45 = A2 (110 Hz)
 
+#### CC3 - Enable sending MIDI event time delta
+**Purpose**: Switch between sending normal MIDI notes and notes with event time deltas
+
+- **Message**: `B0 03 xx`
+- **Values**:
+  - `00-3F` (0-63): Disable sending of event time deltas
+  - `40-7F` (64-127): Enable sending of event time deltas
+- **Default**: Sending of time deltas is disabled
+- **Example**: `B0 03 7F` enables sending of event time deltas
+
 ### Program Change Messages (0xCn)
 
 #### Keyer Mode Selection
