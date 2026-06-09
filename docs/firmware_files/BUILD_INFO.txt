@@ -1,5 +1,5 @@
 Built from:   master
-Commit:       54045ba989d4b02a452790d068280b518fbe9909
-Event:        push
+Commit:       de95354b740e39b0d5560834c18c2ff445a6986d
+Event:        workflow_dispatch
 Deploy target: firmware_files
-Built at:     2026-04-22T22:09:23Z
+Built at:     2026-06-09T03:59:26Z
