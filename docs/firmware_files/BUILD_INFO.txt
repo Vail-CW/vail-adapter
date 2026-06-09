@@ -1,5 +1,5 @@
-Built from:   master
-Commit:       de95354b740e39b0d5560834c18c2ff445a6986d
-Event:        workflow_dispatch
+Built from:   v5.0
+Commit:       f04cb11b1a870780c8af805c1a1615fe7e655e0f
+Event:        release
 Deploy target: firmware_files
-Built at:     2026-06-09T03:59:26Z
+Built at:     2026-06-09T04:07:30Z
