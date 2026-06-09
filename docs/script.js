@@ -16,6 +16,10 @@ const ADAPTER_FIRMWARE_PROXY = 'https://vail-firmware-proxy.brett-hollifield.wor
 // checkbox driven by GitHub Releases. Pre-releases are surfaced as the test
 // option. Per-version firmware comes from the release's attached assets,
 // which the build workflow stamps with the tag (e.g. xiao_basic_pcb_v2_v5.0.uf2).
+// Only surface releases at or above this version. Earlier releases used a
+// different firmware layout/board set and shouldn't be offered for flashing.
+const MIN_ADAPTER_VERSION = 5.0;
+
 const adapterReleases = {
     stable: [],          // published, non-prerelease releases that carry firmware assets
     testRelease: null,   // most recent pre-release with firmware assets (the "test" build)
@@ -26,6 +30,18 @@ const adapterReleases = {
         return release.assets && release.assets.some(a => /\.(uf2|hex)$/i.test(a.name));
     },
 
+    // Parse a tag like "v5.0" / "V5.1.2" to a comparable number (5.0 / 5.1)
+    parseVersion(tag) {
+        const m = String(tag || '').match(/(\d+(?:\.\d+)?)/);
+        return m ? parseFloat(m[1]) : 0;
+    },
+
+    eligible(release) {
+        return !release.draft &&
+            this.hasFirmware(release) &&
+            this.parseVersion(release.tag_name) >= MIN_ADAPTER_VERSION;
+    },
+
     async fetch() {
         if (this.fetched) return;
         this.fetched = true;
@@ -33,8 +49,8 @@ const adapterReleases = {
             const resp = await fetch('https://api.github.com/repos/Vail-CW/vail-adapter/releases?per_page=50');
             if (!resp.ok) { this.populate(); return; }
             const all = await resp.json();
-            this.stable = all.filter(r => !r.prerelease && !r.draft && this.hasFirmware(r));
-            const pre = all.filter(r => r.prerelease && !r.draft && this.hasFirmware(r));
+            this.stable = all.filter(r => !r.prerelease && this.eligible(r));
+            const pre = all.filter(r => r.prerelease && this.eligible(r));
             this.testRelease = pre.length ? pre[0] : null;
             this.populate();
             // Default to the latest stable release; fall back to the repository
