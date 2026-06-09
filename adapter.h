@@ -6,6 +6,15 @@
 #include "config.h" // Include config.h
 #include "memory.h" // Include memory.h for recording state
 
+// Controller numbers
+#define CN_KEYBOARD_MODE 0
+#define CN_DIT_DURATION 1
+#define CN_SIDETONE_NOTE 2
+#define CN_ENABLE_EVENT_DELTA 3
+#define CN_EVENT_DELTA_HIGH 4
+
+#define MAX_MIDI_EVENT_DELTA 16128 // 2^7 * 126 milliseconds
+
 class VailAdapter: public Transmitter {
 private:
     unsigned int txNote = DEFAULT_TONE_NOTE;
@@ -37,6 +46,10 @@ private:
     // Track which keyboard keys are currently pressed
     bool ditKeyPressed = false;
     bool dahKeyPressed = false;
+
+    // Track last Time a MIDI event was sent
+    unsigned long midiEventPreviousTime = 0;
+    bool sendMidiEventDeltaTimes= false;
 
     // CW memory recording
     RecordingState* recordingState = nullptr;

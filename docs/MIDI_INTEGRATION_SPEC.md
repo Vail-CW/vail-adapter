@@ -53,6 +53,28 @@ The Vail Adapter responds to the following MIDI message types:
 - **Tuning**: equal temperament
 - **Example**: `B0 02 2D` sets sidetone to note 45 = A2 (110 Hz)
 
+#### CC3 - Enable sending embedded time intervals with Key Up/Down events
+**Purpose**: Switch between sending normal MIDI notes and notes with embedded time intervals
+
+- **Message**: `B0 03 xx`
+- **Values**:
+  - `00-3F` (0-63): Disable sending embedded time intervals
+  - `40-7F` (64-127): Enable sending embedded time intervals
+- **Default**: Sending of embedded time intervals is diabled
+- **Example**: `B0 03 7F` enables sending of embedded time intervals
+
+#### CC4 - Send the upper 7 bits of the time interval between note up/down events
+**Purpose**: When sending embedded time intervals is enabled, this message is sent by
+the Vail Device just prior to sending a Note On/Off message and contains the high order
+7 bits of the time interval in milliseconds since the previous note event was sent.
+
+**Note**: This message is sent by the Vail Device to the Controlling device.
+
+- **Message**: `B0 04 xx`
+- **Values**: '00-7F' (0-127): The upper 7 bits of the 14-bit number of milliseconds elapsed since the previous key up/down event was sent.
+- **Default**: None
+- **Example**: `B0 04 00` The upper 7 bits of the time interval is 0
+
 ### Program Change Messages (0xCn)
 
 #### Keyer Mode Selection
@@ -83,8 +105,12 @@ The Vail Adapter responds to the following MIDI message types:
 
 ## MIDI Output — notes the adapter sends
 
-When in **MIDI mode**, keying produces Note On (`90 nn 7F`) / Note Off (`80 nn 00`)
-events on channel 1, where the note number `nn` is:
+### MIDI Output without embedded timing intervals
+
+When in **MIDI mode** and the sending of embedded time interval disabled
+(or if the embedded time interval cannot be expressed in 14 bits), keying produces
+Note On ('90 nn 7F') / Note Off ('80 nn 00') messages on channel 1,
+where the note number `nn` is:
 
 | Note number | Pitch | Sent for |
 |---|---|---|
@@ -96,6 +122,34 @@ In practice, set the keyer to **Passthrough (PC 0)** when you want the host to
 receive distinct dit (`1`/C#) and dah (`2`/D) events and do its own timing — this
 is how the Vail web repeater drives the adapter. With any onboard keyer (PC 1-9),
 the adapter performs the timing itself and emits note `0` (C) for each element.
+
+### MIDI Output with embedded timing intervals
+
+When in **MIDI mode** and the sending of embedded time intervals is enabled, the
+time interval since the previous Key Up/Down event is computed, irrespective
+of whether the previous event was a Key Up or a Key Down event. If that time interval
+exceeds 16128 milliseconds, keying produces Note On/Off messages as described above
+without embedded time intervals.
+
+If the time interval is less than or equal to 16128 milliseconss, the time interval
+in milliseconds is expressed in two parts, the high order 7 bits, calculated as
+
+> `high_order_bits = floor((interval - 1) / 126)`, 
+
+and the low order 7 bits, calculated as
+
+> `low_order_bits = (interval - 1) % 126 + 1`
+
+and two MIDI messages are sent for each Key Up/Down event:
+
+- the first message is 'B0 04 zz', where zz is the high order 7 bits, and
+- the second message is either '90 nn yy' for Key Down or '80 nn yy' for Key Up,
+where `nn` is the note number as described above and yy containes the low order 7 bits.
+
+The receiver of these messages can reconstruct the time interval as
+> `interval = high_order_bits * 126 + low_order_bits`,
+
+The timing interval encoding is adapted from that in the [MoMIDI Specification](https://github.com/NetKeyer/MoMIDI-Spec).
 
 ## Integration Example
 

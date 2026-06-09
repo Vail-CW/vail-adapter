@@ -37,6 +37,8 @@ this->txRelays[1] = false; // dah
 this->lastPaddlePressed = PADDLE_DIT;
 this->ditKeyPressed = false;
 this->dahKeyPressed = false;
+this->midiEventPreviousTime = millis()-(MAX_MIDI_EVENT_DELTA+1);
+this->sendMidiEventDeltaTimes = false;
 }
 
 bool VailAdapter::KeyboardMode() {
@@ -104,6 +106,31 @@ if (down) { // Note On
     status_byte = 0x80; // MIDI Status = 0x80 (Note Off, Channel 1)
     velocity = 0x00;    // Velocity for Note Off (0x00 is common)
 }
+
+if (this->sendMidiEventDeltaTimes) {
+// The time interval since the previous key up/down event is encoded into a 14-bit
+// base 126 value. The upper 7 bits of this value are sent in a CC4 event, while
+// the lower 7 bits are sent in the note event's velocity value, avoiding 0 and 127
+// velocity values. Time values in the range [1, 16128] milliseconds can be sent.
+// If the elapsed time exceeds this, no CC event is sent and the note contains
+// its normal value of 127 (note on) or 0 (note off).
+
+    unsigned long currentTime = millis();
+    unsigned long delta = currentTime - this->midiEventPreviousTime;
+
+    this->midiEventPreviousTime = currentTime;
+    if (delta > 0 && delta <= MAX_MIDI_EVENT_DELTA) {
+        delta -= 1; // Subtract 1 to encode values in the range [1, 16128]
+	uint8_t cin = 0x0B; // CIN = 0x0B Change Control
+	uint8_t cc = 0xB0; // Change Control
+        uint8_t delta_high = delta / 126;
+	midiEventPacket_t event = {cin, cc, CN_EVENT_DELTA_HIGH, delta_high};
+	MidiUSB.sendMIDI(event);
+	// place the low 7 bits into the velocity field of the following note event
+	velocity = delta % 126 + 1; // Add 1 so the value falls in [1, 126]
+    }
+}
+
 // Construct the MIDI event packet for MIDIUSB library
 midiEventPacket_t event = {header, status_byte, key, velocity};
 MidiUSB.sendMIDI(event);
@@ -777,12 +804,12 @@ uint16_t msg = (event.byte1 << 8) | (event.byte2 << 0);
 switch (event.byte1) {
 case 0xB0:
 switch (event.byte2) {
-case 0:
+case CN_KEYBOARD_MODE:
 this->keyboardMode = (event.byte3 > 0x3f);
 Serial.print("Keyboard mode: "); Serial.println(this->keyboardMode ? "ON" : "OFF");
 MidiUSB.sendMIDI(event);
 break;
-case 1:
+case CN_DIT_DURATION:
 this->ditDuration = event.byte3 * 2 * MILLISECOND;
 if (this->keyer) {
 this->keyer->SetDitDuration(this->ditDuration);
@@ -790,11 +817,15 @@ this->keyer->SetDitDuration(this->ditDuration);
 Serial.print("Dit duration set to: "); Serial.println(this->ditDuration);
 saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote);
 break;
-case 2:
+case CN_SIDETONE_NOTE:
 this->txNote = event.byte3;
 Serial.print("TX Note set to: "); Serial.println(this->txNote);
 
 saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote);
+break;
+case CN_ENABLE_EVENT_DELTA:
+this->sendMidiEventDeltaTimes = (event.byte3 > 0x3f);
+Serial.print("MIDI timing: "); Serial.println(this->sendMidiEventDeltaTimes ? "ON" : "OFF");
 break;
 }
 break;
