@@ -6,6 +6,24 @@ const wizardState = {
     board: null,      // 'qtpy' or 'xiao' (for adapter only)
 };
 
+// Tag of the latest published Vail Adapter release (e.g. "v5.0"), captured
+// by fetchRecentUpdates('adapter'). Used to stamp the firmware version onto
+// the downloaded UF2 filename. Null until the release fetch completes.
+let latestAdapterReleaseTag = null;
+
+// Append the release version to a firmware filename, e.g.
+// "xiao_basic_pcb_v2.uf2" -> "xiao_basic_pcb_v2_v5.0.uf2". Only applied on the
+// stable channel for the Vail Adapter; test-channel builds keep their plain
+// name so they're never mislabeled with a stable version number.
+function appendVersionToFilename(filename) {
+    if (!latestAdapterReleaseTag || isTestChannelActive()) return filename;
+    const safe = latestAdapterReleaseTag.replace(/[^A-Za-z0-9.\-_]/g, '');
+    if (!safe) return filename;
+    const dot = filename.lastIndexOf('.');
+    if (dot === -1) return `${filename}_${safe}`;
+    return `${filename.slice(0, dot)}_${safe}${filename.slice(dot)}`;
+}
+
 // --- Test channel --------------------------------------------------------
 // When active, firmware URLs are routed through docs/firmware_files/test/
 // instead of docs/firmware_files/. Persisted across page loads via
@@ -74,13 +92,13 @@ function getFirmwareFile() {
     // Vail Lite only has one firmware variant (Trinkey)
     if (wizardState.model === 'vail_lite') {
         const fn = 'trinkey_vail_adapter.uf2';
-        return { url: firmwareUrl(fn), filename: fn };
+        return { url: firmwareUrl(fn), filename: fn, downloadName: appendVersionToFilename(fn) };
     }
 
     // Arduino Micro ships a single .hex; model selection is ignored for the file
     if (wizardState.board === 'micro') {
         const fn = 'arduino_micro.hex';
-        return { url: firmwareUrl(fn), filename: fn };
+        return { url: firmwareUrl(fn), filename: fn, downloadName: appendVersionToFilename(fn) };
     }
 
     // Other models require board selection
@@ -97,7 +115,7 @@ function getFirmwareFile() {
         filename = `${wizardState.board}_non_pcb.uf2`;
     }
 
-    return { url: firmwareUrl(filename), filename };
+    return { url: firmwareUrl(filename), filename, downloadName: appendVersionToFilename(filename) };
 }
 
 // Get friendly names for display
@@ -343,9 +361,10 @@ function updateStep3Content() {
     const firmwareFile = getFirmwareFile();
 
     if (firmwareFile) {
+        const savedName = firmwareFile.downloadName || firmwareFile.filename;
         downloadButton.href = firmwareFile.url;
-        downloadButton.download = firmwareFile.filename;
-        downloadText.textContent = `Download ${firmwareFile.filename}`;
+        downloadButton.download = savedName;
+        downloadText.textContent = `Download ${savedName}`;
         downloadButton.classList.remove('disabled');
         downloadButton.removeAttribute('aria-disabled');
     }
@@ -513,6 +532,13 @@ async function fetchRecentUpdates(deviceType) {
             return;
         }
         const release = await response.json();
+
+        // Cache the adapter release tag so downloads can be version-stamped
+        if (deviceType === 'adapter') {
+            latestAdapterReleaseTag = release.tag_name || release.name || null;
+            // Refresh the download button if the flash step is already showing
+            if (wizardState.currentStep === 3) updateStep3Content();
+        }
 
         // Header: "<Version> — <date>", e.g. "V4.4 — October 3, 2025"
         const versionLabel = release.name || release.tag_name || '';
