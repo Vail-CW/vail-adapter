@@ -476,8 +476,6 @@ function releaseBodyToItems(body) {
         const bullet = line.match(/^[-*]\s+(.*)$/);
         const text = escapeHtml(stripMarkdown(bullet ? bullet[1] : line));
         if (text) items.push(`<li>${text}</li>`);
-
-        if (items.length >= 10) break;
     }
     return items;
 }
@@ -512,6 +510,10 @@ async function fetchRecentUpdates(deviceType) {
     if (manualLink) {
         manualLink.style.display = deviceType === 'adapter' ? 'block' : 'none';
     }
+
+    // Hide the "full release notes" link until this fetch resolves with a URL
+    const releaseNotesLink = document.getElementById('releaseNotesLink');
+    if (releaseNotesLink) releaseNotesLink.style.display = 'none';
 
     // Show the section in a loading state, clearing any stale content from a
     // previously selected device so the other device's notes never show through
@@ -558,6 +560,14 @@ async function fetchRecentUpdates(deviceType) {
             listElement.innerHTML = items.length
                 ? items.join('')
                 : '<li>See the release notes on GitHub for details.</li>';
+        }
+
+        // Link to the full release notes on GitHub (nothing is silently cut off,
+        // but this is the canonical source for the complete changelog)
+        if (releaseNotesLink && release.html_url) {
+            const anchor = releaseNotesLink.querySelector('a');
+            if (anchor) anchor.href = release.html_url;
+            releaseNotesLink.style.display = 'block';
         }
     } catch (err) {
         console.log('Error fetching latest release:', err.message);

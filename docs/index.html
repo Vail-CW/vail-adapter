@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vail Adapter Firmware Update</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
-    <link rel="stylesheet" href="style.css?v=2026-06-09.2">
+    <link rel="stylesheet" href="style.css?v=2026-06-09.3">
 </head>
 <body>
 <nav>
@@ -39,9 +39,12 @@
             <strong><span id="whatsNewDevice">Vail</span> Updates:</strong> <span id="lastUpdateDate">Loading...</span>
             <span class="click-hint">— Click to see what's new</span>
         </summary>
-        <ul id="recentCommitsList">
-            <li>Loading recent updates...</li>
-        </ul>
+        <div id="recentCommitsScroll" class="whats-new-scroll">
+            <ul id="recentCommitsList">
+                <li>Loading recent updates...</li>
+            </ul>
+        </div>
+        <p class="manual-link" id="releaseNotesLink" style="display: none;">📖 <a href="#" target="_blank" rel="noopener">View full release notes on GitHub →</a></p>
         <p class="manual-link" id="manualLink">📖 <a href="https://vailadapter.com/manual" target="_blank">View User Manual</a></p>
     </details>
 
@@ -539,8 +542,8 @@
     </section>
 </div>
 
-<script src="esp-flasher.js?v=2026-06-09.2" type="module"></script>
-<script src="avr109-flasher.js?v=2026-06-09.2"></script>
-<script src="script.js?v=2026-06-09.2" defer></script>
+<script src="esp-flasher.js?v=2026-06-09.3" type="module"></script>
+<script src="avr109-flasher.js?v=2026-06-09.3"></script>
+<script src="script.js?v=2026-06-09.3" defer></script>
 </body>
 </html>

@@ -503,6 +503,21 @@ details p, details ul {
     color: #ccc;
 }
 
+/* Scrollable container so long release notes never get silently cut off */
+.whats-new-scroll {
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.whats-new-scroll::-webkit-scrollbar {
+    width: 8px;
+}
+
+.whats-new-scroll::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
 .manual-link {
     font-size: 0.85rem;
     margin: 0.5rem 0 0 0;
