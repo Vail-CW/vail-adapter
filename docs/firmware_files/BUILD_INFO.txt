@@ -1,5 +1,5 @@
-Built from:   v5.0
-Commit:       f04cb11b1a870780c8af805c1a1615fe7e655e0f
-Event:        release
+Built from:   master
+Commit:       09f7128fd7c9ac92817ec7b53fbcd31530a8974d
+Event:        push
 Deploy target: firmware_files
-Built at:     2026-06-09T04:07:30Z
+Built at:     2026-06-09T04:20:39Z
