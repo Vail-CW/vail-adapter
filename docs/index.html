@@ -5,29 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vail Adapter Firmware Update</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
-    <link rel="stylesheet" href="style.css?v=2026-06-09.3">
+    <link rel="stylesheet" href="style.css?v=2026-06-09.4">
 </head>
 <body>
 <nav>
     <ul>
         <li><a href="index.html">Home</a></li>
         <li><a href="https://vailadapter.com/assembly" target="_blank">Assembly Instructions</a></li>
-        <li><a href="#" id="testChannelToggleLink">🧪 Test channel</a></li>
     </ul>
 </nav>
-
-<!-- Test channel banner — hidden unless ?test=1 or localStorage flag set -->
-<div id="testChannelBanner" style="display: none; background: linear-gradient(135deg, #3d1a1a 0%, #5c2424 100%); border: 2px solid #ff6b6b; border-radius: 8px; padding: 14px 18px; margin: 16px auto; max-width: 900px; color: #ffd8d8;">
-    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
-        <div style="flex: 1 1 auto; min-width: 240px;">
-            <strong style="color: #ff8a8a;">🧪 Test channel active</strong>
-            <div style="font-size: 13px; margin-top: 4px;">
-                You're downloading <strong>pre-release firmware</strong> intended for beta testers. <a href="firmware_files/test/BUILD_INFO.txt" target="_blank" style="color: #ffb8b8;">View build info</a>.
-            </div>
-        </div>
-        <button id="exitTestChannelButton" class="btn-secondary" style="flex: 0 0 auto; padding: 6px 14px; background: #3a1414; border: 1px solid #ff6b6b; color: #ffd8d8; cursor: pointer; border-radius: 6px;">Switch back to stable</button>
-    </div>
-</div>
 
 <div class="container">
     <h1 id="pageTitle">Vail Firmware Update</h1>
@@ -196,14 +182,37 @@
                 <span class="step-badge">3</span>
                 <h3>Download Firmware</h3>
             </div>
-            <p>Download the firmware file for your configuration:</p>
+            <p>Choose which firmware version to flash. The latest stable release is selected by default.</p>
+
+            <div class="version-selector-container">
+                <div class="version-selector-row">
+                    <select id="adapterVersionSelect" class="version-select" disabled>
+                        <option value="">Loading releases…</option>
+                    </select>
+                    <label class="test-release-toggle">
+                        <input type="checkbox" id="adapterShowTestRelease">
+                        <span class="toggle-label">Show test release</span>
+                    </label>
+                </div>
+
+                <div id="adapterTestReleaseWarning" class="test-release-warning" style="display: none;">
+                    <strong>Warning:</strong> Test releases may not be stable and could contain bugs. They include features currently being developed. Use at your own risk.
+                </div>
+
+                <div id="adapterReleaseInfo" class="release-info" style="display: none;">
+                    <div class="release-info-header">
+                        <span id="adapterReleaseVersionBadge" class="firmware-version"></span>
+                        <span id="adapterReleaseDate" class="release-date"></span>
+                    </div>
+                    <div id="adapterReleaseNotes" class="release-notes"></div>
+                </div>
+            </div>
+
+            <p style="margin-top: 16px;">Download the firmware file for your configuration:</p>
             <a href="#" id="downloadButton" class="btn-download disabled" role="button" aria-disabled="true">
                 <span class="download-icon">⬇️</span>
                 <span id="downloadText">Download UF2 File</span>
             </a>
-            <div id="step3TestChip" style="display: none; margin-top: 10px; padding: 8px 12px; background: rgba(255, 107, 107, 0.12); border: 1px solid #ff6b6b; border-radius: 6px; color: #ffb0b0; font-size: 13px;">
-                🧪 <strong>Test channel:</strong> you're about to download a pre-release build. Click "Switch back to stable" at the top of the page to exit.
-            </div>
         </div>
 
         <!-- Sub-step 4: Copy to Device -->
@@ -316,9 +325,6 @@
             </div>
             <p>Once the Micro is in bootloader mode (a new serial port will appear for ~8 seconds), click the button below and select that <strong>new</strong> bootloader port. The firmware will be written directly over the serial connection.</p>
             <button id="microFlashButton" class="btn-primary">⚡ Flash Firmware via WebSerial</button>
-            <div id="microTestChip" style="display: none; margin-top: 10px; padding: 8px 12px; background: rgba(255, 107, 107, 0.12); border: 1px solid #ff6b6b; border-radius: 6px; color: #ffb0b0; font-size: 13px;">
-                🧪 <strong>Test channel:</strong> this will flash a pre-release build.
-            </div>
             <div class="progress-container" id="microProgressContainer" style="display: none; margin-top: 16px;">
                 <div class="progress-label" id="microProgressLabel">Preparing…</div>
                 <div style="background: #2a2a2a; border-radius: 8px; overflow: hidden; height: 20px;">
@@ -542,8 +548,8 @@
     </section>
 </div>
 
-<script src="esp-flasher.js?v=2026-06-09.3" type="module"></script>
-<script src="avr109-flasher.js?v=2026-06-09.3"></script>
-<script src="script.js?v=2026-06-09.3" defer></script>
+<script src="esp-flasher.js?v=2026-06-09.4" type="module"></script>
+<script src="avr109-flasher.js?v=2026-06-09.4"></script>
+<script src="script.js?v=2026-06-09.4" defer></script>
 </body>
 </html>

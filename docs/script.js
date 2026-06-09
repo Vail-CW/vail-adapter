@@ -6,116 +6,204 @@ const wizardState = {
     board: null,      // 'qtpy' or 'xiao' (for adapter only)
 };
 
-// Tag of the latest published Vail Adapter release (e.g. "v5.0"), captured
-// by fetchRecentUpdates('adapter'). Used to stamp the firmware version onto
-// the downloaded UF2 filename. Null until the release fetch completes.
-let latestAdapterReleaseTag = null;
+// CORS proxy for cross-origin firmware fetches (Arduino Micro WebSerial flow).
+// The same Cloudflare Worker that serves Summit; generalized to accept a repo
+// segment: /<repo>/<tag>/<file>. See tools/firmware-proxy/worker.js.
+const ADAPTER_FIRMWARE_PROXY = 'https://vail-firmware-proxy.brett-hollifield.workers.dev';
 
-// Append the release version to a firmware filename, e.g.
-// "xiao_basic_pcb_v2.uf2" -> "xiao_basic_pcb_v2_v5.0.uf2". Only applied on the
-// stable channel for the Vail Adapter; test-channel builds keep their plain
-// name so they're never mislabeled with a stable version number.
-function appendVersionToFilename(filename) {
-    if (!latestAdapterReleaseTag || isTestChannelActive()) return filename;
-    const safe = latestAdapterReleaseTag.replace(/[^A-Za-z0-9.\-_]/g, '');
-    if (!safe) return filename;
-    const dot = filename.lastIndexOf('.');
-    if (dot === -1) return `${filename}_${safe}`;
-    return `${filename.slice(0, dot)}_${safe}${filename.slice(dot)}`;
-}
+// --- Adapter release/version selector ------------------------------------
+// Mirrors the Summit ESP flasher: a version dropdown + "Show test release"
+// checkbox driven by GitHub Releases. Pre-releases are surfaced as the test
+// option. Per-version firmware comes from the release's attached assets,
+// which the build workflow stamps with the tag (e.g. xiao_basic_pcb_v2_v5.0.uf2).
+const adapterReleases = {
+    stable: [],          // published, non-prerelease releases that carry firmware assets
+    testRelease: null,   // most recent pre-release with firmware assets (the "test" build)
+    selected: null,      // currently selected release, or null = repository fallback
+    fetched: false,
 
-// --- Test channel --------------------------------------------------------
-// When active, firmware URLs are routed through docs/firmware_files/test/
-// instead of docs/firmware_files/. Persisted across page loads via
-// localStorage; also togglable via ?test=1 / ?test=0 URL params.
+    hasFirmware(release) {
+        return release.assets && release.assets.some(a => /\.(uf2|hex)$/i.test(a.name));
+    },
 
-const TEST_CHANNEL_KEY = 'vailAdapter.testChannel';
+    async fetch() {
+        if (this.fetched) return;
+        this.fetched = true;
+        try {
+            const resp = await fetch('https://api.github.com/repos/Vail-CW/vail-adapter/releases?per_page=50');
+            if (!resp.ok) { this.populate(); return; }
+            const all = await resp.json();
+            this.stable = all.filter(r => !r.prerelease && !r.draft && this.hasFirmware(r));
+            const pre = all.filter(r => r.prerelease && !r.draft && this.hasFirmware(r));
+            this.testRelease = pre.length ? pre[0] : null;
+            this.populate();
+            // Default to the latest stable release; fall back to the repository
+            // firmware_files/ build if no release carries assets yet.
+            this.select(this.stable[0] || null);
+        } catch (err) {
+            console.log('Error fetching adapter releases:', err.message);
+            this.populate();
+        }
+    },
 
-function isTestChannelActive() {
-    try {
-        return localStorage.getItem(TEST_CHANNEL_KEY) === '1';
-    } catch (e) {
-        return false;
-    }
-}
+    populate() {
+        const select = document.getElementById('adapterVersionSelect');
+        if (!select) return;
+        select.innerHTML = '';
 
-function setTestChannel(on) {
-    try {
-        if (on) localStorage.setItem(TEST_CHANNEL_KEY, '1');
-        else localStorage.removeItem(TEST_CHANNEL_KEY);
-    } catch (e) { /* ignore quota/disabled */ }
-    applyTestChannelUI();
-    // Refresh any visible download buttons with new URLs
-    if (wizardState.currentStep === 3) updateStep3Content();
-    if (wizardState.currentStep === 3.1) updateStep3MicroContent();
-}
+        this.stable.forEach((release, index) => {
+            const option = document.createElement('option');
+            option.value = release.tag_name;
+            const date = new Date(release.published_at).toLocaleDateString('en-US', {
+                year: 'numeric', month: 'short', day: 'numeric'
+            });
+            const label = release.name || release.tag_name;
+            option.textContent = `${label} (${date})${index === 0 ? ' — Latest' : ''}`;
+            select.appendChild(option);
+        });
 
-function firmwareUrl(filename) {
-    const prefix = isTestChannelActive() ? 'firmware_files/test/' : 'firmware_files/';
-    return prefix + filename;
-}
+        // Always offer the live repository build as a resilient fallback
+        const fallback = document.createElement('option');
+        fallback.value = '__fallback__';
+        fallback.textContent = 'Latest (from repository)';
+        select.appendChild(fallback);
 
-function applyTestChannelUI() {
-    const active = isTestChannelActive();
+        select.disabled = false;
+        if (this.stable.length === 0) select.value = '__fallback__';
 
-    const banner = document.getElementById('testChannelBanner');
-    if (banner) banner.style.display = active ? 'block' : 'none';
+        select.onchange = () => {
+            const tag = select.value;
+            if (tag === '__test__') this.select(this.testRelease);
+            else if (tag === '__fallback__') this.select(null);
+            else this.select(this.stable.find(r => r.tag_name === tag) || null);
+        };
 
-    const toggleLink = document.getElementById('testChannelToggleLink');
-    if (toggleLink) {
-        toggleLink.textContent = active ? '✅ Test channel (on)' : '🧪 Test channel';
-    }
+        // Hide the "Show test release" checkbox entirely when there is no test build
+        const checkbox = document.getElementById('adapterShowTestRelease');
+        if (checkbox) {
+            const container = checkbox.closest('.test-release-toggle');
+            if (!this.testRelease && container) container.style.display = 'none';
+            else if (container) container.style.display = '';
+            checkbox.onchange = () => this.toggleTestRelease(checkbox.checked);
+        }
+    },
 
-    // Inline chips shown next to each flash button when test mode is on
-    const step3Chip = document.getElementById('step3TestChip');
-    if (step3Chip) step3Chip.style.display = active ? 'block' : 'none';
-    const microChip = document.getElementById('microTestChip');
-    if (microChip) microChip.style.display = active ? 'block' : 'none';
+    toggleTestRelease(show) {
+        const select = document.getElementById('adapterVersionSelect');
+        const warning = document.getElementById('adapterTestReleaseWarning');
+        if (!select) return;
 
-    updateMicroCardVisibility();
-}
+        const existing = select.querySelector('option[value="__test__"]');
+        if (existing) existing.remove();
 
-// The Arduino Micro card is experimental — only show it when the user
-// has opted into the test channel AND picked the DIY No PCB path. Makes
-// sense: there's no PCB version of the adapter designed for Micro, so
-// the Micro is strictly a DIY/breadboard target.
-function updateMicroCardVisibility() {
-    const microCard = document.getElementById('microCard');
-    if (!microCard) return;
-    const show = isTestChannelActive() && wizardState.model === 'non_pcb';
-    microCard.style.display = show ? '' : 'none';
-}
+        if (show && this.testRelease) {
+            const option = document.createElement('option');
+            option.value = '__test__';
+            const date = new Date(this.testRelease.published_at).toLocaleDateString('en-US', {
+                year: 'numeric', month: 'short', day: 'numeric'
+            });
+            const label = this.testRelease.name || this.testRelease.tag_name;
+            option.textContent = `${label} (${date}) — Test Release`;
+            option.className = 'test-release-option';
+            select.insertBefore(option, select.firstChild);
+            select.value = '__test__';
+            this.select(this.testRelease);
+            if (warning) warning.style.display = 'block';
+        } else {
+            if (this.stable.length > 0) {
+                select.value = this.stable[0].tag_name;
+                this.select(this.stable[0]);
+            } else {
+                select.value = '__fallback__';
+                this.select(null);
+            }
+            if (warning) warning.style.display = 'none';
+        }
+    },
 
-// Firmware file mapping — URLs go through firmwareUrl() so the test
-// channel toggle automatically rewrites them to firmware_files/test/.
-function getFirmwareFile() {
-    // Vail Lite only has one firmware variant (Trinkey)
-    if (wizardState.model === 'vail_lite') {
-        const fn = 'trinkey_vail_adapter.uf2';
-        return { url: firmwareUrl(fn), filename: fn, downloadName: appendVersionToFilename(fn) };
-    }
+    select(release) {
+        this.selected = release;
+        this.updateInfo(release);
+        // Re-resolve the active download for the new version
+        if (wizardState.currentStep === 3) updateStep3Content();
+        if (wizardState.currentStep === 3.1) updateStep3MicroContent();
+    },
 
-    // Arduino Micro ships a single .hex; model selection is ignored for the file
-    if (wizardState.board === 'micro') {
-        const fn = 'arduino_micro.hex';
-        return { url: firmwareUrl(fn), filename: fn, downloadName: appendVersionToFilename(fn) };
-    }
+    updateInfo(release) {
+        const info = document.getElementById('adapterReleaseInfo');
+        const badge = document.getElementById('adapterReleaseVersionBadge');
+        const dateEl = document.getElementById('adapterReleaseDate');
+        const notes = document.getElementById('adapterReleaseNotes');
+        if (!info) return;
 
-    // Other models require board selection
+        if (!release) {
+            // Repository fallback — no specific release metadata to show
+            info.style.display = 'none';
+            return;
+        }
+        info.style.display = 'block';
+        if (badge) {
+            badge.textContent = release.tag_name;
+            badge.className = 'firmware-version' + (release.prerelease ? ' test-version' : '');
+        }
+        if (dateEl) {
+            dateEl.textContent = new Date(release.published_at).toLocaleDateString('en-US', {
+                year: 'numeric', month: 'long', day: 'numeric'
+            });
+        }
+        if (notes) {
+            const items = releaseBodyToItems(release.body);
+            notes.innerHTML = items.length ? `<ul>${items.join('')}</ul>` : '';
+        }
+    },
+
+    // Find the asset for a given base firmware name (e.g. "xiao_basic_pcb_v2")
+    // within the selected release. Asset names are tag-stamped, so match the
+    // base plus an optional "_<tag>" suffix.
+    findAsset(base, ext) {
+        if (!this.selected || !this.selected.assets) return null;
+        const re = new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(_.+)?\\.' + ext + '$', 'i');
+        return this.selected.assets.find(a => re.test(a.name)) || null;
+    },
+};
+
+// Resolve the base firmware name (no extension) and extension for the current
+// board/model selection. Returns null if the selection is incomplete.
+function getFirmwareBase() {
+    if (wizardState.model === 'vail_lite') return { base: 'trinkey_vail_adapter', ext: 'uf2' };
+    if (wizardState.board === 'micro') return { base: 'arduino_micro', ext: 'hex' };
     if (!wizardState.model || !wizardState.board) return null;
+    if (wizardState.model === 'basic_pcb') return { base: `${wizardState.board}_basic_pcb_v2`, ext: 'uf2' };
+    if (wizardState.model === 'advanced_pcb') return { base: `${wizardState.board}_advanced_pcb`, ext: 'uf2' };
+    return { base: `${wizardState.board}_non_pcb`, ext: 'uf2' };
+}
 
-    // Build firmware filename based on selections
-    // For Basic PCB, use v2 as default (latest version)
-    let filename;
-    if (wizardState.model === 'basic_pcb') {
-        filename = `${wizardState.board}_basic_pcb_v2.uf2`;
-    } else if (wizardState.model === 'advanced_pcb') {
-        filename = `${wizardState.board}_advanced_pcb.uf2`;
-    } else {
-        filename = `${wizardState.board}_non_pcb.uf2`;
+// Resolve the firmware download for the current selection + selected version.
+// Prefers the selected release's tag-stamped asset; falls back to the live
+// repository build (docs/firmware_files/) when no release/asset is available.
+// .hex (Arduino Micro) is fetched in JS, so its asset URL is routed through the
+// CORS proxy; .uf2 is a direct anchor download and needs no proxy.
+function getFirmwareFile() {
+    const sel = getFirmwareBase();
+    if (!sel) return null;
+    const { base, ext } = sel;
+    const plain = `${base}.${ext}`;
+
+    // "Latest (from repository)" fallback option — serve the live repo build.
+    if (!adapterReleases.selected) {
+        return { url: `firmware_files/${plain}`, filename: plain, fallbackUrl: `firmware_files/${plain}` };
     }
 
-    return { url: firmwareUrl(filename), filename, downloadName: appendVersionToFilename(filename) };
+    // A specific release is selected: require its matching asset. Don't silently
+    // serve the latest build — that would mislabel an old version's download.
+    const asset = adapterReleases.findAsset(base, ext);
+    if (!asset) {
+        return { unavailable: true, version: adapterReleases.selected.tag_name, board: plain };
+    }
+    const url = ext === 'hex'
+        ? `${ADAPTER_FIRMWARE_PROXY}/vail-adapter/${adapterReleases.selected.tag_name}/${asset.name}`
+        : asset.browser_download_url;
+    return { url, filename: asset.name, fallbackUrl: `firmware_files/${plain}` };
 }
 
 // Get friendly names for display
@@ -201,8 +289,12 @@ function updateStep2Content() {
             qtpyHint.style.display = 'block';
         }
     }
-    // Micro card visibility depends on both test channel and model
-    updateMicroCardVisibility();
+    // The Arduino Micro is an experimental DIY/breadboard target, so its board
+    // card only appears on the "DIY No PCB" path.
+    const microCard = document.getElementById('microCard');
+    if (microCard) {
+        microCard.style.display = wizardState.model === 'non_pcb' ? '' : 'none';
+    }
 }
 
 function updateProgressBar(stepNumber) {
@@ -285,6 +377,10 @@ async function flashMicroFirmware() {
         alert('No firmware file available for this configuration.');
         return;
     }
+    if (firmware.unavailable) {
+        alert(`Arduino Micro firmware is not available in ${firmware.version}. Choose a newer version.`);
+        return;
+    }
 
     const progressContainer = document.getElementById('microProgressContainer');
     const progressBar = document.getElementById('microProgressBar');
@@ -296,16 +392,15 @@ async function flashMicroFirmware() {
 
     try {
         microLog(`Downloading ${firmware.filename} from ${firmware.url}…`);
-        const resp = await fetch(firmware.url, { cache: 'no-cache' });
-        if (!resp.ok) {
-            if (resp.status === 404 && isTestChannelActive()) {
-                throw new Error(
-                    `Firmware not found in test channel (HTTP 404). ` +
-                    `The test build for Arduino Micro has not been deployed yet. ` +
-                    `Switch back to stable or ask a maintainer to run the Actions workflow with deploy_target=test.`
-                );
-            }
-            throw new Error(`Firmware fetch failed: HTTP ${resp.status}`);
+        let resp = await fetch(firmware.url, { cache: 'no-cache' }).catch(() => null);
+        // If the proxied release asset is unavailable (proxy down, asset/tag
+        // missing), fall back to the live repository build so flashing still works.
+        if ((!resp || !resp.ok) && firmware.fallbackUrl && firmware.fallbackUrl !== firmware.url) {
+            microLog('Release asset unavailable — falling back to the latest repository build…');
+            resp = await fetch(firmware.fallbackUrl, { cache: 'no-cache' }).catch(() => null);
+        }
+        if (!resp || !resp.ok) {
+            throw new Error(`Firmware fetch failed: HTTP ${resp ? resp.status : 'network error'}`);
         }
         const hexText = await resp.text();
         microLog(`Firmware fetched (${hexText.length} chars of Intel HEX).`);
@@ -360,8 +455,15 @@ function updateStep3Content() {
     const downloadText = document.getElementById('downloadText');
     const firmwareFile = getFirmwareFile();
 
-    if (firmwareFile) {
-        const savedName = firmwareFile.downloadName || firmwareFile.filename;
+    if (firmwareFile && firmwareFile.unavailable) {
+        // The selected release predates this board / has no matching asset
+        downloadButton.removeAttribute('href');
+        downloadButton.removeAttribute('download');
+        downloadButton.classList.add('disabled');
+        downloadButton.setAttribute('aria-disabled', 'true');
+        downloadText.textContent = `${firmwareFile.board} not available in ${firmwareFile.version}`;
+    } else if (firmwareFile) {
+        const savedName = firmwareFile.filename;
         downloadButton.href = firmwareFile.url;
         downloadButton.download = savedName;
         downloadText.textContent = `Download ${savedName}`;
@@ -535,13 +637,6 @@ async function fetchRecentUpdates(deviceType) {
         }
         const release = await response.json();
 
-        // Cache the adapter release tag so downloads can be version-stamped
-        if (deviceType === 'adapter') {
-            latestAdapterReleaseTag = release.tag_name || release.name || null;
-            // Refresh the download button if the flash step is already showing
-            if (wizardState.currentStep === 3) updateStep3Content();
-        }
-
         // Header: "<Version> — <date>", e.g. "V4.4 — October 3, 2025"
         const versionLabel = release.name || release.tag_name || '';
         const publishedDate = new Date(release.published_at);
@@ -607,6 +702,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Go to adapter model selection (step 1.5)
                     goToStep(1.5);
                     fetchRecentUpdates('adapter');
+                    adapterReleases.fetch();
                 } else if (wizardState.device === 'summit') {
                     // Go directly to Summit flash page (step 4)
                     goToStep(4);
@@ -708,33 +804,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         hideWhatsNew();
         goToStep(1);
-    });
-
-    // --- Test channel initialization & toggle ---
-    // ?test=1 → enable, ?test=0 → disable, otherwise preserve localStorage
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('test')) {
-        setTestChannel(urlParams.get('test') === '1');
-    }
-    applyTestChannelUI();
-
-    document.getElementById('testChannelToggleLink')?.addEventListener('click', (e) => {
-        e.preventDefault();
-        const nextState = !isTestChannelActive();
-        if (nextState) {
-            const ok = confirm(
-                '🧪 Enable the test channel?\n\n' +
-                'You will download pre-release firmware intended for beta testers instead of the stable builds. ' +
-                'Test builds may be incomplete or unstable.\n\n' +
-                'You can switch back at any time.'
-            );
-            if (!ok) return;
-        }
-        setTestChannel(nextState);
-    });
-
-    document.getElementById('exitTestChannelButton')?.addEventListener('click', () => {
-        setTestChannel(false);
     });
 
     // Boot mode button

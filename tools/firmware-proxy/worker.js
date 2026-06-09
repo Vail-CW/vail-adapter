@@ -1,6 +1,13 @@
-// Cloudflare Worker - CORS proxy for Vail Summit GitHub release assets
+// Cloudflare Worker - CORS proxy for Vail GitHub release assets
 // Deploy: npx wrangler deploy
-// Only proxies .bin files from Vail-CW/vail-summit releases
+//
+// Routes (both supported):
+//   /{tag}/{file}.bin                 -> Vail-CW/vail-summit  (legacy, unchanged)
+//   /{repo}/{tag}/{file}.(bin|uf2|hex) -> Vail-CW/{repo}      (e.g. vail-adapter)
+//
+// Only Vail-CW repos and firmware extensions are allowed.
+
+const ALLOWED_REPOS = ['vail-summit', 'vail-adapter'];
 
 export default {
   async fetch(request) {
@@ -20,15 +27,27 @@ export default {
       return new Response('Method not allowed', { status: 405 });
     }
 
-    // Parse path: /{tag}/{filename} e.g. /v0.52/bootloader.bin
     const url = new URL(request.url);
-    const match = url.pathname.match(/^\/(v[\d.]+)\/([\w.-]+\.bin)$/);
-    if (!match) {
-      return new Response('Not found. Use /{tag}/{filename}.bin', { status: 404 });
+    let repo, tag, filename;
+
+    // New form: /{repo}/{tag}/{file}.(bin|uf2|hex)
+    let match = url.pathname.match(/^\/([\w-]+)\/(v[\d.]+)\/([\w.-]+\.(?:bin|uf2|hex))$/);
+    if (match) {
+      [, repo, tag, filename] = match;
+    } else {
+      // Legacy Summit form: /{tag}/{file}.bin
+      match = url.pathname.match(/^\/(v[\d.]+)\/([\w.-]+\.bin)$/);
+      if (match) {
+        repo = 'vail-summit';
+        [, tag, filename] = match;
+      }
     }
 
-    const [, tag, filename] = match;
-    const githubUrl = `https://github.com/Vail-CW/vail-summit/releases/download/${tag}/${filename}`;
+    if (!match || !ALLOWED_REPOS.includes(repo)) {
+      return new Response('Not found. Use /{repo}/{tag}/{filename} or /{tag}/{filename}.bin', { status: 404 });
+    }
+
+    const githubUrl = `https://github.com/Vail-CW/${repo}/releases/download/${tag}/${filename}`;
 
     try {
       const response = await fetch(githubUrl, { redirect: 'follow' });

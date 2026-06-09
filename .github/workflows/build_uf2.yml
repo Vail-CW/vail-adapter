@@ -155,6 +155,7 @@ jobs:
           # Default for push / release events: stable
           TARGET_DIR="firmware_files"
           COMMIT_MSG="Update firmware files (UF2 + HEX)"
+          SKIP="false"
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             case "${{ inputs.deploy_target }}" in
               stable)
@@ -167,29 +168,40 @@ jobs:
                 ;;
             esac
           fi
+          # A pre-release must never overwrite the stable live-site firmware.
+          # Its build is published as release assets only (see attach_release_assets).
+          if [ "${{ github.event_name }}" = "release" ] && [ "${{ github.event.release.prerelease }}" = "true" ]; then
+            SKIP="true"
+            echo "Pre-release: skipping stable firmware_files/ deploy (assets only)."
+          fi
           echo "dir=$TARGET_DIR" >> $GITHUB_OUTPUT
           echo "msg=$COMMIT_MSG" >> $GITHUB_OUTPUT
-          echo "Target directory: docs/$TARGET_DIR"
+          echo "skip=$SKIP" >> $GITHUB_OUTPUT
+          echo "Target directory: docs/$TARGET_DIR (skip=$SKIP)"
 
       # Always commit to master, regardless of the source branch. A test
       # deploy from a feature branch still updates live-site assets only.
       - name: Checkout master
+        if: ${{ steps.target.outputs.skip != 'true' }}
         uses: actions/checkout@v4
         with:
           ref: master
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download all firmware artifacts
+        if: ${{ steps.target.outputs.skip != 'true' }}
         uses: actions/download-artifact@v4
         with:
           path: all_uf2_files
 
       - name: List downloaded files
+        if: ${{ steps.target.outputs.skip != 'true' }}
         run: |
           echo "Listing downloaded artifacts:"
           ls -R all_uf2_files
 
       - name: Copy firmware files to docs/${{ steps.target.outputs.dir }}
+        if: ${{ steps.target.outputs.skip != 'true' }}
         run: |
           DEST="docs/${{ steps.target.outputs.dir }}"
           echo "Copying firmware files to $DEST..."
@@ -208,6 +220,7 @@ jobs:
           ls "$DEST"
 
       - name: Commit and Push updated firmware files
+        if: ${{ steps.target.outputs.skip != 'true' }}
         run: |
           git config user.name "GitHub Action"
           git config user.email "action@github.com"
@@ -218,3 +231,36 @@ jobs:
             git commit -m "${{ steps.target.outputs.msg }}"
             git push origin master
           fi
+
+  # On any published release (stable or pre-release), attach the built firmware
+  # as version-stamped assets so the updater can offer per-version downloads.
+  attach_release_assets:
+    needs: build_firmware
+    if: ${{ github.event_name == 'release' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all firmware artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all_fw
+
+      - name: Version-stamp and upload assets to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -e
+          mkdir -p release_assets
+          # Artifacts download into per-name subdirs; flatten and stamp the tag
+          # into each filename, e.g. xiao_basic_pcb_v2.uf2 -> xiao_basic_pcb_v2_v5.0.uf2
+          find all_fw -type f \( -name "*.uf2" -o -name "*.hex" \) | while read -r f; do
+            base="$(basename "$f")"
+            name="${base%.*}"
+            ext="${base##*.}"
+            cp "$f" "release_assets/${name}_${TAG}.${ext}"
+          done
+          echo "Assets to upload to $TAG:"
+          ls -1 release_assets
+          gh release upload "$TAG" release_assets/* --clobber --repo "$GITHUB_REPOSITORY"
