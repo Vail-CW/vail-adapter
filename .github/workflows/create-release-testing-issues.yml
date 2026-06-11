@@ -161,7 +161,7 @@ jobs:
             const buildFirmware = '${{ inputs.build_firmware }}' === 'true';
             const firmwareLocation = buildFirmware
               ? 'Firmware built and attached to hardware-specific issues'
-              : 'Firmware files available in `docs/firmware_files/` or attach manually';
+              : 'Firmware files available as GitHub Release assets or attach manually';
 
             const parentBody = `# Release Testing Overview - ${version}
 
@@ -235,9 +235,9 @@ jobs:
 
             ### Build & CI
             - [ ] Merge test branch to master
-            - [ ] All 8 hardware configs built successfully in CI
-            - [ ] UF2 files committed to \`docs/firmware_files/\`
-            - [ ] All 8 UF2 files verified (correct size, not corrupted)
+            - [ ] All hardware configs built successfully in CI
+            - [ ] UF2 files attached to the GitHub Release as assets
+            - [ ] All UF2 files verified (correct size, not corrupted)
 
             ### Testing Requirements
             - [ ] **Minimum:** At least 2 different hardware configurations tested and passing
@@ -536,7 +536,7 @@ jobs:
             comment += `1. Review the parent issue and fill in any missing details\n`;
             comment += `2. Assign testers to specific hardware configuration issues\n`;
             if (!buildFirmware) {
-              comment += `3. Ensure firmware files are available in \`docs/firmware_files/\` or attach to issues\n`;
+              comment += `3. Ensure firmware files are attached to the GitHub Release or to the issues\n`;
             } else {
               comment += `3. Testers can download firmware from their assigned hardware issue\n`;
             }

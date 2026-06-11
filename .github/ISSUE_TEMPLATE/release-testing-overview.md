@@ -10,7 +10,7 @@ assignees: ''
 
 **Firmware Build Date:** YYYY-MM-DD
 **Target Release Date:** YYYY-MM-DD
-**Firmware Files Location:** `docs/firmware_files/` or attach below
+**Firmware Files Location:** GitHub Release assets for this version
 
 ---
 
@@ -86,9 +86,9 @@ List any critical bugs found during testing that must be fixed before release:
 
 ### Build & CI
 - [ ] Merge test branch to master
-- [ ] All 8 hardware configs built successfully in CI
-- [ ] UF2 files committed to `docs/firmware_files/`
-- [ ] All 8 UF2 files verified (correct size, not corrupted)
+- [ ] All hardware configs built successfully in CI
+- [ ] UF2 files attached to the GitHub Release as assets
+- [ ] All UF2 files verified (correct size, not corrupted)
 
 ### Testing Requirements
 - [ ] **Minimum:** At least 2 different hardware configurations tested and passing

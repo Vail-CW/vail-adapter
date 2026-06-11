@@ -124,16 +124,16 @@ After testing, flash the normal Vail Adapter firmware:
 
 **For QT Py:**
 ```bash
-# Copy the appropriate UF2 from docs/firmware_files/
+# Download the appropriate UF2 from the GitHub Release (or build it locally)
 # For QT Py Advanced PCB:
-cp docs/firmware_files/qtpy_advanced_pcb.uf2 /media/QTPY_BOOT/
+cp qtpy_advanced_pcb.uf2 /media/QTPY_BOOT/
 ```
 
 **For XIAO:**
 ```bash
-# Copy the appropriate UF2 from docs/firmware_files/
+# Download the appropriate UF2 from the GitHub Release (or build it locally)
 # For XIAO Advanced PCB:
-cp docs/firmware_files/xiao_advanced_pcb.uf2 /media/Arduino/
+cp xiao_advanced_pcb.uf2 /media/Arduino/
 ```
 
 Or use the web updater at https://vailadapter.com

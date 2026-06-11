@@ -108,7 +108,7 @@ Before releasing, ensure:
 1. **Find the parent issue** - Look for "Release Testing: v[VERSION] - Overview"
 2. **Choose your hardware** - Find the hardware-specific issue that matches your configuration
 3. **Claim the issue** - Comment that you're testing this config and add your name to the "Primary Tester" field
-4. **Download firmware** - Get the appropriate UF2 file from parent issue or `docs/firmware_files/`
+4. **Download firmware** - Get the appropriate UF2 file from the GitHub Release for the version (attached as a release asset)
 5. **Run through tests** - Check off items in the hardware-specific issue as you test them
 6. **Report issues** - Add detailed bug reports in the "Issues Found" section
 7. **Sign off** - Check the final "Tester Sign-Off" boxes when complete
@@ -169,8 +169,8 @@ If you found a **critical** bug that blocks release:
 
 **Day 1: Development & CI**
 - Maintainer merges feature branches to master
-- CI automatically builds all 8 firmware variants
-- UF2 files committed to `docs/firmware_files/`
+- CI automatically builds all firmware variants
+- UF2 files attached to the GitHub Release as version-stamped assets
 
 **Day 1: Testing Issues Created**
 - Maintainer creates parent overview issue #42 for v2.1.0
