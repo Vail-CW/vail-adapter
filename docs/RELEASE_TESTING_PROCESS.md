@@ -24,8 +24,6 @@ Use the GitHub Actions workflow to create all 9 issues automatically:
 3. Click **"Run workflow"** - wait 10-30 seconds
 4. Done! All 9 issues created and linked together
 
-See [AUTOMATED_ISSUE_CREATION.md](AUTOMATED_ISSUE_CREATION.md) for detailed instructions.
-
 ---
 
 **📝 Manual (Alternative):**
@@ -279,7 +277,6 @@ A: Not really! Most edits are quick (checking a box). If someone's editing, wait
 
 ## Related Documents
 
-- [AUTOMATED_ISSUE_CREATION.md](AUTOMATED_ISSUE_CREATION.md) - **Automated issue creation workflow (recommended)**
 - [TESTING_GUIDE.md](TESTING_GUIDE.md) - Detailed manual testing procedures for the firmware update website
 - [.github/ISSUE_TEMPLATE/release-testing-overview.md](../.github/ISSUE_TEMPLATE/release-testing-overview.md) - Parent issue template
 - [.github/ISSUE_TEMPLATE/release-testing-hardware.md](../.github/ISSUE_TEMPLATE/release-testing-hardware.md) - Hardware-specific issue template
