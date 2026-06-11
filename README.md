@@ -42,6 +42,8 @@ The full manual is on the website at [vailadapter.com/manual](https://vailadapte
 
 Step by step assembly guides for both boards are on the website at [vailadapter.com/assembly](https://vailadapter.com/assembly), and the PDFs are kept in this repo too: [Basic PCB v2](online-updater/assembly/BasicPCBV2.pdf) and [Advanced](online-updater/assembly/AdvancedAdapterAssemblyInstructions.pdf). If you would rather not source parts and solder, you can get a kit or a finished unit from [shop.ke9bos.com](https://shop.ke9bos.com).
 
+The board designs (KiCad and gerbers) and the printable cases are in [hardware/](hardware/), organized by variant.
+
 ### Basic PCB (v2)
 
 * Seeed Studio XIAO SAMD21 (from [Amazon](https://www.amazon.com/gp/product/B08CN5YSQF?smid=A2OY3Y9CEYQQ5W)) or an [Adafruit QT Py SAMD21](https://www.adafruit.com/product/4600)
