@@ -10,3 +10,8 @@ firmware_uf2_files/
 build_log.txt
 compile.log
 **/build_output_xiao/
+
+# Build kit outputs (tools/build-kit/)
+tools/build-kit/uf2_output/
+tools/build-kit/bin/
+config.h.kitbak
