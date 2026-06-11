@@ -1,134 +1,133 @@
-# Vail Adapter — Morse Code Key / Paddle to USB
+# Vail Adapter: Morse Code Key / Paddle to USB
 
-![Vail adapter, assembled and connected](doc/vail-adapter-v2.jpg)
+<p align="center">
+  <img src="doc/vail-adapter-key.jpg" alt="Vail Adapter wired to a straight key" height="250" />
+  &nbsp;&nbsp;
+  <img src="doc/vail-adapter-cases.jpg" alt="Vail Adapter 3D printed cases in several colors" height="250" />
+</p>
 
-A tiny USB adapter that turns a Morse key or paddle into a USB device — both a
-**keyboard** (for [Vail](https://vail.woozle.org/), [VBand](https://hamradio.solutions/vband/),
-and any CW app) and a **MIDI** controller. The keyers and sidetone run on the
-adapter itself, so there's **no browser/OS latency** in your keying, even at high
-speeds. Runs on SAMD21 boards (Seeed XIAO, Adafruit QT Py, TRRS Trinkey) and,
-experimentally, the AVR Arduino Micro.
+The Vail Adapter is a small USB gadget that turns your Morse key or paddle into a USB device. It shows up as both a keyboard and a MIDI device, so it works with [Vail](https://vail.woozle.org/), [VBand](https://hamradio.solutions/vband/), and pretty much any CW software. The keyer logic and the sidetone run on the adapter itself, so there is no browser or operating system latency in your keying, even when you are running fast. It works on SAMD21 boards (the Seeed XIAO, the Adafruit QT Py, and the TRRS Trinkey), and there is an experimental build for the AVR Arduino Micro.
 
-▶ [Vail Adapter benefits video](https://www.youtube.com/watch?v=XQ-mwdyLkOY) (4:46)
+Here is a short video that shows what it can do: [Vail Adapter benefits](https://www.youtube.com/watch?v=XQ-mwdyLkOY) (4:46).
 
-## Features
+## What it does
 
-- Keys reliably even when another window has focus (HID keyboard output)
-- Works with **Vail** and **VBand** (VBand needs its window focused)
-- All nine Vail keyer modes run **in the adapter** — zero-latency keying at any speed
-- Optional **sidetone** generator (helps with latency and lets you mute the PC speaker)
-- Plays **received** signals on the adapter so you can silence your computer
-- **CW memories** — 3 slots (×25 s on SAMD21; ×~12 s on Arduino Micro)
-- Optional **radio output** for directly keying a rig (Advanced PCB)
-- **MIDI control** of speed, tone, keyer type, and mode — see [MIDI integration](#midi-integration)
-- Free firmware updates for life — flash in the browser at **[vailadapter.com](https://vailadapter.com)**
+* With Vail you can keep keying even when the Vail window is not focused, because Vail uses MIDI and MIDI does not care which window has focus
+* Keyboard based apps like VBand work too, but their window has to stay focused, since keyboard presses only reach the window that is focused
+* Runs all nine Vail keyer modes on the adapter, so you can key as fast as you want with no latency
+* Has an optional sidetone generator, which helps with latency and lets you turn off your computer speaker
+* Plays the received signal on the adapter so you can keep the computer quiet
+* Stores CW memories: three slots, about 25 seconds each on SAMD21, and about 12 seconds each on the Arduino Micro
+* Can key a radio directly through the optional radio output on the Advanced PCB
+* Can be set up over MIDI for speed, tone, keyer type, and mode (see [MIDI integration](#midi-integration))
+* Gets free firmware updates for life
 
-## Updating firmware
+## Where to get one
 
-Flash the latest firmware right from your browser (Chrome/Edge/Opera) at
-**[vailadapter.com](https://vailadapter.com)** — pick your board, choose a version,
-and follow the steps. Firmware for every release is published as
-[GitHub Release](https://github.com/Vail-CW/vail-adapter/releases) assets.
+If you would rather not build your own, I sell them at [shop.ke9bos.com](https://shop.ke9bos.com). You can get a bare PCB, a full kit with everything you need, or a finished unit that is ready to plug in.
 
-## Hardware
+If you want to special order parts, place a bulk order, or you have a question about anything Vail related, email me at ke9bos@pigletradio.org and I will take care of you.
 
-### PCB version
-- Seeed Studio **XIAO SAMD21** ([Amazon](https://www.amazon.com/gp/product/B08CN5YSQF?smid=A2OY3Y9CEYQQ5W)) or **[Adafruit QT Py SAMD21](https://www.adafruit.com/product/4600)**
-- PCB: order bare from JLCPCB/PCBWAY yourself, or get a bare board / full kit / assembled unit from Brett KE9BOS — email ke9bos@pigletradio.org
-- Buzzer speaker
-- For the v1.1 PCB (purple) you need both of these (v1 black PCB needs only the first):
-  - [PCB-mount TRS connector](https://a.co/d/bLaRwym)
-  - [Switched PCB-mount aux jack](https://www.amazon.com/dp/B07WR748JS)
+## Updating the firmware
 
-### No-PCB / DIY
-- Seeed Studio XIAO SAMD21 (or Adafruit QT Py SAMD21)
-- Buzzer speaker
-- [Panel aux jack](https://www.amazon.com/dp/B01C3RFHDC)
+You can flash the latest firmware right from your browser (Chrome, Edge, or Opera) at [update.vailadapter.com](https://update.vailadapter.com). Choose your board, pick a version, and follow the steps on the page. Every firmware version is posted on the [releases page](https://github.com/Vail-CW/vail-adapter/releases).
 
-### Vail Lite — ultra-compact USB stick
-- [Adafruit TRRS Trinkey M0](https://www.adafruit.com/product/5954) — a USB-stick board with a built-in TRRS jack
-- Piezo buzzer (via the STEMMA QT connector)
-- **No** buttons, capacitive touch, headphone jack, or radio output — settings are changed over MIDI only
-- See **[TRRS_TRINKEY_BUILD.md](TRRS_TRINKEY_BUILD.md)**
+## First time setup
 
-### Experimental — Arduino Micro (ATmega32U4)
-A 5 V AVR alternative to the SAMD21 boards. DIY/breadboard only — there is no Micro-targeted PCB.
-- **Wiring:** D2 = Dit, D1 = Dah, D0 = Straight Key, D10 = Piezo, GND = ground. Full walkthrough → **[doc/advanced-install.md](doc/advanced-install.md#arduino-micro--notes-and-build)**
-- **Limitations vs. SAMD21:** no capacitive touch, no button menu, no LEDs; CW memories shortened to 3 × ~12 s; radio output on A2/A3 is 5 V logic (check your rig's tolerance or use a level shifter)
-- **Flashing:** WebSerial + AVR109 (Caterina bootloader) — no UF2 drag-and-drop. Flash at [vailadapter.com](https://vailadapter.com) (DIY No PCB → Arduino Micro) in Chrome/Edge/Opera, or run `arduino-cli upload --fqbn arduino:avr:micro`
+Once you have flashed an adapter, the first thing to do is run the getting started tool at [vailadapter.com/gettingstarted](https://vailadapter.com/gettingstarted). It walks you through getting set up and making sure everything is working.
 
-## Setting up
+The full manual is on the website at [vailadapter.com/manual](https://vailadapter.com/manual). It covers the buttons, the keyer modes, the memories, and the rest of the day to day use.
 
-- [Easy Setup](doc/easy-install.md)
-- [Advanced Setup](doc/advanced-install.md)
-- [Examples others have built](https://github.com/Vail-CW/vail-adapter/wiki#cool-people-who-have-built-one)
+## Building your own
+
+Step by step assembly guides for both boards are on the website at [vailadapter.com/assembly](https://vailadapter.com/assembly), and the PDFs are kept in this repo too: [Basic PCB v2](docs/assembly/BasicPCBV2.pdf) and [Advanced](docs/assembly/AdvancedAdapterAssemblyInstructions.pdf). If you would rather not source parts and solder, you can get a kit or a finished unit from [shop.ke9bos.com](https://shop.ke9bos.com).
+
+### Basic PCB (v2)
+
+* Seeed Studio XIAO SAMD21 (from [Amazon](https://www.amazon.com/gp/product/B08CN5YSQF?smid=A2OY3Y9CEYQQ5W)) or an [Adafruit QT Py SAMD21](https://www.adafruit.com/product/4600)
+* A buzzer speaker
+* A [PCB mount TRS connector](https://a.co/d/bLaRwym)
+* A [switched PCB mount aux jack](https://www.amazon.com/dp/B07WR748JS)
+
+You can order the bare PCB from JLCPCB or PCBWAY yourself, or get a bare board, a kit, or an assembled unit from [shop.ke9bos.com](https://shop.ke9bos.com).
+
+### Advanced PCB
+
+The Advanced PCB does everything the Basic does and adds a radio output, so you can key a rig directly, along with capacitive touch points. It uses more parts than the Basic build:
+
+* Seeed Studio XIAO SAMD21 or an Adafruit QT Py SAMD21
+* A buzzer speaker
+* The Advanced Vail Adapter PCB
+* 1 switching aux jack and 2 standard aux jacks
+* 2 transistors and 2 resistors, which drive the radio output
+* 2 screw terminal PCB mounts
+* 2 headers for the Arduino
+
+The radio output parts are easy to get wrong when you buy them one at a time, so most people get the Advanced build as a kit or assembled from [shop.ke9bos.com](https://shop.ke9bos.com). The full build steps are in the [Advanced assembly guide](docs/assembly/AdvancedAdapterAssemblyInstructions.pdf).
+
+### Without a PCB
+
+* Seeed Studio XIAO SAMD21 (or an Adafruit QT Py SAMD21)
+* A buzzer speaker
+* A [panel mount aux jack](https://www.amazon.com/dp/B01C3RFHDC)
+
+### Vail Lite, the USB stick version
+
+* An [Adafruit TRRS Trinkey M0](https://www.adafruit.com/product/5954), which is a USB stick sized board with a TRRS jack built in
+* A piezo buzzer, connected through the STEMMA QT connector
+* It has no buttons, no capacitive touch, no headphone jack, and no radio output, so you change settings over MIDI
+* Full instructions are in [TRRS_TRINKEY_BUILD.md](TRRS_TRINKEY_BUILD.md)
+
+### Arduino Micro (experimental)
+
+This is a 5V AVR alternative to the SAMD21 boards. It is for DIY and breadboard builds only, and there is no PCB made for it.
+
+* Wiring: D2 is Dit, D1 is Dah, D0 is the Straight Key, D10 is the Piezo, and GND is ground. There is a full walkthrough in [doc/advanced-install.md](doc/advanced-install.md).
+* A few things it cannot do compared to the SAMD21 boards: no capacitive touch, no button menu, and no status LEDs. The CW memories are shorter at about 12 seconds each, and the radio output on A2 and A3 runs at 5V, so check that your radio can handle it or use a level shifter.
+* Flashing is different too. It uses WebSerial with the AVR109 (Caterina) bootloader instead of UF2 drag and drop. Flash it at [update.vailadapter.com](https://update.vailadapter.com) by choosing DIY No PCB and then Arduino Micro in Chrome, Edge, or Opera, or run `arduino-cli upload --fqbn arduino:avr:micro`.
+
+## Setting it up
+
+* [Easy Setup](doc/easy-install.md)
+* [Advanced Setup](doc/advanced-install.md)
+* [See some that other people have built](https://github.com/Vail-CW/vail-adapter/wiki#cool-people-who-have-built-one)
+
+The full manual is at [vailadapter.com/manual](https://vailadapter.com/manual).
 
 ## MIDI integration
 
-The adapter is a class-compliant USB MIDI device. Apps and tools can control
-mode, speed, sidetone, and keyer type, and read the keyed output as MIDI notes.
-The full protocol — message types, value ranges, and the exact firmware behavior
-— is documented in **[MIDI_INTEGRATION_SPEC.md](MIDI_INTEGRATION_SPEC.md)**.
-
-If you're building a tool against the adapter, treat that spec as the contract:
-the existing MIDI commands are kept stable on purpose (see the guidelines below).
+The adapter is a standard USB MIDI device. Software can set the mode, the speed, the sidetone, and the keyer type, and it can read the keyed output as MIDI notes. The whole protocol, including the message types, the value ranges, and exactly how the firmware responds, is written up in [MIDI_INTEGRATION_SPEC.md](MIDI_INTEGRATION_SPEC.md). If you are building something that talks to the adapter, follow that document closely, because I keep the existing MIDI commands the same on purpose. There is more about that just below.
 
 ## Contributing
 
-Contributions are welcome! For PCBs, kits, or questions, email ke9bos@pigletradio.org.
-If this project is useful to you, you can [buy me a coffee](https://buymeacoffee.com/ke9bos) ☕.
+I am glad to have help with this project. If you have a question, want parts, or want to talk through an idea, email me at ke9bos@pigletradio.org. If the adapter has been useful to you and you want to support more work on it, you can [buy me a coffee](https://buymeacoffee.com/ke9bos).
 
-### Project guidelines
+### Guidelines
 
-The Vail Adapter has one job: be a **rock-solid, low-latency bridge from a Morse
-key/paddle to USB**. Lots of people and tools already depend on exactly how it
-behaves today, so contributions are reviewed against these guidelines to keep the
-adapter true to that purpose and easy to maintain:
+The Vail Adapter has one job and it does it well. It is a simple, reliable, low latency bridge from a Morse key or paddle to USB. A lot of people, and a lot of outside tools, already count on the way it works today, so I review changes with that in mind. Here is what I ask:
 
-1. **Don't change existing MIDI commands.** The current MIDI map — mode, speed,
-   tone, keyer select, and the dit/dah/straight note output — is a public
-   contract that external tools and the Vail/VBand sites rely on. Existing
-   commands, value ranges, and note numbers **must not change**. New MIDI commands
-   are welcome *only* if they use currently-unused messages and do not alter or
-   interfere with existing behavior — and the spec must be updated to match.
+1. Do not change the existing MIDI commands. The MIDI commands that are already there, for mode, speed, tone, keyer selection, and the dit, dah, and straight key notes the adapter sends, are something other tools and the Vail and VBand sites depend on. The commands, the value ranges, and the note numbers need to stay exactly as they are. I am happy to look at new MIDI commands, as long as they use messages that are not already being used and they do not change or interfere with anything that already works. If you add one, update the MIDI spec to match.
 
-2. **Backward compatibility comes first.** Don't break behavior people rely on:
-   keyboard output (dit = Left Ctrl, dah = Right Ctrl), the default boot mode
-   (keyboard), saved settings, or the USB HID/MIDI interfaces. EEPROM layout
-   changes must keep existing saved settings working (or migrate them).
+2. Keep it backward compatible. Do not break the things people already rely on, like the keyboard output (Dit is Left Control and Dah is Right Control), starting up in keyboard mode, saved settings, or the USB keyboard and MIDI interfaces. If you change how settings are stored, make sure the settings people already have still load.
 
-3. **Latency is the whole point.** Never add anything that slows the key path
-   (paddle → output). Keep the hot loop tight; do expensive work elsewhere.
+3. Keep it fast. The reason this thing exists is lag free keying. Do not add anything that slows down the path from the paddle to the output. If a feature needs heavy work, do that work somewhere other than the keying loop.
 
-4. **Stay in scope.** This is a keyer/paddle adapter: keying, keyers, sidetone,
-   CW memories, and optional radio output. Features outside that — displays,
-   WiFi, logging, training games — belong in the Vail Summit, not here. Resist
-   scope creep and added complexity.
+4. Keep it focused. This is a key and paddle adapter. It does keying, keyer modes, sidetone, CW memories, and the optional radio output. Bigger ideas like a display, WiFi, logging, or training games belong on the Vail Summit, not here.
 
-5. **New hardware support must be additive and gated.** Put new boards/variants
-   behind a `config.h` selection (with `#if defined(...)` guards) so existing
-   boards behave identically. The Arduino Micro port is the model — SAMD21 users
-   saw zero change.
+5. Add new hardware without disturbing the old. If you add support for a new board, put it behind a setting in config.h so the boards that already work keep behaving exactly the same. The Arduino Micro support is a good example of this.
 
-6. **Every hardware target must still build.** A change can't fix one board by
-   breaking another. Make sure all configurations compile (CI builds the full
-   matrix; the build kit builds them all locally).
+6. Make sure every board still builds. A change should not fix one board by breaking another. Check that all of the configurations still compile before you send it.
 
-7. **Respect the MCU limits.** Headroom is tight, especially on the AVR
-   (32 KB flash / 2.5 KB RAM / 1 KB EEPROM). New features must fit without
-   regressing memory on existing targets.
+7. Watch the limits of the chips. There is not a lot of room to spare, especially on the Arduino Micro. New features have to fit without using up the headroom on the boards that already work.
 
-8. **Don't change defaults casually.** Default keyer, speed, tone, and startup
-   mode are user-facing expectations — changing them surprises existing users.
+8. Do not change the defaults without a good reason. The default keyer, speed, tone, and startup mode are what people expect when they turn it on. Changing them catches people off guard.
 
-9. **Prefer opt-in over altering existing behavior.** Add a new mode, command, or
-   setting rather than changing how an existing one works.
+9. Add to it rather than change it. When you can, add a new mode, command, or setting instead of changing how an existing one behaves.
 
-10. **Discuss large changes first.** For big refactors or new subsystems, open an
-    issue or email before writing code so it can be steered to fit the project.
+10. Talk to me before any big change. For a large rewrite or a whole new feature, open an issue or send me an email first so we can make sure it fits where the project is going.
 
-## License & credits
+## License and credits
 
-- **License:** MIT — see [LICENSE.md](LICENSE.md)
-- **Authors:** Neale Pickett (original) and Brett Hollifield KE9BOS (current maintainer)
-- **Contact:** ke9bos@pigletradio.org
+* License: MIT. See [LICENSE.md](LICENSE.md).
+* Originally written by Neale Pickett. Currently maintained by Brett Hollifield, KE9BOS.
+* Contact: ke9bos@pigletradio.org
