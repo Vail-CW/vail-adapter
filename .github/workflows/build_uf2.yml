@@ -1,4 +1,8 @@
-name: Build and Deploy Arduino UF2 Firmware
+name: Build Arduino Firmware
+
+# Firmware is distributed via GitHub Releases. On push this workflow builds all
+# targets as a compile check (artifacts only); on a published release it builds
+# and attaches the version-stamped UF2/HEX files as release assets.
 
 on:
   push:
@@ -13,17 +17,7 @@ on:
       - '.github/workflows/build_uf2.yml'  # This workflow itself
   release:
     types: [published] # Triggers when you publish a new release
-  workflow_dispatch:
-    inputs:
-      deploy_target:
-        description: 'Where to deploy the built firmware'
-        required: true
-        default: 'test'
-        type: choice
-        options:
-          - test    # → docs/firmware_files/test/ (beta channel on live site)
-          - stable  # → docs/firmware_files/ (production; same as master push)
-          - none    # → build only, artifacts only, no commit
+  workflow_dispatch:    # Manual build (artifacts attached to the run)
 
 jobs:
   build_firmware: # This remains mostly the same
@@ -140,97 +134,6 @@ jobs:
         with:
           name: ${{ matrix.uf2_name }}
           path: ${{ matrix.uf2_name }}
-
-  deploy:
-    needs: build_firmware # Runs only after all build_firmware jobs succeed
-    # Skip deploy entirely when user explicitly asked for build-only
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.deploy_target != 'none' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write # Allow writing to repository
-    steps:
-      - name: Determine deploy target directory
-        id: target
-        run: |
-          # Default for push / release events: stable
-          TARGET_DIR="firmware_files"
-          COMMIT_MSG="Update firmware files (UF2 + HEX)"
-          SKIP="false"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            case "${{ inputs.deploy_target }}" in
-              stable)
-                TARGET_DIR="firmware_files"
-                COMMIT_MSG="Update firmware files (manual dispatch from ${{ github.ref_name }})"
-                ;;
-              test)
-                TARGET_DIR="firmware_files/test"
-                COMMIT_MSG="chore: update TEST firmware from ${{ github.ref_name }} @ ${{ github.sha }}"
-                ;;
-            esac
-          fi
-          # A pre-release must never overwrite the stable live-site firmware.
-          # Its build is published as release assets only (see attach_release_assets).
-          if [ "${{ github.event_name }}" = "release" ] && [ "${{ github.event.release.prerelease }}" = "true" ]; then
-            SKIP="true"
-            echo "Pre-release: skipping stable firmware_files/ deploy (assets only)."
-          fi
-          echo "dir=$TARGET_DIR" >> $GITHUB_OUTPUT
-          echo "msg=$COMMIT_MSG" >> $GITHUB_OUTPUT
-          echo "skip=$SKIP" >> $GITHUB_OUTPUT
-          echo "Target directory: docs/$TARGET_DIR (skip=$SKIP)"
-
-      # Always commit to master, regardless of the source branch. A test
-      # deploy from a feature branch still updates live-site assets only.
-      - name: Checkout master
-        if: ${{ steps.target.outputs.skip != 'true' }}
-        uses: actions/checkout@v4
-        with:
-          ref: master
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download all firmware artifacts
-        if: ${{ steps.target.outputs.skip != 'true' }}
-        uses: actions/download-artifact@v4
-        with:
-          path: all_uf2_files
-
-      - name: List downloaded files
-        if: ${{ steps.target.outputs.skip != 'true' }}
-        run: |
-          echo "Listing downloaded artifacts:"
-          ls -R all_uf2_files
-
-      - name: Copy firmware files to docs/${{ steps.target.outputs.dir }}
-        if: ${{ steps.target.outputs.skip != 'true' }}
-        run: |
-          DEST="docs/${{ steps.target.outputs.dir }}"
-          echo "Copying firmware files to $DEST..."
-          mkdir -p "$DEST"
-          find all_uf2_files -name "*.uf2" -exec cp {} "$DEST/" \;
-          find all_uf2_files -name "*.hex" -exec cp {} "$DEST/" \;
-          # Record build provenance so testers know what they're flashing
-          cat > "$DEST/BUILD_INFO.txt" <<EOF
-          Built from:   ${{ github.ref_name }}
-          Commit:       ${{ github.sha }}
-          Event:        ${{ github.event_name }}
-          Deploy target: ${{ steps.target.outputs.dir }}
-          Built at:     $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          EOF
-          echo "Files in $DEST:"
-          ls "$DEST"
-
-      - name: Commit and Push updated firmware files
-        if: ${{ steps.target.outputs.skip != 'true' }}
-        run: |
-          git config user.name "GitHub Action"
-          git config user.email "action@github.com"
-          git add docs/${{ steps.target.outputs.dir }}/
-          if git diff --staged --quiet; then
-            echo "No changes to commit."
-          else
-            git commit -m "${{ steps.target.outputs.msg }}"
-            git push origin master
-          fi
 
   # On any published release (stable or pre-release), attach the built firmware
   # as version-stamped assets so the updater can offer per-version downloads.

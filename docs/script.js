@@ -53,8 +53,8 @@ const adapterReleases = {
             const pre = all.filter(r => r.prerelease && this.eligible(r));
             this.testRelease = pre.length ? pre[0] : null;
             this.populate();
-            // Default to the latest stable release; fall back to the repository
-            // firmware_files/ build if no release carries assets yet.
+            // Default to the latest stable release. Firmware is distributed
+            // entirely via release assets — there is no repository fallback.
             this.select(this.stable[0] || null);
         } catch (err) {
             console.log('Error fetching adapter releases:', err.message);
@@ -78,19 +78,18 @@ const adapterReleases = {
             select.appendChild(option);
         });
 
-        // Always offer the live repository build as a resilient fallback
-        const fallback = document.createElement('option');
-        fallback.value = '__fallback__';
-        fallback.textContent = 'Latest (from repository)';
-        select.appendChild(fallback);
+        if (this.stable.length === 0 && !this.testRelease) {
+            const none = document.createElement('option');
+            none.value = '';
+            none.textContent = 'No releases available';
+            select.appendChild(none);
+        }
 
         select.disabled = false;
-        if (this.stable.length === 0) select.value = '__fallback__';
 
         select.onchange = () => {
             const tag = select.value;
             if (tag === '__test__') this.select(this.testRelease);
-            else if (tag === '__fallback__') this.select(null);
             else this.select(this.stable.find(r => r.tag_name === tag) || null);
         };
 
@@ -130,7 +129,6 @@ const adapterReleases = {
                 select.value = this.stable[0].tag_name;
                 this.select(this.stable[0]);
             } else {
-                select.value = '__fallback__';
                 this.select(null);
             }
             if (warning) warning.style.display = 'none';
@@ -195,31 +193,26 @@ function getFirmwareBase() {
 }
 
 // Resolve the firmware download for the current selection + selected version.
-// Prefers the selected release's tag-stamped asset; falls back to the live
-// repository build (docs/firmware_files/) when no release/asset is available.
+// Firmware comes exclusively from the selected release's tag-stamped asset.
 // .hex (Arduino Micro) is fetched in JS, so its asset URL is routed through the
 // CORS proxy; .uf2 is a direct anchor download and needs no proxy.
 function getFirmwareFile() {
     const sel = getFirmwareBase();
     if (!sel) return null;
     const { base, ext } = sel;
-    const plain = `${base}.${ext}`;
 
-    // "Latest (from repository)" fallback option — serve the live repo build.
+    // A release must be selected, and it must carry this board's asset.
     if (!adapterReleases.selected) {
-        return { url: `firmware_files/${plain}`, filename: plain, fallbackUrl: `firmware_files/${plain}` };
+        return { unavailable: true, version: '(none)', board: `${base}.${ext}` };
     }
-
-    // A specific release is selected: require its matching asset. Don't silently
-    // serve the latest build — that would mislabel an old version's download.
     const asset = adapterReleases.findAsset(base, ext);
     if (!asset) {
-        return { unavailable: true, version: adapterReleases.selected.tag_name, board: plain };
+        return { unavailable: true, version: adapterReleases.selected.tag_name, board: `${base}.${ext}` };
     }
     const url = ext === 'hex'
         ? `${ADAPTER_FIRMWARE_PROXY}/vail-adapter/${adapterReleases.selected.tag_name}/${asset.name}`
         : asset.browser_download_url;
-    return { url, filename: asset.name, fallbackUrl: `firmware_files/${plain}` };
+    return { url, filename: asset.name };
 }
 
 // Get friendly names for display
@@ -408,13 +401,7 @@ async function flashMicroFirmware() {
 
     try {
         microLog(`Downloading ${firmware.filename} from ${firmware.url}…`);
-        let resp = await fetch(firmware.url, { cache: 'no-cache' }).catch(() => null);
-        // If the proxied release asset is unavailable (proxy down, asset/tag
-        // missing), fall back to the live repository build so flashing still works.
-        if ((!resp || !resp.ok) && firmware.fallbackUrl && firmware.fallbackUrl !== firmware.url) {
-            microLog('Release asset unavailable — falling back to the latest repository build…');
-            resp = await fetch(firmware.fallbackUrl, { cache: 'no-cache' }).catch(() => null);
-        }
+        const resp = await fetch(firmware.url, { cache: 'no-cache' }).catch(() => null);
         if (!resp || !resp.ok) {
             throw new Error(`Firmware fetch failed: HTTP ${resp ? resp.status : 'network error'}`);
         }

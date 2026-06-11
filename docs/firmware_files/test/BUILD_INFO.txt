@@ -1,5 +1,0 @@
-Built from:   master
-Commit:       ee56910134f07c82cf1fefdb545cc0b4d005e933
-Event:        workflow_dispatch
-Deploy target: firmware_files/test
-Built at:     2026-06-09T03:42:14Z

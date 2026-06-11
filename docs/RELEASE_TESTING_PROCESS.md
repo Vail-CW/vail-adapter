@@ -284,7 +284,6 @@ A: Not really! Most edits are quick (checking a box). If someone's editing, wait
 - [.github/ISSUE_TEMPLATE/release-testing-overview.md](../.github/ISSUE_TEMPLATE/release-testing-overview.md) - Parent issue template
 - [.github/ISSUE_TEMPLATE/release-testing-hardware.md](../.github/ISSUE_TEMPLATE/release-testing-hardware.md) - Hardware-specific issue template
 - [.github/workflows/create-release-testing-issues.yml](../.github/workflows/create-release-testing-issues.yml) - The workflow file
-- [CLAUDE.md](../CLAUDE.md) - Project architecture and development guide
 
 ## Quick Reference
 
