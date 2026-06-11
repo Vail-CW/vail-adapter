@@ -1,9 +1,9 @@
 # Vail Adapter: Morse Code Key / Paddle to USB
 
 <p align="center">
-  <img src="doc/vail-adapter-key.jpg" alt="Vail Adapter wired to a straight key" height="250" />
+  <img src="docs/vail-adapter-key.jpg" alt="Vail Adapter wired to a straight key" height="250" />
   &nbsp;&nbsp;
-  <img src="doc/vail-adapter-cases.jpg" alt="Vail Adapter 3D printed cases in several colors" height="250" />
+  <img src="docs/vail-adapter-cases.jpg" alt="Vail Adapter 3D printed cases in several colors" height="250" />
 </p>
 
 The Vail Adapter is a small USB gadget that turns your Morse key or paddle into a USB device. It shows up as both a keyboard and a MIDI device, so it works with [Vail](https://vail.woozle.org/), [VBand](https://hamradio.solutions/vband/), and pretty much any CW software. The keyer logic and the sidetone run on the adapter itself, so there is no browser or operating system latency in your keying, even when you are running fast. It works on SAMD21 boards (the Seeed XIAO, the Adafruit QT Py, and the TRRS Trinkey), and there is an experimental build for the AVR Arduino Micro.
@@ -40,7 +40,7 @@ The full manual is on the website at [vailadapter.com/manual](https://vailadapte
 
 ## Building your own
 
-Step by step assembly guides for both boards are on the website at [vailadapter.com/assembly](https://vailadapter.com/assembly), and the PDFs are kept in this repo too: [Basic PCB v2](docs/assembly/BasicPCBV2.pdf) and [Advanced](docs/assembly/AdvancedAdapterAssemblyInstructions.pdf). If you would rather not source parts and solder, you can get a kit or a finished unit from [shop.ke9bos.com](https://shop.ke9bos.com).
+Step by step assembly guides for both boards are on the website at [vailadapter.com/assembly](https://vailadapter.com/assembly), and the PDFs are kept in this repo too: [Basic PCB v2](online-updater/assembly/BasicPCBV2.pdf) and [Advanced](online-updater/assembly/AdvancedAdapterAssemblyInstructions.pdf). If you would rather not source parts and solder, you can get a kit or a finished unit from [shop.ke9bos.com](https://shop.ke9bos.com).
 
 ### Basic PCB (v2)
 
@@ -63,7 +63,7 @@ The Advanced PCB does everything the Basic does and adds a radio output, so you 
 * 2 screw terminal PCB mounts
 * 2 headers for the Arduino
 
-The radio output parts are easy to get wrong when you buy them one at a time, so most people get the Advanced build as a kit or assembled from [shop.ke9bos.com](https://shop.ke9bos.com). The full build steps are in the [Advanced assembly guide](docs/assembly/AdvancedAdapterAssemblyInstructions.pdf).
+The radio output parts are easy to get wrong when you buy them one at a time, so most people get the Advanced build as a kit or assembled from [shop.ke9bos.com](https://shop.ke9bos.com). The full build steps are in the [Advanced assembly guide](online-updater/assembly/AdvancedAdapterAssemblyInstructions.pdf).
 
 ### Without a PCB
 
@@ -82,14 +82,14 @@ The radio output parts are easy to get wrong when you buy them one at a time, so
 
 This is a 5V AVR alternative to the SAMD21 boards. It is for DIY and breadboard builds only, and there is no PCB made for it.
 
-* Wiring: D2 is Dit, D1 is Dah, D0 is the Straight Key, D10 is the Piezo, and GND is ground. There is a full walkthrough in [doc/advanced-install.md](doc/advanced-install.md).
+* Wiring: D2 is Dit, D1 is Dah, D0 is the Straight Key, D10 is the Piezo, and GND is ground. There is a full walkthrough in [docs/advanced-install.md](docs/advanced-install.md).
 * A few things it cannot do compared to the SAMD21 boards: no capacitive touch, no button menu, and no status LEDs. The CW memories are shorter at about 12 seconds each, and the radio output on A2 and A3 runs at 5V, so check that your radio can handle it or use a level shifter.
 * Flashing is different too. It uses WebSerial with the AVR109 (Caterina) bootloader instead of UF2 drag and drop. Flash it at [update.vailadapter.com](https://update.vailadapter.com) by choosing DIY No PCB and then Arduino Micro in Chrome, Edge, or Opera, or run `arduino-cli upload --fqbn arduino:avr:micro`.
 
 ## Setting it up
 
-* [Easy Setup](doc/easy-install.md)
-* [Advanced Setup](doc/advanced-install.md)
+* [Easy Setup](docs/easy-install.md)
+* [Advanced Setup](docs/advanced-install.md)
 * [See some that other people have built](https://github.com/Vail-CW/vail-adapter/wiki#cool-people-who-have-built-one)
 
 The full manual is at [vailadapter.com/manual](https://vailadapter.com/manual).

@@ -82,7 +82,7 @@ Before releasing, ensure:
 - ✅ At least **2 different people** have signed off
 - ✅ No **critical failures** reported in any hardware-specific issue
 - ✅ CI/CD build completed successfully for all 8 configs
-- ✅ `docs/index.html` updated with release notes
+- ✅ `online-updater/index.html` updated with release notes
 
 **Ideal Release Requirements:**
 - 🎯 At least **4 different hardware configurations** tested (ideally mix of XIAO/QT Py and PCB versions)
@@ -300,7 +300,7 @@ A: Not really! Most edits are quick (checking a box). If someone's editing, wait
 - [ ] Minimum 2 different testers signed off
 - [ ] No critical bugs blocking release
 - [ ] CI builds successful for all 8 configs
-- [ ] `docs/index.html` updated
+- [ ] `online-updater/index.html` updated
 - [ ] Update parent issue progress summary
 - [ ] Mark parent issue "Ready for Release"
 - [ ] Create GitHub release

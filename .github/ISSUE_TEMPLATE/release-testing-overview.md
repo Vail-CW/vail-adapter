@@ -97,7 +97,7 @@ List any critical bugs found during testing that must be fixed before release:
 - [ ] No critical bugs blocking release
 
 ### Documentation Updates
-- [ ] `docs/index.html` "What's New" section updated with release date and features
+- [ ] `online-updater/index.html` "What's New" section updated with release date and features
 - [ ] Release notes prepared with changelog
 - [ ] Known issues documented (if any)
 
