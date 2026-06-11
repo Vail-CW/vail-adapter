@@ -76,7 +76,7 @@ The radio output parts are easy to get wrong when you buy them one at a time, so
 * An [Adafruit TRRS Trinkey M0](https://www.adafruit.com/product/5954), which is a USB stick sized board with a TRRS jack built in
 * A piezo buzzer, connected through the STEMMA QT connector
 * It has no buttons, no capacitive touch, no headphone jack, and no radio output, so you change settings over MIDI
-* Full instructions are in [TRRS_TRINKEY_BUILD.md](TRRS_TRINKEY_BUILD.md)
+* Full instructions are in [TRRS_TRINKEY_BUILD.md](docs/TRRS_TRINKEY_BUILD.md)
 
 ### Arduino Micro (experimental)
 
@@ -96,7 +96,7 @@ The full manual is at [vailadapter.com/manual](https://vailadapter.com/manual).
 
 ## MIDI integration
 
-The adapter is a standard USB MIDI device. Software can set the mode, the speed, the sidetone, and the keyer type, and it can read the keyed output as MIDI notes. The whole protocol, including the message types, the value ranges, and exactly how the firmware responds, is written up in [MIDI_INTEGRATION_SPEC.md](MIDI_INTEGRATION_SPEC.md). If you are building something that talks to the adapter, follow that document closely, because I keep the existing MIDI commands the same on purpose. There is more about that just below.
+The adapter is a standard USB MIDI device. Software can set the mode, the speed, the sidetone, and the keyer type, and it can read the keyed output as MIDI notes. The whole protocol, including the message types, the value ranges, and exactly how the firmware responds, is written up in [MIDI_INTEGRATION_SPEC.md](docs/MIDI_INTEGRATION_SPEC.md). If you are building something that talks to the adapter, follow that document closely, because I keep the existing MIDI commands the same on purpose. There is more about that just below.
 
 ## Contributing
 
