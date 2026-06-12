@@ -931,3 +931,55 @@ nav ul li a:hover {
         padding: 1rem;
     }
 }
+
+/* ---- Troubleshooting Recorder (troubleshoot.html) ---- */
+.muted {
+    color: #999;
+    font-weight: 400;
+    font-size: 0.9em;
+}
+
+.debug-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.conn-status {
+    font-size: 0.9rem;
+    color: #bbb;
+}
+.conn-status.ok   { color: #6fcf97; }
+.conn-status.err  { color: #ff8a80; }
+.conn-status.wait { color: #ffc107; font-weight: 600; }
+
+.debug-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    margin: 12px 0 8px;
+}
+
+.btn-compact {
+    padding: 6px 14px !important;
+    font-size: 0.85rem !important;
+    margin: 0 !important;
+}
+
+#debugLog {
+    background-color: #1a1a1a !important;
+    color: #d0d0d0 !important;
+    border: 1px solid #444 !important;
+    padding: 1rem;
+    border-radius: 6px;
+    height: 340px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    margin: 0;
+}

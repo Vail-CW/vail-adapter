@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vail Troubleshooting Recorder</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="style.css?v=2026-06-12.1">
+</head>
+<body>
+<nav>
+    <ul>
+        <li><a href="index.html">Home</a></li>
+        <li><a href="troubleshoot.html">Get Help</a></li>
+        <li><a href="https://vailadapter.com/assembly" target="_blank">Assembly Instructions</a></li>
+    </ul>
+</nav>
+
+<div class="container">
+    <h1>Troubleshooting Recorder</h1>
+    <p class="step-description">
+        Is your Vail device misbehaving? This tool quietly records what it's doing behind the scenes
+        so the messages can be sent in for help. Pick your device, connect it, recreate the problem,
+        then save the file and send it over. Works for both the Vail Adapter and the Vail Summit.
+        Requires Chrome, Edge, or Opera.
+    </p>
+
+    <div id="noWebSerial" class="test-release-warning" style="display: none;">
+        <strong>This browser can't connect to devices.</strong> Please use Chrome, Edge, or Opera
+        on a desktop computer.
+    </div>
+
+    <!-- Step 1: Choose device (this maps to the baud rate behind the scenes) -->
+    <section class="wizard-step active">
+        <h2>1. Which device needs help?</h2>
+        <p class="step-description">We'll set everything up for you based on your choice.</p>
+
+        <div class="card-grid" id="deviceCards">
+            <div class="selection-card" data-device="adapter">
+                <div class="card-icon">📡</div>
+                <h3>Vail Adapter</h3>
+                <p>The USB adapter that connects your paddles to your computer.</p>
+            </div>
+            <div class="selection-card" data-device="summit">
+                <div class="card-icon">⛰️</div>
+                <h3>Vail Summit</h3>
+                <p>The standalone trainer with its own screen and keyboard.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Step 2: Record (revealed after a device is chosen) -->
+    <section id="monitorSection" class="wizard-step active" style="display: none;">
+        <h2>2. Record what's happening</h2>
+        <p class="step-description">
+            Device: <strong id="chosenDevice">—</strong>
+            <span class="muted">(speed set to <span id="chosenBaud">—</span> automatically)</span>
+        </p>
+
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">1</span>
+                <h3>Plug in &amp; connect</h3>
+            </div>
+            <p>Connect your device with a USB cable, click <strong>Connect</strong>, then choose it from the list your browser shows.</p>
+
+            <div class="debug-controls">
+                <button id="connectButton" class="btn-primary">🔌 Connect</button>
+                <button id="armStartupButton" class="btn-primary" style="display: none;">⏏️ Capture Startup (Unplug &amp; Replug)</button>
+                <button id="disconnectButton" class="btn-secondary" style="display: none;">Disconnect</button>
+                <button id="restartButton" class="btn-warning" style="display: none;" disabled>🔄 Restart Device</button>
+                <span id="connStatus" class="conn-status">Ready to connect.</span>
+            </div>
+            <p class="hint" id="connectHint" style="margin-top: 10px;"></p>
+        </div>
+
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">2</span>
+                <h3>Recreate the problem</h3>
+            </div>
+            <p>Leave this page open and do whatever makes the issue happen. Everything the device reports appears in the box below.</p>
+
+            <div class="debug-toolbar">
+                <label class="test-release-toggle">
+                    <input type="checkbox" id="autoscrollToggle" checked>
+                    <span class="toggle-label">Auto-scroll</span>
+                </label>
+                <label class="test-release-toggle">
+                    <input type="checkbox" id="timestampToggle">
+                    <span class="toggle-label">Show times</span>
+                </label>
+                <button id="clearButton" class="btn-secondary btn-compact">Clear</button>
+                <button id="copyButton" class="btn-secondary btn-compact">Copy</button>
+            </div>
+
+            <div class="log-container">
+                <pre id="debugLog"></pre>
+            </div>
+        </div>
+
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">3</span>
+                <h3>Save &amp; send it in</h3>
+            </div>
+            <p>Save the recording to a file, then send it over so we can take a look.</p>
+            <button id="saveButton" class="btn-download">
+                <span class="download-icon">💾</span>
+                <span>Save Recording to a File</span>
+            </button>
+            <div class="success-message" style="margin-top: 16px;">
+                <strong>Where to send it:</strong>
+                <ul style="margin: 8px 0 0 18px;">
+                    <li>Email: <a href="mailto:brett.hollifield@gmail.com">brett.hollifield@gmail.com</a></li>
+                    <li>Discord: drop the file in the Vail support channel</li>
+                    <li>GitHub: attach it to an issue on the device's repository</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Troubleshooting -->
+    <div class="troubleshooting">
+        <h3>❓ Common questions</h3>
+        <details>
+            <summary>Nothing shows up in the box</summary>
+            <ul>
+                <li>Make sure you picked the right device at the top.</li>
+                <li>Click <strong>Restart Device</strong>, or press the small RESET button on the device.</li>
+                <li>Close any other program that might be using it (Arduino IDE, PuTTY, another monitor).</li>
+                <li>Some cables only charge — use one you know transfers data.</li>
+            </ul>
+        </details>
+        <details>
+            <summary>"Port in use" or it won't connect (Windows)</summary>
+            <p>Close other programs that talk to the device. If it keeps happening, open Device Manager → Ports (COM &amp; LPT),
+               right-click the device → Disable, wait two seconds, then Enable, and try again.</p>
+        </details>
+        <details>
+            <summary>The Connect button does nothing</summary>
+            <p>This only works in Chrome, Edge, or Opera on a desktop computer. Firefox and Safari can't connect to devices.</p>
+        </details>
+        <details>
+            <summary>Linux: Permission denied</summary>
+            <p>Add your user to the dialout group: <code>sudo usermod -a -G dialout $USER</code> then log out and back in.</p>
+        </details>
+    </div>
+</div>
+
+<script src="troubleshoot.js?v=2026-06-12.1" defer></script>
+</body>
+</html>
