@@ -933,6 +933,18 @@ nav ul li a:hover {
 }
 
 /* ---- Troubleshooting Recorder (troubleshoot.html) ---- */
+.info-note {
+    background: rgba(108, 178, 247, 0.08);
+    border: 1px solid rgba(108, 178, 247, 0.35);
+    border-left: 4px solid #6cb2f7;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 1.5rem 0;
+    color: #cfe3fb;
+    font-size: 0.95rem;
+}
+.info-note a { color: #9ccbfb; }
+
 .muted {
     color: #999;
     font-weight: 400;
