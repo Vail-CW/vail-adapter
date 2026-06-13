@@ -289,6 +289,12 @@
                 <li>Click <strong>Flash over serial</strong> and pick your adapter's COM port (on Windows it's usually the highest-numbered COM port that appears).</li>
             </ol>
             <button id="serialFlashButton" class="btn-primary">⚡ Flash over serial (COM port)</button>
+
+            <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #444;">
+                <p style="font-size: 13px; color: #b0a0e0; margin: 0 0 8px;"><strong>Testing tool:</strong> erase the firmware to reproduce the "stuck in bootloader" state. The device will boot to storage mode every time until you reflash it (recoverable — the bootloader is never touched).</p>
+                <button id="serialEraseButton" class="btn-secondary" style="border-color: #b5651d; color: #ffb27a;">🧪 Erase app (simulate stuck state)</button>
+            </div>
+
             <div class="progress-container" id="serialFlashProgressContainer" style="display: none; margin-top: 16px;">
                 <div class="progress-label" id="serialFlashProgressLabel">Preparing…</div>
                 <div style="background: #2a2a2a; border-radius: 8px; overflow: hidden; height: 20px;">
@@ -581,6 +587,6 @@
 <script src="esp-flasher.js?v=2026-06-11.1" type="module"></script>
 <script src="avr109-flasher.js?v=2026-06-11.1"></script>
 <script src="samba-flasher.js?v=2026-06-13.3"></script>
-<script src="script.js?v=2026-06-13.3" defer></script>
+<script src="script.js?v=2026-06-13.4" defer></script>
 </body>
 </html>

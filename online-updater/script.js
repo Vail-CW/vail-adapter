@@ -578,6 +578,37 @@ async function flashAdapterOverSerial() {
     }
 }
 
+// Testing helper: erase just the app region so the bootloader finds no valid
+// app and stays in storage/bootloader mode on every power-up — i.e. reproduce
+// the "stuck" state on purpose. Fully recoverable: the bootloader (0x0000-0x2000)
+// is never erased, so "Flash over serial" or UF2 brings it back.
+async function eraseAdapterAppForTest() {
+    if (!('serial' in navigator)) {
+        alert('WebSerial is not supported. Please use Chrome, Edge, or Opera.');
+        return;
+    }
+    if (!confirm('TEST ONLY: this erases the adapter\'s firmware so it boots into bootloader (storage) mode every time — reproducing the "stuck" state. You can recover it with "Flash over serial" or UF2. Continue?')) {
+        return;
+    }
+    let flasher = null;
+    try {
+        serialFlashLog("Select your adapter's bootloader COM port…");
+        const port = await navigator.serial.requestPort();
+        flasher = new window.SAMBAFlasher({ log: serialFlashLog });
+        await flasher.open(port);
+        await flasher.connect();
+        await flasher.eraseApp();
+        await flasher.resetDevice();
+        serialFlashLog('✅ App erased. The adapter will now boot into bootloader mode on every plug-in until you reflash it.');
+        alert('App erased — the adapter is now in the "stuck" state (boots to bootloader/storage mode every time). Use "Flash over serial" or UF2 to recover it.');
+    } catch (err) {
+        serialFlashLog(`❌ ${err.message}`);
+        if (err.name !== 'NotFoundError') alert(`Erase failed: ${err.message}`);
+    } finally {
+        if (flasher) { try { await flasher.close(); } catch (e) { /* ignore */ } }
+    }
+}
+
 // WebSerial boot mode functionality
 let port;
 
@@ -917,6 +948,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Advanced serial (SAM-BA) flashing — hidden unless the URL hash opts in.
     document.getElementById('serialFlashButton')?.addEventListener('click', flashAdapterOverSerial);
+    document.getElementById('serialEraseButton')?.addEventListener('click', eraseAdapterAppForTest);
     window.addEventListener('hashchange', maybeRevealSerialFlash);
     maybeRevealSerialFlash();
 
