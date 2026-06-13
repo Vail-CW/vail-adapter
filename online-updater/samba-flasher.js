@@ -82,22 +82,44 @@
             throw new Error(`Timed out waiting for "${token.replace(/[\r\n]/g, '?')}" (got "${this.rx.slice(0, 64).replace(/[\r\n]/g, '?')}")`);
         }
 
-        // Handshake: enter binary mode and confirm an Arduino XYZ bootloader.
+        // Handshake: enter binary mode and read the bootloader version. Retries
+        // because the first bytes after a CDC port opens are often dropped.
         async connect() {
+            // Raise DTR/RTS — some WebSerial + USB-CDC combos won't deliver RX
+            // bytes until DTR is asserted. Harmless on the bootloader.
+            try { await this.port.setSignals({ dataTerminalReady: true, requestToSend: true }); } catch (_) {}
+
+            let version = '';
+            for (let attempt = 1; attempt <= 5 && !version; attempt++) {
+                this.rx = '';
+                await this._sendStr('N#');           // exit terminal mode
+                await new Promise((r) => setTimeout(r, 120));
+                await this._sendStr('V#');           // request version
+                try {
+                    await this._waitFor('\n', 1200); // any newline = a line arrived
+                    await new Promise((r) => setTimeout(r, 150)); // let the rest land
+                    version = (this.rx || '').replace(/[\r\n]/g, ' ').trim();
+                } catch (_) {
+                    this.log(`No bootloader response yet (attempt ${attempt}/5)…`);
+                }
+            }
             this.rx = '';
-            await this._sendStr('N#');
-            try { await this._waitFor('\n\r', 1500); } catch (_) { /* some bootloaders are silent here */ }
-            await this._sendStr('V#');
-            const version = (await this._waitFor('\n\r', 3000)).trim();
+
+            if (!version) {
+                throw new Error('No response from the bootloader. Make sure the adapter is in BOOTLOADER mode (double-tap the reset button — a drive like XIAOBOOT/QTPYBOOT/ADAPTERBOOT should appear) and that you picked THAT device\'s COM port.');
+            }
             this.log(`Bootloader: ${version}`);
             if (!/Arduino:XYZ/i.test(version)) {
-                throw new Error('This port is not a SAMD21 Arduino-style bootloader (no [Arduino:XYZ]). Make sure you selected the bootloader COM port.');
+                // Don't hard-fail: try the extended X/Y commands anyway and let
+                // the erase/write step surface a real failure if they're absent.
+                this.log('⚠️ Bootloader did not advertise [Arduino:XYZ]; trying extended commands anyway.');
             }
             return version;
         }
 
         async eraseApp() {
             this.log('Erasing application flash…');
+            this.rx = '';
             await this._sendStr(`X${hex8(FLASH_APP_ADDR)}#`);
             await this._waitFor('X', 15000);
             this.log('Erase complete.');
