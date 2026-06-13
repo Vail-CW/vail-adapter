@@ -273,6 +273,35 @@
             </details>
         </div>
 
+        <!-- Hidden advanced fallback: flash directly over the bootloader's COM
+             port (SAM-BA / BOSSA, the same path the Arduino IDE uses), for users
+             whose UF2 drag-and-drop copy hangs on Windows. Revealed only when the
+             URL hash contains "serial" — e.g. https://update.vailadapter.com/#serial -->
+        <div id="serialFlashAdvanced" class="flash-step" style="display: none; border: 2px dashed #6a5acd; border-radius: 8px; padding: 16px; margin-top: 24px;">
+            <div class="step-header">
+                <span class="step-badge" style="background: #6a5acd;">⚡</span>
+                <h3>Advanced: Flash over COM port (UF2 not working?)</h3>
+            </div>
+            <p>If dragging the <code>.uf2</code> onto the drive hangs or never finishes, you can flash <strong>directly over the bootloader's serial port</strong> — the same method the Arduino IDE uses. This skips the file-copy step entirely. Chrome, Edge, or Opera only.</p>
+            <ol>
+                <li>Pick your firmware version and board above (same selection as the download).</li>
+                <li>Put the adapter in <strong>bootloader mode</strong> using "Enter Boot Mode" above, or double-tap the reset button. It does <em>not</em> need to show the storage drive — it just needs to be in bootloader mode.</li>
+                <li>Click <strong>Flash over serial</strong> and pick your adapter's COM port (on Windows it's usually the highest-numbered COM port that appears).</li>
+            </ol>
+            <button id="serialFlashButton" class="btn-primary">⚡ Flash over serial (COM port)</button>
+            <div class="progress-container" id="serialFlashProgressContainer" style="display: none; margin-top: 16px;">
+                <div class="progress-label" id="serialFlashProgressLabel">Preparing…</div>
+                <div style="background: #2a2a2a; border-radius: 8px; overflow: hidden; height: 20px;">
+                    <div id="serialFlashProgressBar" style="background: linear-gradient(90deg, #6a5acd, #836fff); height: 100%; width: 0%; transition: width 0.2s;"></div>
+                </div>
+                <div id="serialFlashProgressPercent" style="margin-top: 6px; font-size: 13px; color: #999;">0%</div>
+            </div>
+            <div class="log-container" style="margin-top: 16px;">
+                <h4>Serial Flash Log:</h4>
+                <pre id="serialFlashLog"></pre>
+            </div>
+        </div>
+
         <button class="btn-secondary" id="backToStep2">← Back</button>
         <button class="btn-primary" id="startOver">Start Over</button>
     </section>
@@ -551,6 +580,7 @@
 
 <script src="esp-flasher.js?v=2026-06-11.1" type="module"></script>
 <script src="avr109-flasher.js?v=2026-06-11.1"></script>
-<script src="script.js?v=2026-06-13.2" defer></script>
+<script src="samba-flasher.js?v=2026-06-13.3"></script>
+<script src="script.js?v=2026-06-13.3" defer></script>
 </body>
 </html>
