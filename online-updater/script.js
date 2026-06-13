@@ -183,36 +183,91 @@ const adapterReleases = {
 
 // Resolve the base firmware name (no extension) and extension for the current
 // board/model selection. Returns null if the selection is incomplete.
+//
+// `base` is the short, 8.3-safe asset code (e.g. "xb2" -> xb2_50.uf2). The build
+// stamps the major.minor version onto it as the release asset name. `legacyBase`
+// is the old long name (e.g. "xiao_basic_pcb_v2") so the updater keeps finding
+// assets on releases that haven't been re-stamped yet — this lets the new code
+// deploy before the existing release assets are migrated, with no broken window.
 function getFirmwareBase() {
-    if (wizardState.model === 'vail_lite') return { base: 'trinkey_vail_adapter', ext: 'uf2' };
-    if (wizardState.board === 'micro') return { base: 'arduino_micro', ext: 'hex' };
+    if (wizardState.model === 'vail_lite') return { base: 'vl', legacyBase: 'trinkey_vail_adapter', ext: 'uf2' };
+    if (wizardState.board === 'micro') return { base: 'mic', legacyBase: 'arduino_micro', ext: 'hex' };
     if (!wizardState.model || !wizardState.board) return null;
-    if (wizardState.model === 'basic_pcb') return { base: `${wizardState.board}_basic_pcb_v2`, ext: 'uf2' };
-    if (wizardState.model === 'advanced_pcb') return { base: `${wizardState.board}_advanced_pcb`, ext: 'uf2' };
-    return { base: `${wizardState.board}_non_pcb`, ext: 'uf2' };
+    const p = wizardState.board === 'xiao' ? 'x' : 'q'; // short board prefix
+    if (wizardState.model === 'basic_pcb') return { base: `${p}b2`, legacyBase: `${wizardState.board}_basic_pcb_v2`, ext: 'uf2' };
+    if (wizardState.model === 'advanced_pcb') return { base: `${p}ad`, legacyBase: `${wizardState.board}_advanced_pcb`, ext: 'uf2' };
+    return { base: `${p}np`, legacyBase: `${wizardState.board}_non_pcb`, ext: 'uf2' };
+}
+
+// Build a short, DOS 8.3-safe download filename (<=8-char name + single dot +
+// 3-char extension) so Windows never has to write a VFAT long-filename entry
+// onto the SAMD21 bootloader's tiny emulated FAT volume. Long asset names like
+// "xiao_basic_pcb_v2_v5.0.uf2" can hang or fail the drag-to-bootloader copy on
+// Windows 10/11, leaving the board stuck in storage (bootloader) mode. The
+// bootloader flashes by UF2 block magic and ignores the filename, so any short
+// name works; we keep major.minor so users still recognize the version. Patch
+// and pre-release suffixes are dropped to stay within the 8-char budget.
+// e.g. "v5.0" -> "VAIL_5_0.uf2", "v5.1.0" -> "VAIL_5_1.uf2".
+function shortFirmwareName(tag, ext) {
+    const m = String(tag || '').match(/(\d+)(?:\.(\d+))?/);
+    const major = m ? m[1] : '0';
+    const minor = m && m[2] != null ? m[2] : '0';
+    return `VAIL_${major}_${minor}.${ext}`;
 }
 
 // Resolve the firmware download for the current selection + selected version.
 // Firmware comes exclusively from the selected release's tag-stamped asset.
 // .hex (Arduino Micro) is fetched in JS, so its asset URL is routed through the
-// CORS proxy; .uf2 is a direct anchor download and needs no proxy.
+// CORS proxy; .uf2 is a direct anchor download (with a Blob-based short-name
+// fallback handled at click time — see downloadFirmwareShortName).
 function getFirmwareFile() {
     const sel = getFirmwareBase();
     if (!sel) return null;
-    const { base, ext } = sel;
+    const { base, legacyBase, ext } = sel;
 
     // A release must be selected, and it must carry this board's asset.
     if (!adapterReleases.selected) {
         return { unavailable: true, version: '(none)', board: `${base}.${ext}` };
     }
-    const asset = adapterReleases.findAsset(base, ext);
+    // Prefer the new short-name asset; fall back to the legacy long name for
+    // releases that haven't been re-stamped yet.
+    const asset = adapterReleases.findAsset(base, ext) ||
+        (legacyBase ? adapterReleases.findAsset(legacyBase, ext) : null);
     if (!asset) {
         return { unavailable: true, version: adapterReleases.selected.tag_name, board: `${base}.${ext}` };
     }
     const url = ext === 'hex'
         ? `${ADAPTER_FIRMWARE_PROXY}/vail-adapter/${adapterReleases.selected.tag_name}/${asset.name}`
         : asset.browser_download_url;
-    return { url, filename: asset.name };
+    return { url, filename: asset.name, downloadName: shortFirmwareName(adapterReleases.selected.tag_name, ext) };
+}
+
+// Download the UF2 under its short 8.3-safe name. The <a download> filename is
+// ignored for cross-origin GitHub asset URLs, so the browser would otherwise
+// keep GitHub's long asset name. Fetch through the CORS proxy and save a Blob,
+// where the short download name IS honored. Falls back to the direct GitHub
+// link (long name, but still flashes) if the proxied fetch fails.
+async function downloadFirmwareShortName(firmwareFile) {
+    const tag = adapterReleases.selected && adapterReleases.selected.tag_name;
+    const proxyUrl = `${ADAPTER_FIRMWARE_PROXY}/vail-adapter/${tag}/${firmwareFile.filename}`;
+    const saveBlob = (href, revoke) => {
+        const a = document.createElement('a');
+        a.href = href;
+        a.download = firmwareFile.downloadName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        if (revoke) setTimeout(() => URL.revokeObjectURL(href), 10000);
+    };
+    try {
+        const resp = await fetch(proxyUrl, { cache: 'no-cache' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const blob = await resp.blob();
+        saveBlob(URL.createObjectURL(blob), true);
+    } catch (err) {
+        console.log('Short-name download failed, falling back to direct link:', err.message);
+        saveBlob(firmwareFile.url, false);
+    }
 }
 
 // Get friendly names for display
@@ -466,7 +521,10 @@ function updateStep3Content() {
         downloadButton.setAttribute('aria-disabled', 'true');
         downloadText.textContent = `${firmwareFile.board} not available in ${firmwareFile.version}`;
     } else if (firmwareFile) {
-        const savedName = firmwareFile.filename;
+        const savedName = firmwareFile.downloadName || firmwareFile.filename;
+        // href is the direct-link fallback; the click handler does a Blob
+        // download under the short 8.3 name so Windows' drag-to-bootloader copy
+        // doesn't choke on a long filename.
         downloadButton.href = firmwareFile.url;
         downloadButton.download = savedName;
         downloadText.textContent = `Download ${savedName}`;
@@ -832,6 +890,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (this.classList.contains('disabled')) {
             event.preventDefault();
             alert("Please complete the previous steps first.");
+            return;
+        }
+        // For UF2 boards, save under a short 8.3-safe name via a Blob download
+        // so the Windows drag-to-bootloader copy doesn't hang on a long filename
+        // (which leaves the board stuck in storage mode). .hex (Micro) flashes
+        // over WebSerial on its own page, so it never uses this button.
+        const firmwareFile = getFirmwareFile();
+        if (firmwareFile && !firmwareFile.unavailable &&
+            firmwareFile.downloadName && firmwareFile.downloadName.endsWith('.uf2')) {
+            event.preventDefault();
+            downloadFirmwareShortName(firmwareFile);
         }
     });
 });
