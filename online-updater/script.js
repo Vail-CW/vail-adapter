@@ -489,6 +489,93 @@ function updateStep3Content() {
         downloadButton.classList.remove('disabled');
         downloadButton.removeAttribute('aria-disabled');
     }
+
+    maybeRevealSerialFlash();
+}
+
+// --- Advanced: SAM-BA / BOSSA serial flashing for SAMD21 boards -------------
+// Hidden fallback (revealed when the URL hash contains "serial") for users whose
+// UF2 drag-and-drop copy hangs on Windows. Flashes the selected release's .uf2
+// directly over the bootloader's COM port — fetched via the CORS proxy and
+// converted to a raw binary — the same path the Arduino IDE uses via bossac.
+
+function serialFlashLog(message) {
+    console.log('[samba]', message);
+    const el = document.getElementById('serialFlashLog');
+    if (el) { el.textContent += message + '\n'; el.scrollTop = el.scrollHeight; }
+}
+
+// Show the advanced serial-flash panel only when the URL hash opts in.
+function maybeRevealSerialFlash() {
+    const panel = document.getElementById('serialFlashAdvanced');
+    if (panel) panel.style.display = /serial|advanced/i.test(location.hash) ? 'block' : 'none';
+}
+
+async function flashAdapterOverSerial() {
+    if (!('serial' in navigator)) {
+        alert('WebSerial is not supported. Please use Chrome, Edge, or Opera.');
+        return;
+    }
+    const firmware = getFirmwareFile();
+    if (!firmware || firmware.unavailable) {
+        alert('Select a firmware version and board above first.');
+        return;
+    }
+    if (!firmware.filename.toLowerCase().endsWith('.uf2')) {
+        alert('Serial flashing applies to the SAMD21 boards (UF2). The Arduino Micro has its own flasher.');
+        return;
+    }
+
+    const tag = adapterReleases.selected && adapterReleases.selected.tag_name;
+    const proxyUrl = `${ADAPTER_FIRMWARE_PROXY}/vail-adapter/${tag}/${firmware.filename}`;
+
+    const container = document.getElementById('serialFlashProgressContainer');
+    const bar = document.getElementById('serialFlashProgressBar');
+    const label = document.getElementById('serialFlashProgressLabel');
+    const percent = document.getElementById('serialFlashProgressPercent');
+
+    let flasher = null;
+    try {
+        serialFlashLog(`Downloading ${firmware.filename}…`);
+        const resp = await fetch(proxyUrl, { cache: 'no-cache' });
+        if (!resp.ok) throw new Error(`Firmware download failed: HTTP ${resp.status}`);
+        const { bin, baseAddr } = window.uf2ToBin(await resp.arrayBuffer());
+        serialFlashLog(`Firmware ready: ${bin.length} bytes @ 0x${baseAddr.toString(16)}.`);
+
+        serialFlashLog("Select your adapter's bootloader COM port…");
+        const port = await navigator.serial.requestPort();
+
+        if (container) container.style.display = 'block';
+        if (label) label.textContent = 'Connecting to bootloader…';
+
+        flasher = new window.SAMBAFlasher({
+            log: serialFlashLog,
+            progress: (cur, total) => {
+                const pct = Math.round((cur / total) * 100);
+                if (bar) bar.style.width = pct + '%';
+                if (percent) percent.textContent = `${pct}% (${cur}/${total} bytes)`;
+                if (label) label.textContent = 'Writing firmware…';
+            },
+        });
+
+        await flasher.open(port);
+        await flasher.connect();
+        await flasher.eraseApp();
+        await flasher.writeFirmware(bin, baseAddr);
+        await flasher.resetDevice();
+
+        if (label) label.textContent = '✅ Done';
+        if (percent) percent.textContent = '100%';
+        if (bar) bar.style.width = '100%';
+        serialFlashLog('✅ Flash complete. The adapter should reboot into the new firmware.');
+        alert('Firmware flashed over serial! The adapter will reboot. If it stays in bootloader mode, unplug and replug it.');
+    } catch (err) {
+        serialFlashLog(`❌ ${err.message}`);
+        if (label) label.textContent = '❌ Error';
+        if (err.name !== 'NotFoundError') alert(`Serial flash failed: ${err.message}`);
+    } finally {
+        if (flasher) { try { await flasher.close(); } catch (e) { /* ignore */ } }
+    }
 }
 
 // WebSerial boot mode functionality
@@ -827,6 +914,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Boot mode button
     document.getElementById('bootModeButton')?.addEventListener('click', triggerBootloaderViaWebSerial);
+
+    // Advanced serial (SAM-BA) flashing — hidden unless the URL hash opts in.
+    document.getElementById('serialFlashButton')?.addEventListener('click', flashAdapterOverSerial);
+    window.addEventListener('hashchange', maybeRevealSerialFlash);
+    maybeRevealSerialFlash();
 
     // Arduino Micro (WebSerial AVR109) buttons
     document.getElementById('microBootModeButton')?.addEventListener('click', triggerMicroBootloader);
