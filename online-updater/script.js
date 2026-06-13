@@ -255,28 +255,30 @@ function goToStep(stepNumber) {
         step.classList.remove('active');
     });
 
-    // Show target step
+    // Show target step. Some steps map to non-numeric section ids and all of
+    // the "Update" screens (method chooser, UF2 flow, serial flow, micro flow)
+    // light up progress dot 3.
     let targetStepId = `step${stepNumber}`;
-
-    // Handle step 1.5 (adapter model selection)
-    if (stepNumber === 1.5) {
-        targetStepId = 'step1_5';
-    }
-
-    // Handle step 3.1 (Arduino Micro WebSerial flasher)
-    if (stepNumber === 3.1) {
-        targetStepId = 'step3_micro';
-    }
+    let progressStep = stepNumber;
+    if (stepNumber === 1.5) { targetStepId = 'step1_5'; }
+    else if (stepNumber === 2.5) { targetStepId = 'stepMethod'; progressStep = 3; }
+    else if (stepNumber === 3.1) { targetStepId = 'step3_micro'; progressStep = 3; }
+    else if (stepNumber === 3.2) { targetStepId = 'stepSerial'; progressStep = 3; }
 
     const targetStep = document.getElementById(targetStepId);
     if (targetStep) {
         targetStep.classList.add('active');
         wizardState.currentStep = stepNumber;
-        updateProgressBar(stepNumber);
+        updateProgressBar(progressStep);
 
         // Update step 2 content if navigating there
         if (stepNumber === 2) {
             updateStep2Content();
+        }
+
+        // Method chooser
+        if (stepNumber === 2.5) {
+            updateMethodContent();
         }
 
         // Update step 3 content if navigating there
@@ -287,6 +289,11 @@ function goToStep(stepNumber) {
         // Update Micro step content if navigating there
         if (stepNumber === 3.1) {
             updateStep3MicroContent();
+        }
+
+        // Serial (web flasher) flow
+        if (stepNumber === 3.2) {
+            updateStepSerialContent();
         }
 
         // Initialize ESP flasher if navigating to step 4 (Summit)
@@ -455,16 +462,37 @@ async function flashMicroFirmware() {
     }
 }
 
+// Human-readable description of the current model/board selection.
+function getConfigText() {
+    if (wizardState.model === 'vail_lite') return getModelName(wizardState.model);
+    return `${getModelName(wizardState.model)} + ${getBoardName(wizardState.board)}`;
+}
+
+// Label for the currently selected release (or empty until releases load).
+function getSelectedVersionLabel() {
+    const r = adapterReleases.selected;
+    return r ? (r.name || r.tag_name) : 'the selected release';
+}
+
+// Method chooser: just reflect the current selection.
+function updateMethodContent() {
+    const el = document.getElementById('selectedConfigMethod');
+    if (el) el.textContent = getConfigText();
+}
+
+// Serial (web flasher) flow: reflect selection and reveal the test-only erase
+// tool when the URL hash opts in.
+function updateStepSerialContent() {
+    const el = document.getElementById('selectedConfigSerial');
+    if (el) el.textContent = `${getConfigText()} — ${getSelectedVersionLabel()}`;
+    maybeRevealEraseTest();
+}
+
 function updateStep3Content() {
-    // Update selected configuration display
-    let configText;
-    if (wizardState.model === 'vail_lite') {
-        // Vail Lite only has one variant, no need to show board
-        configText = getModelName(wizardState.model);
-    } else {
-        configText = `${getModelName(wizardState.model)} + ${getBoardName(wizardState.board)}`;
-    }
-    document.getElementById('selectedConfig').textContent = configText;
+    const cfg = document.getElementById('selectedConfig');
+    if (cfg) cfg.textContent = getConfigText();
+    const ver = document.getElementById('uf2VersionLabel');
+    if (ver) ver.textContent = getSelectedVersionLabel();
 
     // Update download button
     const downloadButton = document.getElementById('downloadButton');
@@ -489,15 +517,13 @@ function updateStep3Content() {
         downloadButton.classList.remove('disabled');
         downloadButton.removeAttribute('aria-disabled');
     }
-
-    maybeRevealSerialFlash();
 }
 
-// --- Advanced: SAM-BA / BOSSA serial flashing for SAMD21 boards -------------
-// Hidden fallback (revealed when the URL hash contains "serial") for users whose
-// UF2 drag-and-drop copy hangs on Windows. Flashes the selected release's .uf2
-// directly over the bootloader's COM port — fetched via the CORS proxy and
-// converted to a raw binary — the same path the Arduino IDE uses via bossac.
+// --- Web flasher: SAM-BA / BOSSA serial flashing for SAMD21 boards ----------
+// The "Web flasher" method chosen on the method screen. Flashes the selected
+// release's .uf2 directly over the bootloader's COM port — fetched via the CORS
+// proxy and converted to a raw binary — the same path the Arduino IDE uses via
+// bossac. Bypasses the UF2 drag-and-drop, which can hang on Windows.
 
 function serialFlashLog(message) {
     console.log('[samba]', message);
@@ -505,10 +531,10 @@ function serialFlashLog(message) {
     if (el) { el.textContent += message + '\n'; el.scrollTop = el.scrollHeight; }
 }
 
-// Show the advanced serial-flash panel only when the URL hash opts in.
-function maybeRevealSerialFlash() {
-    const panel = document.getElementById('serialFlashAdvanced');
-    if (panel) panel.style.display = /serial|advanced/i.test(location.hash) ? 'block' : 'none';
+// The "Erase app" tool is test-only — reveal it only when the URL hash opts in.
+function maybeRevealEraseTest() {
+    const el = document.getElementById('serialEraseTest');
+    if (el) el.style.display = /test|erase|debug/i.test(location.hash) ? 'block' : 'none';
 }
 
 async function flashAdapterOverSerial() {
@@ -612,9 +638,13 @@ async function eraseAdapterAppForTest() {
 // WebSerial boot mode functionality
 let port;
 
+// Which <pre> the bootloader-trigger logs to. The UF2 flow uses #serialLog; the
+// web-flasher flow uses #serialBootLog. Set by each boot button before calling.
+let bootLogTargetId = 'serialLog';
+
 function logToPage(message) {
     console.log(message);
-    const logArea = document.getElementById('serialLog');
+    const logArea = document.getElementById(bootLogTargetId);
     if (logArea) {
         logArea.textContent += message + '\n';
         logArea.scrollTop = logArea.scrollHeight;
@@ -865,7 +895,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (wizardState.model === 'vail_lite') {
                 wizardState.board = 'trinkey'; // Set board for internal tracking
                 setTimeout(() => {
-                    goToStep(3); // Go directly to firmware flash step
+                    goToStep(2.5); // Go to the flashing-method chooser
                 }, 300);
             } else {
                 // Other models need board selection
@@ -888,10 +918,23 @@ document.addEventListener('DOMContentLoaded', () => {
             card.classList.add('selected');
             wizardState.board = card.dataset.board;
 
-            // Arduino Micro uses a different flash flow (WebSerial AVR109, not UF2)
-            const nextStep = wizardState.board === 'micro' ? 3.1 : 3;
+            // Arduino Micro has its own serial-only flow; SAMD21 boards go to
+            // the flashing-method chooser (UF2 vs web flasher).
+            const nextStep = wizardState.board === 'micro' ? 3.1 : 2.5;
             setTimeout(() => {
                 goToStep(nextStep);
+            }, 300);
+        });
+    });
+
+    // Method chooser: UF2 vs web flasher
+    document.querySelectorAll('#stepMethod .selection-card').forEach(card => {
+        card.addEventListener('click', () => {
+            document.querySelectorAll('#stepMethod .selection-card').forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            wizardState.flashMethod = card.dataset.method;
+            setTimeout(() => {
+                goToStep(wizardState.flashMethod === 'serial' ? 3.2 : 3);
             }, 300);
         });
     });
@@ -906,14 +949,14 @@ document.addEventListener('DOMContentLoaded', () => {
         goToStep(1.5);
     });
 
-    document.getElementById('backToStep2')?.addEventListener('click', () => {
-        // If user selected Vail Lite, skip board selection step when going back
-        if (wizardState.model === 'vail_lite') {
-            goToStep(1.5); // Go back to model selection
-        } else {
-            goToStep(2); // Go back to board selection
-        }
+    // Method chooser back → board selection (or model, for Vail Lite which skips it)
+    document.getElementById('backToBoardFromMethod')?.addEventListener('click', () => {
+        goToStep(wizardState.model === 'vail_lite' ? 1.5 : 2);
     });
+
+    // Both flow screens go back to the method chooser
+    document.getElementById('backToMethodFromUf2')?.addEventListener('click', () => goToStep(2.5));
+    document.getElementById('backToMethodFromSerial')?.addEventListener('click', () => goToStep(2.5));
 
     document.getElementById('backToStep1FromSummit')?.addEventListener('click', () => {
         hideWhatsNew();
@@ -943,14 +986,29 @@ document.addEventListener('DOMContentLoaded', () => {
         goToStep(1);
     });
 
-    // Boot mode button
-    document.getElementById('bootModeButton')?.addEventListener('click', triggerBootloaderViaWebSerial);
+    // Boot mode buttons (UF2 flow logs to #serialLog; serial flow to #serialBootLog)
+    document.getElementById('bootModeButton')?.addEventListener('click', () => {
+        bootLogTargetId = 'serialLog';
+        triggerBootloaderViaWebSerial();
+    });
+    document.getElementById('serialBootButton')?.addEventListener('click', () => {
+        bootLogTargetId = 'serialBootLog';
+        triggerBootloaderViaWebSerial();
+    });
 
-    // Advanced serial (SAM-BA) flashing — hidden unless the URL hash opts in.
+    // Web flasher (serial) flow
     document.getElementById('serialFlashButton')?.addEventListener('click', flashAdapterOverSerial);
     document.getElementById('serialEraseButton')?.addEventListener('click', eraseAdapterAppForTest);
-    window.addEventListener('hashchange', maybeRevealSerialFlash);
-    maybeRevealSerialFlash();
+    document.getElementById('startOverFromSerial')?.addEventListener('click', () => {
+        wizardState.device = null;
+        wizardState.model = null;
+        wizardState.board = null;
+        document.querySelectorAll('.selection-card').forEach(card => card.classList.remove('selected'));
+        hideWhatsNew();
+        goToStep(1);
+    });
+    window.addEventListener('hashchange', maybeRevealEraseTest);
+    maybeRevealEraseTest();
 
     // Arduino Micro (WebSerial AVR109) buttons
     document.getElementById('microBootModeButton')?.addEventListener('click', triggerMicroBootloader);

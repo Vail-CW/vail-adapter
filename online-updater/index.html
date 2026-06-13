@@ -137,6 +137,69 @@
         <button class="btn-secondary" id="backToStep1">← Back</button>
     </section>
 
+    <!-- Step 2.5: Choose firmware version + flashing method -->
+    <section id="stepMethod" class="wizard-step">
+        <h2>Set up your update</h2>
+        <p class="step-description">You've selected: <strong id="selectedConfigMethod"></strong></p>
+
+        <!-- Pick version -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">1</span>
+                <h3>Pick a firmware version</h3>
+            </div>
+            <p>The latest stable release is selected by default.</p>
+            <div class="version-selector-container">
+                <div class="version-selector-row">
+                    <select id="adapterVersionSelect" class="version-select" disabled>
+                        <option value="">Loading releases…</option>
+                    </select>
+                    <label class="test-release-toggle">
+                        <input type="checkbox" id="adapterShowTestRelease">
+                        <span class="toggle-label">Show test release</span>
+                    </label>
+                </div>
+                <div id="adapterTestReleaseWarning" class="test-release-warning" style="display: none;">
+                    <strong>Warning:</strong> Test releases may not be stable and could contain bugs. They include features currently being developed. Use at your own risk.
+                </div>
+                <div id="adapterReleaseInfo" class="release-info" style="display: none;">
+                    <div class="release-info-header">
+                        <span id="adapterReleaseVersionBadge" class="firmware-version"></span>
+                        <span id="adapterReleaseDate" class="release-date"></span>
+                    </div>
+                    <div id="adapterReleaseNotes" class="release-notes"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pick method -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">2</span>
+                <h3>Choose how to flash</h3>
+            </div>
+            <p>Two ways to get the firmware onto your adapter. <strong>Not sure? Use the UF2 file method</strong> — it's the simplest and works almost everywhere.</p>
+
+            <div class="card-grid">
+                <div class="selection-card" data-method="uf2">
+                    <div class="card-icon">📄</div>
+                    <h3>UF2 file <span style="font-size: 12px; color: #4CAF50; font-weight: 600;">★ Recommended</span></h3>
+                    <p>Download a small file and drag it onto a drive that pops up. No special browser needed for the copy.</p>
+                    <div class="hint">✅ Works on Windows, macOS, Linux, ChromeOS — and even a phone. Best for most people.</div>
+                </div>
+
+                <div class="selection-card" data-method="serial">
+                    <div class="card-icon">🔌</div>
+                    <h3>Web flasher <span style="font-size: 12px; color: #b388ff; font-weight: 600;">BETA</span></h3>
+                    <p>Flashes straight over the USB port from your browser — nothing to download or drag.</p>
+                    <div class="hint">💡 Try this if the UF2 copy stalls or you'd rather not handle files. Requires <strong>Chrome, Edge, or Opera on a computer</strong> (not Safari, Firefox, or phones).</div>
+                </div>
+            </div>
+        </div>
+
+        <button class="btn-secondary" id="backToBoardFromMethod">← Back</button>
+    </section>
+
     <!-- Step 3: Flash Adapter Firmware (UF2) -->
     <section id="step3" class="wizard-step">
         <h2>Flash Your Firmware</h2>
@@ -181,35 +244,9 @@
         <div class="flash-step">
             <div class="step-header">
                 <span class="step-badge">3</span>
-                <h3>Download Firmware</h3>
+                <h3>Download the Firmware File</h3>
             </div>
-            <p>Choose which firmware version to flash. The latest stable release is selected by default.</p>
-
-            <div class="version-selector-container">
-                <div class="version-selector-row">
-                    <select id="adapterVersionSelect" class="version-select" disabled>
-                        <option value="">Loading releases…</option>
-                    </select>
-                    <label class="test-release-toggle">
-                        <input type="checkbox" id="adapterShowTestRelease">
-                        <span class="toggle-label">Show test release</span>
-                    </label>
-                </div>
-
-                <div id="adapterTestReleaseWarning" class="test-release-warning" style="display: none;">
-                    <strong>Warning:</strong> Test releases may not be stable and could contain bugs. They include features currently being developed. Use at your own risk.
-                </div>
-
-                <div id="adapterReleaseInfo" class="release-info" style="display: none;">
-                    <div class="release-info-header">
-                        <span id="adapterReleaseVersionBadge" class="firmware-version"></span>
-                        <span id="adapterReleaseDate" class="release-date"></span>
-                    </div>
-                    <div id="adapterReleaseNotes" class="release-notes"></div>
-                </div>
-            </div>
-
-            <p style="margin-top: 16px;">Download the firmware file for your configuration:</p>
+            <p>This is the firmware version you picked on the previous screen — <strong id="uf2VersionLabel">the selected release</strong>.</p>
             <a href="#" id="downloadButton" class="btn-download disabled" role="button" aria-disabled="true">
                 <span class="download-icon">⬇️</span>
                 <span id="downloadText">Download UF2 File</span>
@@ -273,27 +310,51 @@
             </details>
         </div>
 
-        <!-- Hidden advanced fallback: flash directly over the bootloader's COM
-             port (SAM-BA / BOSSA, the same path the Arduino IDE uses), for users
-             whose UF2 drag-and-drop copy hangs on Windows. Revealed only when the
-             URL hash contains "serial" — e.g. https://update.vailadapter.com/#serial -->
-        <div id="serialFlashAdvanced" class="flash-step" style="display: none; border: 2px dashed #6a5acd; border-radius: 8px; padding: 16px; margin-top: 24px;">
-            <div class="step-header">
-                <span class="step-badge" style="background: #6a5acd;">⚡</span>
-                <h3>Advanced: Flash over COM port (UF2 not working?)</h3>
-            </div>
-            <p>If dragging the <code>.uf2</code> onto the drive hangs or never finishes, you can flash <strong>directly over the bootloader's serial port</strong> — the same method the Arduino IDE uses. This skips the file-copy step entirely. Chrome, Edge, or Opera only.</p>
-            <ol>
-                <li>Pick your firmware version and board above (same selection as the download).</li>
-                <li>Put the adapter in <strong>bootloader mode</strong> using "Enter Boot Mode" above, or double-tap the reset button. It does <em>not</em> need to show the storage drive — it just needs to be in bootloader mode.</li>
-                <li>Click <strong>Flash over serial</strong> and pick your adapter's COM port (on Windows it's usually the highest-numbered COM port that appears).</li>
-            </ol>
-            <button id="serialFlashButton" class="btn-primary">⚡ Flash over serial (COM port)</button>
+        <button class="btn-secondary" id="backToMethodFromUf2">← Back</button>
+        <button class="btn-primary" id="startOver">Start Over</button>
+    </section>
 
-            <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #444;">
-                <p style="font-size: 13px; color: #b0a0e0; margin: 0 0 8px;"><strong>Testing tool:</strong> erase the firmware to reproduce the "stuck in bootloader" state. The device will boot to storage mode every time until you reflash it (recoverable — the bootloader is never touched).</p>
-                <button id="serialEraseButton" class="btn-secondary" style="border-color: #b5651d; color: #ffb27a;">🧪 Erase app (simulate stuck state)</button>
+    <!-- Step 3 (Serial / Web flasher variant): SAM-BA over WebSerial -->
+    <section id="stepSerial" class="wizard-step">
+        <h2>Flash Over USB (Web Flasher)</h2>
+        <p class="step-description">You've selected: <strong id="selectedConfigSerial"></strong></p>
+
+        <div class="warning-box" style="background: linear-gradient(135deg, #2a2350 0%, #3a3066 100%); border: 2px solid #b388ff; border-radius: 8px; padding: 14px; margin-bottom: 20px;">
+            <strong style="color: #d0b3ff;">Beta feature.</strong> Requires <strong>Chrome, Edge, or Opera on a computer</strong> (not Safari, Firefox, or phones). Flashes directly over the USB port — no file to download or drag. If it doesn't work, go back and use the UF2 file method.
+        </div>
+
+        <!-- Sub-step 1: Plug in -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">1</span>
+                <h3>Plug In Your Adapter</h3>
             </div>
+            <p>Connect the adapter with a USB cable that supports data transfer.</p>
+        </div>
+
+        <!-- Sub-step 2: Enter bootloader -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">2</span>
+                <h3>Enter Bootloader Mode</h3>
+            </div>
+            <p><strong>Double-tap the reset button</strong> on your adapter — a USB drive named "QTPYBOOT", "XIAOBOOT", or "ADAPTERBOOT" should appear. (If your adapter is already stuck in this mode, you're ready.)</p>
+            <p style="margin-top: 10px;">Or click below to trigger it automatically:</p>
+            <button id="serialBootButton" class="btn-primary">🔌 Enter Bootloader via WebSerial</button>
+            <div class="log-container" style="margin-top: 12px;">
+                <h4>Activity Log:</h4>
+                <pre id="serialBootLog"></pre>
+            </div>
+        </div>
+
+        <!-- Sub-step 3: Flash -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">3</span>
+                <h3>Flash the Firmware</h3>
+            </div>
+            <p>Click below and pick your adapter's <strong>COM port</strong> (on Windows it's usually the highest-numbered COM port that appears when the bootloader is active). The firmware writes directly over the connection.</p>
+            <button id="serialFlashButton" class="btn-primary">⚡ Flash Firmware Over Serial</button>
 
             <div class="progress-container" id="serialFlashProgressContainer" style="display: none; margin-top: 16px;">
                 <div class="progress-label" id="serialFlashProgressLabel">Preparing…</div>
@@ -303,13 +364,34 @@
                 <div id="serialFlashProgressPercent" style="margin-top: 6px; font-size: 13px; color: #999;">0%</div>
             </div>
             <div class="log-container" style="margin-top: 16px;">
-                <h4>Serial Flash Log:</h4>
+                <h4>Flash Log:</h4>
                 <pre id="serialFlashLog"></pre>
+            </div>
+
+            <!-- Test-only: revealed when the URL hash contains "test" -->
+            <div id="serialEraseTest" style="display: none; margin-top: 14px; padding-top: 12px; border-top: 1px solid #444;">
+                <p style="font-size: 13px; color: #b0a0e0; margin: 0 0 8px;"><strong>Testing tool:</strong> erase the firmware to reproduce the "stuck in bootloader" state (recoverable — the bootloader is never touched).</p>
+                <button id="serialEraseButton" class="btn-secondary" style="border-color: #b5651d; color: #ffb27a;">🧪 Erase app (simulate stuck state)</button>
             </div>
         </div>
 
-        <button class="btn-secondary" id="backToStep2">← Back</button>
-        <button class="btn-primary" id="startOver">Start Over</button>
+        <!-- Sub-step 4: Finalize -->
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge">4</span>
+                <h3>Finalize Setup</h3>
+            </div>
+            <ol>
+                <li>The adapter reboots into the new firmware automatically (unplug/replug if it stays in bootloader mode)</li>
+                <li>Visit <a href="https://vailmorse.com" target="_blank">vailmorse.com</a> to configure your keyer type, speed, and tone</li>
+            </ol>
+            <div class="success-message">
+                <strong>✅ Done!</strong> Your Vail Adapter is running the new firmware.
+            </div>
+        </div>
+
+        <button class="btn-secondary" id="backToMethodFromSerial">← Back</button>
+        <button class="btn-primary" id="startOverFromSerial">Start Over</button>
     </section>
 
     <!-- Step 3 (Micro variant): WebSerial AVR109 flash flow -->
@@ -587,6 +669,6 @@
 <script src="esp-flasher.js?v=2026-06-11.1" type="module"></script>
 <script src="avr109-flasher.js?v=2026-06-11.1"></script>
 <script src="samba-flasher.js?v=2026-06-13.5"></script>
-<script src="script.js?v=2026-06-13.5" defer></script>
+<script src="script.js?v=2026-06-13.6" defer></script>
 </body>
 </html>
