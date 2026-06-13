@@ -27,49 +27,54 @@ jobs:
       matrix:
         include:
           # --- XIAO SAMD21 Configurations ---
+          # uf2_name is a short, DOS 8.3-safe code (<=8 chars, single dot). The
+          # release step appends a 2-digit version code, e.g. xb2 -> xb2_50.uf2.
+          # Long names (xiao_basic_pcb_v2_v5.0.uf2) force Windows to write a VFAT
+          # long-filename entry onto the SAMD21 bootloader's tiny emulated FAT
+          # drive, which can hang/fail the drag-to-bootloader copy on Win10/11.
           - board_name: "XIAO_SAMD21"
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
             hw_define: "V1_Basic_PCB"
-            uf2_name: "xiao_basic_pcb_v1.uf2"
+            uf2_name: "xb1.uf2"
           - board_name: "XIAO_SAMD21"
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
             hw_define: "V2_Basic_PCB"
-            uf2_name: "xiao_basic_pcb_v2.uf2"
+            uf2_name: "xb2.uf2"
           - board_name: "XIAO_SAMD21"
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
             hw_define: "NO_PCB_GITHUB_SPECS"
-            uf2_name: "xiao_non_pcb.uf2"
+            uf2_name: "xnp.uf2"
           - board_name: "XIAO_SAMD21"
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
             hw_define: "Advanced_PCB"
-            uf2_name: "xiao_advanced_pcb.uf2"
+            uf2_name: "xad.uf2"
           # --- Adafruit QT Py SAMD21 Configurations ---
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
             hw_define: "V1_Basic_PCB"
-            uf2_name: "qtpy_basic_pcb_v1.uf2"
+            uf2_name: "qb1.uf2"
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
             hw_define: "V2_Basic_PCB"
-            uf2_name: "qtpy_basic_pcb_v2.uf2"
+            uf2_name: "qb2.uf2"
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
             hw_define: "Advanced_PCB"
-            uf2_name: "qtpy_advanced_pcb.uf2"
+            uf2_name: "qad.uf2"
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
             hw_define: "NO_PCB_GITHUB_SPECS"
-            uf2_name: "qtpy_non_pcb.uf2"
-          # --- Adafruit TRRS Trinkey SAMD21 Configuration ---
+            uf2_name: "qnp.uf2"
+          # --- Adafruit TRRS Trinkey SAMD21 Configuration (Vail Lite) ---
           - board_name: "TRRS_TRINKEY"
             fqbn: "adafruit:samd:adafruit_TRRStrinkey_m0"
             hw_define: "TRRS_TRINKEY"
-            uf2_name: "trinkey_vail_adapter.uf2"
+            uf2_name: "vl.uf2"
           # --- Arduino Micro (ATmega32U4) — produces .hex, not .uf2 ---
           - board_name: "ARDUINO_MICRO"
             fqbn: "arduino:avr:micro"
             hw_define: "ARDUINO_MICRO_BOARD"
-            uf2_name: "arduino_micro.hex"
+            uf2_name: "mic.hex"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -156,13 +161,21 @@ jobs:
         run: |
           set -e
           mkdir -p release_assets
-          # Artifacts download into per-name subdirs; flatten and stamp the tag
-          # into each filename, e.g. xiao_basic_pcb_v2.uf2 -> xiao_basic_pcb_v2_v5.0.uf2
+          # Stamp a short, digits-only version code onto each short board code so
+          # the asset name stays DOS 8.3-safe (<=8 chars, single dot). The code is
+          # major.minor with the dot removed, e.g. v5.0 -> 50, v5.2.0-beta.1 -> 52:
+          #   xb2.uf2 -> xb2_50.uf2
+          # Embedding the raw tag (v5.0) would add a second dot and break 8.3.
+          VERCODE="$(printf '%s' "$TAG" | sed -E 's/^[vV]?([0-9]+)\.([0-9]+).*/\1\2/')"
+          # Fallback for tags without a major.minor: strip to alphanumerics.
+          case "$VERCODE" in *[!0-9A-Za-z]*|'') VERCODE="$(printf '%s' "$TAG" | tr -cd '0-9A-Za-z')";; esac
+          echo "Version code for $TAG: $VERCODE"
+          # Artifacts download into per-name subdirs; flatten and stamp.
           find all_fw -type f \( -name "*.uf2" -o -name "*.hex" \) | while read -r f; do
             base="$(basename "$f")"
             name="${base%.*}"
             ext="${base##*.}"
-            cp "$f" "release_assets/${name}_${TAG}.${ext}"
+            cp "$f" "release_assets/${name}_${VERCODE}.${ext}"
           done
           echo "Assets to upload to $TAG:"
           ls -1 release_assets
