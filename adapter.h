@@ -30,6 +30,21 @@ private:
     bool radioDitState = false;
     bool radioDahState = false;
 
+    // Keyboard Sim mode — decode keyed Morse into USB keystrokes.
+    // Armed by keying "KSKS" as a standalone word (a word-gap before the first
+    // K and after the last S). Detection runs on DECODED CHARACTERS, not on the
+    // raw dit/dah element stream, so it cannot false-trigger on element runs
+    // buried inside other words (e.g. the OLECU run inside "molecule").
+    bool keyboardSimMode = false;
+    uint8_t ksksMatchLen = 0;          // How many of K-S-K-S matched in order
+    unsigned long firstKTime = 0;      // millis() of the first K (sequence timeout)
+    bool wordBoundaryPending = true;   // True at boot / after a word-gap; gates the first K
+    bool ksksArmed = false;            // KSKS fully matched, awaiting the trailing gap
+    unsigned long ksksArmedTime = 0;   // millis() when armed (trailing-gap timer)
+
+    // Callback fired when Keyboard Sim mode activates (used to reset the decoder)
+    void (*onEnterKeyboardSimMode)() = nullptr;
+
     // Track which relays are active for proper key mapping
     bool txRelays[2] = {false, false}; // [dit, dah]
     int lastPaddlePressed = PADDLE_DIT; // Track last paddle for keyer transmission
@@ -83,4 +98,16 @@ public:
 
     // Cleanup method to release all keys
     void ReleaseAllKeys();
+
+    // Keyboard Sim mode
+    bool isKeyboardSimMode() const { return keyboardSimMode; }
+    bool isTransmitting() const { return keyIsPressed; }
+    void checkForKSKS(char c);                 // Fed decoded characters; arms/activates KSKS
+    void notifyWordBoundary();                 // Decoder reports a word-gap (leading guard)
+    void enterKeyboardSimMode();
+    void setEnterKeyboardSimModeCallback(void (*callback)()) { onEnterKeyboardSimMode = callback; }
+    void outputKeyboardChar(char c);
+    void outputKeyboardBackspace();
+    void outputKeyboardEnter();
+    void outputKeyboardSpace();
 };

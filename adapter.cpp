@@ -37,6 +37,13 @@ this->txRelays[1] = false; // dah
 this->lastPaddlePressed = PADDLE_DIT;
 this->ditKeyPressed = false;
 this->dahKeyPressed = false;
+this->keyboardSimMode = false;
+this->ksksMatchLen = 0;
+this->firstKTime = 0;
+this->wordBoundaryPending = true;
+this->ksksArmed = false;
+this->ksksArmedTime = 0;
+this->onEnterKeyboardSimMode = nullptr;
 }
 
 bool VailAdapter::KeyboardMode() {
@@ -218,6 +225,8 @@ void VailAdapter::Tx(int relay, bool closed) {
         }
 #endif
 
+        if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
+
         if (!this->radioModeActive) {
             // Send the appropriate key based on which relay is active
             if (this->keyboardMode) {
@@ -274,6 +283,8 @@ void VailAdapter::Tx(int relay, bool closed) {
         }
 #endif
 
+        if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
+
         if (!this->radioModeActive) {
             // Release only the keys that were pressed
             if (this->keyboardMode) {
@@ -322,6 +333,8 @@ if (this->radioModeActive) {
 }
 #endif
 
+if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
+
 if (!this->radioModeActive) {
     if (this->keyboardMode) {
         // For keyer mode, we need to determine which key to send
@@ -362,6 +375,8 @@ if (this->radioModeActive) {
     return;  // Skip keyboard/MIDI output in radio mode
 }
 #endif
+
+if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
 
 if (!this->radioModeActive) {
     if (this->keyboardMode) {
@@ -424,6 +439,8 @@ if (this->radioModeActive) {
     return;
 }
 #endif
+
+if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
 
 if (!this->radioModeActive) {
     if (this->keyboardMode) {
@@ -493,6 +510,8 @@ if (this->radioModeActive) {
     return;
 }
 #endif
+
+if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
 
 if (!this->radioModeActive) {
     if (this->keyboardMode) {
@@ -825,6 +844,18 @@ break;
 }
 
 void VailAdapter::Tick(unsigned long currentMillis) {
+// Keyboard Sim mode trailing guard: KSKS has matched and we're waiting to
+// confirm a word-gap of silence followed the final S (proving KSKS stood
+// alone). Activate once that gap elapses with the key up.
+if (this->ksksArmed && !this->keyIsPressed) {
+    unsigned long gap = (unsigned long)this->ditDuration * KSKS_TRAILING_GAP_DITS;
+    if (currentMillis - this->ksksArmedTime >= gap) {
+        Serial.println("KSKS: trailing gap satisfied -> activating Keyboard Sim mode");
+        this->ksksArmed = false;
+        this->enterKeyboardSimMode();
+    }
+}
+
 // Check for dit hold during each tick
 if (this->ditIsHeld && this->buzzerEnabled) {
     unsigned long holdTime = currentMillis - this->ditHoldStartTime;
@@ -865,5 +896,164 @@ this->DisableBuzzer();
 if (this->keyer) {
     this->keyer->Tick(currentMillis);
 }
+}
+
+// ============================================================================
+// Keyboard Sim Mode — KSKS detection (character layer) and keyboard output
+// ============================================================================
+
+// Fed every decoded character (before it is typed). Detects the "KSKS" prosign
+// keyed as its own word and arms activation. Matching happens on decoded
+// CHARACTERS — not the raw dit/dah element stream — and both ends are guarded
+// by a word-gap, so element runs inside ordinary words (e.g. the OLECU run
+// inside "molecule") cannot trigger it.
+void VailAdapter::checkForKSKS(char c) {
+    if (this->keyboardSimMode) return;        // Already active
+    if (c < 'A' || c > 'Z') return;            // Only letters take part
+
+    static const char KSKS_SEQ[4] = {'K', 'S', 'K', 'S'};
+    unsigned long now = millis();
+
+    // A letter arriving while armed means KSKS was NOT standalone — cancel.
+    if (this->ksksArmed) {
+        Serial.println("KSKS: letter after match -> not standalone, disarming");
+        this->ksksArmed = false;
+    }
+
+    // Drop a stale in-progress sequence.
+    if (this->ksksMatchLen > 0 && (now - this->firstKTime) > KSKS_TIMEOUT) {
+        Serial.println("KSKS: sequence timed out, resetting");
+        this->ksksMatchLen = 0;
+    }
+
+    // Did a word-gap (or fresh start) precede THIS letter? Consume it either way.
+    bool hadBoundary = this->wordBoundaryPending;
+    this->wordBoundaryPending = false;
+
+    if (this->ksksMatchLen == 0) {
+        // Leading guard: the first K must follow a word boundary.
+        if (c == 'K' && hadBoundary) {
+            this->ksksMatchLen = 1;
+            this->firstKTime = now;
+            Serial.println("KSKS: first K after gap -> sequence started");
+        }
+        return;
+    }
+
+    if (c == KSKS_SEQ[this->ksksMatchLen]) {
+        this->ksksMatchLen++;
+        Serial.print("KSKS: matched "); Serial.print(c);
+        Serial.print(" ("); Serial.print(this->ksksMatchLen); Serial.println("/4)");
+        if (this->ksksMatchLen >= 4) {
+            // Full KSKS seen. Arm and wait for the trailing word-gap (see Tick()).
+            this->ksksMatchLen = 0;
+            this->ksksArmed = true;
+            this->ksksArmedTime = now;
+            Serial.println("KSKS: full match -> armed, awaiting trailing gap");
+        }
+    } else {
+        // Pattern broken. Reset; this letter can't restart (boundary consumed).
+        Serial.println("KSKS: sequence broken, resetting");
+        this->ksksMatchLen = 0;
+    }
+}
+
+// Called by the decoder when it emits a word space. Marks that the next decoded
+// letter begins a fresh word — the leading guard for a starting K.
+void VailAdapter::notifyWordBoundary() {
+    this->wordBoundaryPending = true;
+}
+
+void VailAdapter::enterKeyboardSimMode() {
+    // Don't set keyboardSimMode = true yet! If we did, any characters decoded
+    // during the confirmation tones would be typed to the host. Use a local
+    // guard against re-entry instead.
+    static bool entering = false;
+    if (entering || this->keyboardSimMode) return;
+    entering = true;
+
+    // Release any held keys and reset key/hold state.
+    ReleaseAllKeys();
+    this->keyIsPressed = false;
+    this->keyPressStartTime = 0;
+    this->ditIsHeld = false;
+    this->ditHoldStartTime = 0;
+
+    // Clear KSKS detection state.
+    this->ksksMatchLen = 0;
+    this->firstKTime = 0;
+    this->ksksArmed = false;
+    this->ksksArmedTime = 0;
+    this->wordBoundaryPending = true;
+
+    Serial.println("=== KEYBOARD SIM MODE ACTIVATING ===");
+
+    // Ascending chime, then "KS" in Morse as confirmation.
+    this->buzzer->Note(1, 60); delay(80);   // C4
+    this->buzzer->Note(1, 64); delay(80);   // E4
+    this->buzzer->Note(1, 67); delay(80);   // G4
+    this->buzzer->Note(1, 72); delay(120);  // C5
+    this->buzzer->NoTone(1);
+    delay(200);
+    // K = -.-
+    this->buzzer->Note(1, this->txNote); delay(180);
+    this->buzzer->NoTone(1); delay(60);
+    this->buzzer->Note(1, this->txNote); delay(60);
+    this->buzzer->NoTone(1); delay(60);
+    this->buzzer->Note(1, this->txNote); delay(180);
+    this->buzzer->NoTone(1); delay(180);
+    // S = ...
+    this->buzzer->Note(1, this->txNote); delay(60);
+    this->buzzer->NoTone(1); delay(60);
+    this->buzzer->Note(1, this->txNote); delay(60);
+    this->buzzer->NoTone(1); delay(60);
+    this->buzzer->Note(1, this->txNote); delay(60);
+    this->buzzer->NoTone(1);
+
+    // Reset the decoder AFTER the tones so partial elements that were in flight
+    // don't get typed out as the first character.
+    if (this->onEnterKeyboardSimMode) {
+        this->onEnterKeyboardSimMode();
+    }
+
+    // NOW enable typing — decoder is reset, no stray characters will leak.
+    this->keyboardSimMode = true;
+    entering = false;
+    Serial.println("=== KEYBOARD SIM MODE ACTIVATED ===");
+}
+
+void VailAdapter::outputKeyboardChar(char c) {
+    if (!this->keyboardSimMode) return;
+
+    if (c >= 'A' && c <= 'Z') {
+        Keyboard.press(c + 32);   // Type lowercase
+        Keyboard.release(c + 32);
+        Serial.print("KB SIM: '"); Serial.print((char)(c + 32)); Serial.println("'");
+    } else {
+        Keyboard.press(c);        // Numbers and punctuation as-is
+        Keyboard.release(c);
+        Serial.print("KB SIM: '"); Serial.print(c); Serial.println("'");
+    }
+}
+
+void VailAdapter::outputKeyboardBackspace() {
+    if (!this->keyboardSimMode) return;
+    Keyboard.press(KEY_BACKSPACE);
+    Keyboard.release(KEY_BACKSPACE);
+    Serial.println("KB SIM: [BACKSPACE]");
+}
+
+void VailAdapter::outputKeyboardEnter() {
+    if (!this->keyboardSimMode) return;
+    Keyboard.press(KEY_RETURN);
+    Keyboard.release(KEY_RETURN);
+    Serial.println("KB SIM: [ENTER]");
+}
+
+void VailAdapter::outputKeyboardSpace() {
+    if (!this->keyboardSimMode) return;
+    Keyboard.press(' ');
+    Keyboard.release(' ');
+    Serial.println("KB SIM: [SPACE]");
 }
 
