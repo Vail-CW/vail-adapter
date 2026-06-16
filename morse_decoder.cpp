@@ -62,14 +62,14 @@ void MorseDecoder::addTiming(int16_t duration) {
 
   unsigned long now = millis();
 
-  Serial.print("DECODER: addTiming("); Serial.print(duration); Serial.println(")");
-  Serial.print("  thresholds: ditDah="); Serial.print(ditDahThreshold);
-  Serial.print(" charSpace="); Serial.print(charSpaceThreshold);
-  Serial.print(" wordSpace="); Serial.println(dahSpaceThreshold);
+  Serial.print(F("DECODER: addTiming(")); Serial.print(duration); Serial.println(F(")"));
+  Serial.print(F("  thresholds: ditDah=")); Serial.print(ditDahThreshold);
+  Serial.print(F(" charSpace=")); Serial.print(charSpaceThreshold);
+  Serial.print(F(" wordSpace=")); Serial.println(dahSpaceThreshold);
 
   // Handle noise: ignore very short durations
   if (abs(duration) <= NOISE_THRESHOLD) {
-    Serial.println("  -> ignored (noise)");
+    Serial.println(F("  -> ignored (noise)"));
     return;
   }
 
@@ -77,7 +77,7 @@ void MorseDecoder::addTiming(int16_t duration) {
   if (duration > 0) {
     // TONE: classify as dit or dah and add to pattern
     bool isDah = (duration >= ditDahThreshold);
-    Serial.print("  -> element: "); Serial.println(isDah ? "DAH" : "DIT");
+    Serial.print(F("  -> element: ")); Serial.println(isDah ? "DAH" : "DIT");
     addElement(isDah);
 
     // Update adaptive timing
@@ -90,29 +90,29 @@ void MorseDecoder::addTiming(int16_t duration) {
 
     if (silence >= dahSpaceThreshold) {
       // Word space - decode current pattern, then maybe output space
-      Serial.println("  -> WORD SPACE");
+      Serial.println(F("  -> WORD SPACE"));
       if (patternLength > 0) {
         decodePattern(true);  // Force output - word space is definitive end
       }
       // Output space unless suppressed (e.g., after backspace)
       if (suppressNextSpace) {
-        Serial.println("  -> SPACE SUPPRESSED (after backspace)");
+        Serial.println(F("  -> SPACE SUPPRESSED (after backspace)"));
         suppressNextSpace = false;
       } else {
         // Don't output space yet - mark it pending
         // We'll output it when we know the next pattern isn't a backspace
         pendingWordSpace = true;
-        Serial.println("  -> SPACE PENDING (waiting to see if backspace follows)");
+        Serial.println(F("  -> SPACE PENDING (waiting to see if backspace follows)"));
       }
     } else if (silence >= charSpaceThreshold) {
       // Character space - decode current pattern (Farnsworth-friendly threshold)
-      Serial.println("  -> CHAR SPACE");
+      Serial.println(F("  -> CHAR SPACE"));
       if (patternLength > 0) {
         decodePattern();
       }
     } else {
       // Element space - just wait for more elements
-      Serial.println("  -> element space (continuing pattern)");
+      Serial.println(F("  -> element space (continuing pattern)"));
     }
   }
 
@@ -143,8 +143,8 @@ void MorseDecoder::tick(unsigned long currentTime) {
   // This gives more time between characters before auto-decoding
   // If enough time has passed since last event, treat it as character boundary
   if (elapsed >= charSpaceThreshold) {
-    Serial.print("TICK: timeout after "); Serial.print(elapsed);
-    Serial.print("ms (threshold="); Serial.print(charSpaceThreshold); Serial.println("ms), decoding");
+    Serial.print(F("TICK: timeout after ")); Serial.print(elapsed);
+    Serial.print(F("ms (threshold=")); Serial.print(charSpaceThreshold); Serial.println(F("ms), decoding"));
     decodePattern(true);  // Force output - timeout is definitive end
     lastEventTime = currentTime;  // Reset to prevent repeated triggering
   }
@@ -174,28 +174,28 @@ void MorseDecoder::addElement(bool isDah) {
   }
   patternLength++;
 
-  Serial.print("  pattern now: 0b");
+  Serial.print(F("  pattern now: 0b"));
   for (int i = patternLength - 1; i >= 0; i--) {
     Serial.print((currentPattern >> i) & 1);
   }
-  Serial.print(" len="); Serial.println(patternLength);
+  Serial.print(F(" len=")); Serial.println(patternLength);
 }
 
 void MorseDecoder::decodePattern(bool forceOutput) {
   if (patternLength == 0) return;
 
-  Serial.print("DECODE: pattern=0b");
+  Serial.print(F("DECODE: pattern=0b"));
   for (int i = patternLength - 1; i >= 0; i--) {
     Serial.print((currentPattern >> i) & 1);
   }
-  Serial.print(" len="); Serial.println(patternLength);
+  Serial.print(F(" len=")); Serial.println(patternLength);
 
   // Special case: 8 or more dits = backspace
   if (patternLength >= 8 && currentPattern == 0) {
-    Serial.print("  -> BACKSPACE ("); Serial.print(patternLength); Serial.println(" dits)");
+    Serial.print(F("  -> BACKSPACE (")); Serial.print(patternLength); Serial.println(F(" dits)"));
     // Cancel any pending word space - backspace means user is correcting
     if (pendingWordSpace) {
-      Serial.println("  -> PENDING SPACE CANCELLED (backspace)");
+      Serial.println(F("  -> PENDING SPACE CANCELLED (backspace)"));
       pendingWordSpace = false;
     }
     if (onBackspace) {
@@ -214,10 +214,10 @@ void MorseDecoder::decodePattern(bool forceOutput) {
   if (patternLength == 7 && currentPattern == 0b1010001) {
     // Cancel pending space - don't want trailing space before newline
     if (pendingWordSpace) {
-      Serial.println("  -> PENDING SPACE CANCELLED (before enter)");
+      Serial.println(F("  -> PENDING SPACE CANCELLED (before enter)"));
       pendingWordSpace = false;
     }
-    Serial.println("  -> ENTER (BK)");
+    Serial.println(F("  -> ENTER (BK)"));
     if (onEnter) {
       onEnter();
     }
@@ -235,11 +235,11 @@ void MorseDecoder::decodePattern(bool forceOutput) {
   if (patternLength == 5 && currentPattern == 0b10001 && forceOutput) {
     // Output pending space first if any
     if (pendingWordSpace) {
-      Serial.println("  -> OUTPUT PENDING SPACE (before BT space)");
+      Serial.println(F("  -> OUTPUT PENDING SPACE (before BT space)"));
       if (onSpace) onSpace();
       pendingWordSpace = false;
     }
-    Serial.println("  -> SPACE (BT)");
+    Serial.println(F("  -> SPACE (BT)"));
     if (onSpace) {
       onSpace();
     }
@@ -256,11 +256,11 @@ void MorseDecoder::decodePattern(bool forceOutput) {
   if (c != 0) {
     // Output any pending word space before the character
     if (pendingWordSpace) {
-      Serial.println("  -> OUTPUT PENDING SPACE (before char)");
+      Serial.println(F("  -> OUTPUT PENDING SPACE (before char)"));
       if (onSpace) onSpace();
       pendingWordSpace = false;
     }
-    Serial.print("  -> CHAR: "); Serial.println(c);
+    Serial.print(F("  -> CHAR: ")); Serial.println(c);
     if (onCharacter) {
       onCharacter(c);
     }
@@ -268,7 +268,7 @@ void MorseDecoder::decodePattern(bool forceOutput) {
     // INVALID pattern - cancel pending space and play error
     // (user sent garbage - don't output the pending space)
     if (pendingWordSpace) {
-      Serial.println("  -> PENDING SPACE CANCELLED (invalid pattern)");
+      Serial.println(F("  -> PENDING SPACE CANCELLED (invalid pattern)"));
       pendingWordSpace = false;
     }
     suppressNextSpace = true;  // Also suppress next auto-space
@@ -276,7 +276,7 @@ void MorseDecoder::decodePattern(bool forceOutput) {
     // Play error feedback
     if (onError) onError();
 
-    Serial.println("  -> NOT FOUND (ignored)");
+    Serial.println(F("  -> NOT FOUND (ignored)"));
   }
 
   currentPattern = 0;
