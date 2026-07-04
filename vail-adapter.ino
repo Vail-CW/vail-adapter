@@ -14,6 +14,7 @@
 #include "settings_eeprom.h"
 #include "menu_handler.h"
 #include "equal_temperament.h"
+#include "morse_decoder.h"
 
 bool trs = false;
 unsigned long dahGroundedStartTime = 0;  // Track how long DAH has been grounded
@@ -32,6 +33,55 @@ TouchBounce qt_key = TouchBounce();
 #endif
 
 VailAdapter adapter = VailAdapter(PIEZO_PIN);
+
+// ---- Keyboard Sim mode: Morse decoder + USB keyboard output ----
+MorseDecoder morseDecoder;
+
+// Decoder timing-capture state
+bool lastDecoderKeyState = false;
+unsigned long lastDecoderEventTime = 0;
+
+void onDecodedChar(char c) {
+  // Detection runs whether or not we're already in sim mode.
+  adapter.checkForKSKS(c);
+  if (adapter.isKeyboardSimMode()) {
+    adapter.outputKeyboardChar(c);
+  }
+}
+
+void onDecodedBackspace() {
+  if (adapter.isKeyboardSimMode()) adapter.outputKeyboardBackspace();
+}
+
+void onDecodedEnter() {
+  if (adapter.isKeyboardSimMode()) adapter.outputKeyboardEnter();
+}
+
+void onDecodedSpace() {
+  // Word-gap detected: arms the leading guard for a starting K.
+  adapter.notifyWordBoundary();
+  if (adapter.isKeyboardSimMode()) adapter.outputKeyboardSpace();
+}
+
+void onDecodedError() {
+  if (adapter.isKeyboardSimMode()) playInvalidCodeTone();
+}
+
+void onEnterKeyboardSimMode() {
+  // Reset the decoder so in-flight elements aren't typed as the first character.
+  morseDecoder.reset();
+  bool usingKeyer = (adapter.getCurrentKeyerType() > 1);
+  bool currentKeyState = false;
+  if (usingKeyer) {
+    currentKeyState = adapter.isTransmitting();
+  } else {
+    dit.update();
+    dah.update();
+    if (!dit.read() || !dah.read()) currentKeyState = true;
+  }
+  lastDecoderKeyState = currentKeyState;
+  lastDecoderEventTime = 0;  // Prevents a bogus timing on the next transition
+}
 
 #ifdef BUTTON_PIN
 ButtonDebouncer buttonDebouncer;
@@ -128,6 +178,15 @@ void setup() {
 
   Keyboard.begin();
   MidiUSB.flush();
+
+  // Keyboard Sim mode: initialise the Morse decoder and wire its callbacks
+  morseDecoder.begin(adapter.getDitDuration());
+  morseDecoder.setCharacterCallback(onDecodedChar);
+  morseDecoder.setBackspaceCallback(onDecodedBackspace);
+  morseDecoder.setEnterCallback(onDecodedEnter);
+  morseDecoder.setSpaceCallback(onDecodedSpace);
+  morseDecoder.setErrorCallback(onDecodedError);
+  adapter.setEnterKeyboardSimModeCallback(onEnterKeyboardSimMode);
 
   // Ensure clean keyboard state on startup
   adapter.ReleaseAllKeys();
@@ -395,4 +454,55 @@ void loop() {
 #endif
   }
 #endif
+
+  // ========================================================================
+  // Keyboard Sim mode: feed keyed Morse timing into the decoder.
+  // For iambic keyers we use the keyer's output timing (the user holds paddles
+  // while the keyer times the elements); for straight key we use raw input.
+  // Skip radio mode and memory record/playback so they aren't decoded/typed.
+  // ========================================================================
+  bool decoderActive = !adapter.isRadioModeActive();
+#ifdef BUTTON_PIN
+  decoderActive = decoderActive && !recordingState.isRecording && !playbackState.isPlaying;
+#endif
+  if (decoderActive) {
+    bool keyIsDown = false;
+    bool usingKeyer = (adapter.getCurrentKeyerType() > 1);
+    if (usingKeyer) {
+      keyIsDown = adapter.isTransmitting();
+    } else {
+      if (!dit.read() || !dah.read()) keyIsDown = true;
+#ifndef TRRS_TRINKEY
+      if (!key.read()) keyIsDown = true;
+#endif
+#ifndef NO_CAPACITIVE_TOUCH
+      if (qt_dit.read() || qt_dah.read()) keyIsDown = true;
+#ifdef QT_KEY_PIN
+      if (qt_key.read()) keyIsDown = true;
+#endif
+#endif
+    }
+
+    morseDecoder.setKeyDown(keyIsDown);
+
+    if (keyIsDown != lastDecoderKeyState) {
+      unsigned long now = millis();
+      if (lastDecoderEventTime > 0) {
+        int16_t duration = (int16_t)(now - lastDecoderEventTime);
+        if (keyIsDown) {
+          morseDecoder.addTiming(-duration);  // Silence that just ended
+        } else {
+          morseDecoder.addTiming(duration);   // Tone that just ended
+        }
+      }
+      lastDecoderEventTime = now;
+      lastDecoderKeyState = keyIsDown;
+    }
+
+    morseDecoder.tick(currentTime);
+  } else {
+    // Keep edge state clean so we don't emit a bogus timing when we resume.
+    lastDecoderKeyState = false;
+    lastDecoderEventTime = 0;
+  }
 }

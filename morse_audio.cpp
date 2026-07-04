@@ -16,6 +16,18 @@ void initMorseAudio(VailAdapter* adapterRef, int piezoPinRef) {
   piezoPin = piezoPinRef;
 }
 
+// Quick descending tone for an undecodable Morse pattern in Keyboard Sim mode.
+// Short and distinct so it doesn't interrupt typing flow.
+void playInvalidCodeTone() {
+  tone(piezoPin, 600);
+  delay(40);
+  tone(piezoPin, 400);
+  delay(40);
+  tone(piezoPin, 200);
+  delay(60);
+  noTone(piezoPin);
+}
+
 // ============================================================================
 // Morse Code Playback Functions
 // ============================================================================

@@ -151,6 +151,16 @@
 #define DEFAULT_TONE_NOTE 69
 #define DEFAULT_ADAPTER_DIT_DURATION_MS 100
 
+// --- KEYBOARD SIM MODE (KSKS activation) ---
+// Keyboard Sim mode decodes keyed Morse into characters and types them to the
+// host over USB. It is armed by keying the prosign sequence "KSKS" as its own
+// word: a word-gap must precede the first K (leading guard) and follow the last
+// S (trailing guard) so it cannot trigger from elements buried inside other
+// words (e.g. the OLECU run inside "molecule").
+#define KSKS_TIMEOUT 5000          // Max ms to complete the K-S-K-S sequence
+#define KSKS_TRAILING_GAP_DITS 5   // Silence after final S (in dit-units) that
+                                   // confirms KSKS stood alone before activating
+
 #define MILLISECOND 1
 // NOTE: a `#define SECOND (1000 * MILLISECOND)` used to live here but was
 // never referenced in the codebase. Recent Adafruit FreeTouch / ASF headers
