@@ -235,6 +235,7 @@ function getBoardName(board) {
 function getConfigText() {
     if (wizardState.model === 'vail_lite') return getModelName(wizardState.model);
     if (wizardState.device === 'summit') return 'Vail Summit';
+    if (!wizardState.board) return getModelName(wizardState.model);
     return `${getModelName(wizardState.model)} · ${getBoardName(wizardState.board)}`;
 }
 
@@ -247,8 +248,7 @@ function getSelectedVersionLabel() {
 
 const STEP_SECTIONS = {
     device: 'step1',
-    model: 'step1_5',
-    board: 'step2',
+    model: 'stepModel',
     update: 'stepUpdate',
     summit: 'step4',
 };
@@ -260,7 +260,12 @@ function goToStep(step) {
     section.classList.add('active');
     wizardState.step = step;
 
-    if (step === 'board') updateBoardCards();
+    // The quick-resume card only makes sense before any choice is made.
+    if (step !== 'device') {
+        const resume = document.getElementById('resumeCard');
+        if (resume) resume.style.display = 'none';
+    }
+
     if (step === 'update') updateUpdateScreen();
     if (step === 'summit') {
         setTimeout(() => {
@@ -276,14 +281,6 @@ function updateHeader() {
     if (sub) sub.style.display = wizardState.step === 'device' ? '' : 'none';
 }
 
-function updateBoardCards() {
-    const qtpyHint = document.getElementById('qtpyHint');
-    if (qtpyHint) qtpyHint.style.display = wizardState.model === 'non_pcb' ? 'none' : '';
-    // The Arduino Micro is an experimental DIY target: only on the No-PCB path.
-    const microCard = document.getElementById('microCard');
-    if (microCard) microCard.style.display = wizardState.model === 'non_pcb' ? '' : 'none';
-}
-
 // Breadcrumb chips: one per decision already made, click to change it.
 function renderCrumbs() {
     const bar = document.getElementById('crumbBar');
@@ -294,10 +291,10 @@ function renderCrumbs() {
         crumbs.push({ label: wizardState.device === 'summit' ? 'Vail Summit' : 'Vail Adapter', step: 'device' });
     }
     if (wizardState.device === 'adapter' && wizardState.model) {
-        crumbs.push({ label: getModelName(wizardState.model), step: 'model' });
-    }
-    if (wizardState.device === 'adapter' && wizardState.board && wizardState.model !== 'vail_lite') {
-        crumbs.push({ label: getBoardName(wizardState.board), step: 'board' });
+        const label = wizardState.model === 'vail_lite' || !wizardState.board
+            ? getModelName(wizardState.model)
+            : `${getModelName(wizardState.model)} · ${getBoardName(wizardState.board)}`;
+        crumbs.push({ label, step: 'model' });
     }
 
     if (!crumbs.length || wizardState.step === 'device') {
@@ -370,14 +367,25 @@ function updateUpdateScreen() {
     const note = document.getElementById('noWebSerialNote');
     if (note) note.style.display = webSerialSupported ? 'none' : '';
     const heroBtn = document.getElementById('flashNowButton');
-    if (heroBtn) heroBtn.disabled = !webSerialSupported;
+    if (heroBtn && !flashEngine.running) heroBtn.disabled = !webSerialSupported;
 
     // Hero copy
     const heroText = document.getElementById('flashHeroText');
     if (heroText) {
         heroText.textContent =
             `Plug in your adapter and click once. This installs ${getSelectedVersionLabel()} on your ${getConfigText()}. ` +
-            `The first time, your browser asks which device to use. After that it's fully automatic.`;
+            `The exact board inside is detected automatically. The first time, your browser asks which device to use. After that it's fully automatic.`;
+    }
+
+    // UF2 fallback board chips: shown for models where the board matters and
+    // hasn't been detected as something UF2 can't serve (micro).
+    const row = document.getElementById('uf2BoardRow');
+    if (row) {
+        const needsBoard = wizardState.model && wizardState.model !== 'vail_lite' && !isMicro;
+        row.style.display = needsBoard ? '' : 'none';
+        row.querySelectorAll('.board-pick').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.board === wizardState.board);
+        });
     }
 
     // UF2 download link
@@ -400,7 +408,7 @@ function updateDownloadButton() {
         downloadButton.setAttribute('aria-disabled', 'true');
         downloadText.textContent = firmwareFile
             ? `Not available in ${firmwareFile.version}`
-            : 'Download UF2 file';
+            : (wizardState.model && !wizardState.board ? 'Pick your board above first' : 'Download UF2 file');
     } else {
         downloadButton.href = firmwareFile.url;
         downloadButton.download = firmwareFile.filename;
@@ -424,17 +432,45 @@ const KNOWN_VENDORS = [
     0x1B4F, // SparkFun (32U4 clones)
 ];
 
-// Vendor filters for the browser's port picker, narrowed to the selected board
-// so the list doesn't fill up with Bluetooth COM ports and other serial junk.
+// Vendor filters for the browser's port picker, so the list doesn't fill up
+// with Bluetooth COM ports and other serial junk. Narrowed to the board once
+// it's known, otherwise to what the selected model could plausibly contain.
 // The unfiltered list stays available via "Pick port manually".
 function boardFilters() {
-    const vendors = ({
+    const byBoard = ({
         qtpy: [0x239A],
         trinkey: [0x239A],
         xiao: [0x2886],
         micro: [0x2341, 0x2A03, 0x1B4F],
-    })[wizardState.board] || KNOWN_VENDORS;
-    return vendors.map(v => ({ usbVendorId: v }));
+    })[wizardState.board];
+    const byModel = ({
+        basic_pcb: [0x239A, 0x2886],
+        advanced_pcb: [0x239A, 0x2886],
+        vail_lite: [0x239A],
+        non_pcb: KNOWN_VENDORS,
+    })[wizardState.model];
+    return (byBoard || byModel || KNOWN_VENDORS).map(v => ({ usbVendorId: v }));
+}
+
+// The board is fully identified by the USB vendor id, so nobody has to know
+// what's soldered inside their adapter.
+function detectBoardFromPort(port) {
+    try {
+        const info = port.getInfo();
+        if (!info || !info.usbVendorId) return null;
+        if (info.usbVendorId === 0x2886) return 'xiao';
+        if ([0x2341, 0x2A03, 0x1B4F].includes(info.usbVendorId)) return 'micro';
+        if (info.usbVendorId === 0x239A) return wizardState.model === 'vail_lite' ? 'trinkey' : 'qtpy';
+        return null;
+    } catch (_) { return null; }
+}
+
+function boardDetected(board, viaLabel) {
+    wizardState.board = board;
+    saveSetup();
+    renderCrumbs();
+    flashLog(`Detected board: ${getBoardName(board)}${viaLabel ? ` (${viaLabel})` : ''}.`);
+    if (wizardState.step === 'update') updateUpdateScreen();
 }
 
 function classifyPort(port) {
@@ -582,6 +618,29 @@ const flashEngine = {
         return new Promise(resolve => { this.pendingPick = resolve; });
     },
 
+    // Last-resort inline question for DIY builds whose USB IDs we don't
+    // recognize. Renders board buttons in the hint area and waits.
+    askBoardInline() {
+        return new Promise(resolve => {
+            const el = document.getElementById('flashHint');
+            if (!el) { resolve('qtpy'); return; }
+            el.style.display = '';
+            el.innerHTML = 'This device doesn\'t identify itself, which board is it? ' +
+                '<span class="hint-board-btns">' +
+                '<button type="button" class="board-pick" data-board="qtpy">QT Py</button> ' +
+                '<button type="button" class="board-pick" data-board="xiao">XIAO</button> ' +
+                '<button type="button" class="board-pick" data-board="micro">Micro</button>' +
+                '</span>';
+            el.querySelectorAll('.board-pick').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    el.innerHTML = '';
+                    el.style.display = 'none';
+                    resolve(btn.dataset.board);
+                });
+            });
+        });
+    },
+
     async requestPortFiltered() {
         try {
             return await navigator.serial.requestPort({ filters: boardFilters() });
@@ -602,18 +661,10 @@ const flashEngine = {
         flashUI.reset();
         flashUI.button('Working…', true);
 
-        const isMicro = wizardState.board === 'micro';
-
         try {
-            // Validate firmware selection up front and start the download early.
-            const firmware = getFirmwareFile();
-            if (!firmware || firmware.unavailable) {
-                throw new Error(firmware
-                    ? `This board has no firmware in ${firmware.version}. Pick a different version above.`
-                    : 'Pick a version above first.');
+            if (!adapterReleases.selected) {
+                throw new Error('Pick a version above first.');
             }
-            flashLog(`Fetching ${firmware.filename}…`);
-            const firmwarePromise = this.fetchFirmware(firmware);
 
             // Stage 1: find the adapter
             flashUI.stage('find', 'active');
@@ -627,14 +678,41 @@ const flashEngine = {
             }
             if (!port) {
                 flashUI.hint('Pick your adapter in the popup. The list only shows devices that look like yours.');
-                // Filtered to the selected board's USB vendor so unrelated COM
-                // ports (Bluetooth etc.) never appear. Manual mode shows all.
+                // Filtered so unrelated COM ports (Bluetooth etc.) never
+                // appear. Manual mode shows everything.
                 port = manualPick
                     ? await navigator.serial.requestPort()
                     : await navigator.serial.requestPort({ filters: boardFilters() });
                 flashUI.hint('');
                 flashLog(`Port selected (${portLabel(port)}).`);
             }
+
+            // The USB vendor id tells us exactly which board is inside, so the
+            // right firmware is chosen without asking.
+            const detected = detectBoardFromPort(port);
+            if (detected) {
+                boardDetected(detected, portLabel(port));
+            } else if (!wizardState.board) {
+                // Unrecognized USB IDs and no earlier choice (DIY clones):
+                // ask inline, once.
+                wizardState.board = await this.askBoardInline();
+                saveSetup();
+                renderCrumbs();
+                updateUpdateScreen();
+                flashLog(`Board set manually: ${getBoardName(wizardState.board)}.`);
+            }
+            const isMicro = wizardState.board === 'micro';
+            if (isMicro) flashLog('Note: Arduino Micro support is experimental.');
+
+            // Now that the board is known, resolve and fetch the firmware.
+            const firmware = getFirmwareFile();
+            if (!firmware || firmware.unavailable) {
+                throw new Error(firmware
+                    ? `This board has no firmware in ${firmware.version}. Pick a different version above.`
+                    : 'Pick a version above first.');
+            }
+            flashLog(`Fetching ${firmware.filename}…`);
+            const firmwarePromise = this.fetchFirmware(firmware);
 
             let cls = classifyPort(port);
             if (manualPick && cls === 'unknown') {
@@ -828,6 +906,15 @@ async function enterBootloaderOnly(logFn, hintElId) {
             setHint('Pick your adapter in the popup.');
             port = await navigator.serial.requestPort({ filters: boardFilters() });
         }
+        // A port in hand also tells us the board, which fills in the download.
+        const detected = detectBoardFromPort(port);
+        if (detected && detected !== wizardState.board) {
+            wizardState.board = detected;
+            saveSetup();
+            renderCrumbs();
+            logFn(`Detected board: ${getBoardName(detected)}.`);
+            if (wizardState.step === 'update') updateUpdateScreen();
+        }
         logFn('Sending reboot-to-bootloader command (1200 baud touch)…');
         await touch1200(port);
         logFn('✅ Done. The boot drive (QTPYBOOT / XIAOBOOT / ADAPTERBOOT) should appear in a few seconds.');
@@ -1013,20 +1100,12 @@ function selectDevice(device) {
     }
 }
 
+// Only the model is asked. The board inside is detected from USB IDs when a
+// port is picked (see detectBoardFromPort); Vail Lite is its own hardware.
 function selectModel(model) {
     if (wizardState.model !== model) wizardState.board = null;
     wizardState.model = model;
-    if (model === 'vail_lite') {
-        wizardState.board = 'trinkey';
-        saveSetup();
-        goToStep('update');
-    } else {
-        goToStep('board');
-    }
-}
-
-function selectBoard(board) {
-    wizardState.board = board;
+    if (model === 'vail_lite') wizardState.board = 'trinkey';
     saveSetup();
     goToStep('update');
 }
@@ -1049,8 +1128,17 @@ function wireCards(sectionId, dataKey, handler) {
 
 document.addEventListener('DOMContentLoaded', () => {
     wireCards('step1', 'device', selectDevice);
-    wireCards('step1_5', 'model', selectModel);
-    wireCards('step2', 'board', selectBoard);
+    wireCards('stepModel', 'model', selectModel);
+
+    // UF2 fallback board chips (only needed when detection hasn't run,
+    // e.g. browsers without WebSerial)
+    document.querySelectorAll('#uf2BoardRow .board-pick').forEach(btn => {
+        btn.addEventListener('click', () => {
+            wizardState.board = btn.dataset.board;
+            saveSetup();
+            updateUpdateScreen();
+        });
+    });
 
     // Method tabs
     document.getElementById('tabSerial')?.addEventListener('click', () => {

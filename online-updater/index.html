@@ -7,8 +7,8 @@
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2026-07-04.3">
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=2026-07-04.5">
 </head>
 <body>
 <nav>
@@ -90,9 +90,10 @@
         </div>
     </section>
 
-    <!-- Step: Adapter model -->
-    <section id="step1_5" class="wizard-step">
-        <h2>Which model of adapter?</h2>
+    <!-- Step: Adapter model (the board inside is auto-detected over USB) -->
+    <section id="stepModel" class="wizard-step">
+        <h2>Which adapter do you have?</h2>
+        <p class="step-description">Just the model. The exact board inside gets detected automatically when you connect.</p>
 
         <div class="card-grid">
             <div class="selection-card" data-model="basic_pcb" role="button" tabindex="0">
@@ -116,35 +117,7 @@
             <div class="selection-card" data-model="non_pcb" role="button" tabindex="0">
                 <div class="card-icon">🔧</div>
                 <h3>DIY No PCB</h3>
-                <p>Hand-wired or breadboard build following GitHub specs</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- Step: Board -->
-    <section id="step2" class="wizard-step">
-        <h2>Which board is inside?</h2>
-        <p class="step-description">It's printed right on the microcontroller board.</p>
-
-        <div class="card-grid">
-            <div class="selection-card" data-board="qtpy" role="button" tabindex="0">
-                <div class="card-icon">🔷</div>
-                <h3>Adafruit QT Py</h3>
-                <p>Look for "QT Py" printed on the board</p>
-                <div class="hint" id="qtpyHint">Most purchased adapters are a QT Py, when in doubt pick this</div>
-            </div>
-
-            <div class="selection-card" data-board="xiao" role="button" tabindex="0">
-                <div class="card-icon">🔶</div>
-                <h3>Seeeduino XIAO</h3>
-                <p>Look for "XIAO" printed on the board</p>
-            </div>
-
-            <div class="selection-card" data-board="micro" id="microCard" role="button" tabindex="0">
-                <div class="card-icon">🔸</div>
-                <h3>Arduino Micro</h3>
-                <p>ATmega32U4, breadboard and DIY builds only</p>
-                <div class="hint warn">Experimental: no capacitive touch or button menu, shorter CW memories</div>
+                <p>Hand-wired or breadboard build following GitHub specs, QT Py, XIAO, or Arduino Micro</p>
             </div>
         </div>
     </section>
@@ -244,6 +217,11 @@
                 </li>
                 <li>
                     <div class="uf2-step-title">Download the firmware file</div>
+                    <div class="board-row" id="uf2BoardRow" style="display: none;">
+                        <span class="board-row-label">Board inside <span class="muted">(auto-filled if you used the button above, otherwise it's printed on the board)</span></span>
+                        <button class="board-pick" data-board="qtpy">QT Py</button>
+                        <button class="board-pick" data-board="xiao">XIAO</button>
+                    </div>
                     <a href="#" id="downloadButton" class="btn-download disabled" role="button" aria-disabled="true">
                         <span class="download-icon">⬇️</span>
                         <span id="downloadText">Download UF2 file</span>
@@ -360,6 +338,6 @@
 <script src="esp-flasher.js?v=2026-07-04.1" type="module"></script>
 <script src="avr109-flasher.js?v=2026-06-11.1"></script>
 <script src="samba-flasher.js?v=2026-06-13.5"></script>
-<script src="script.js?v=2026-07-04.2" defer></script>
+<script src="script.js?v=2026-07-04.4" defer></script>
 </body>
 </html>
