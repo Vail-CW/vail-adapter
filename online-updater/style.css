@@ -75,36 +75,12 @@ nav {
 
 .nav-brand:hover { text-decoration: none; }
 
-.brand-stack { display: flex; flex-direction: column; gap: 2px; line-height: 1.05; }
-
 .brand-word {
     font-family: var(--display);
     font-weight: 700;
     font-size: 0.98rem;
     letter-spacing: 0.08em;
     color: var(--text);
-}
-
-.brand-morse {
-    display: block;
-    color: var(--amber);
-    opacity: 0.9;
-    margin-top: 1px;
-}
-
-.brand-dot {
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: var(--amber);
-    box-shadow: 0 0 10px rgba(240, 166, 60, 0.9);
-    animation: lamp 3.2s steps(1) infinite;
-}
-
-@keyframes lamp {
-    0%, 82% { opacity: 1; }
-    86%, 90% { opacity: 0.25; }
-    94%, 100% { opacity: 1; }
 }
 
 nav ul {
