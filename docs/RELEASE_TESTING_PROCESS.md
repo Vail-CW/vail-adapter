@@ -24,8 +24,6 @@ Use the GitHub Actions workflow to create all 9 issues automatically:
 3. Click **"Run workflow"** - wait 10-30 seconds
 4. Done! All 9 issues created and linked together
 
-See [AUTOMATED_ISSUE_CREATION.md](AUTOMATED_ISSUE_CREATION.md) for detailed instructions.
-
 ---
 
 **📝 Manual (Alternative):**
@@ -84,7 +82,7 @@ Before releasing, ensure:
 - ✅ At least **2 different people** have signed off
 - ✅ No **critical failures** reported in any hardware-specific issue
 - ✅ CI/CD build completed successfully for all 8 configs
-- ✅ `docs/index.html` updated with release notes
+- ✅ `online-updater/index.html` updated with release notes
 
 **Ideal Release Requirements:**
 - 🎯 At least **4 different hardware configurations** tested (ideally mix of XIAO/QT Py and PCB versions)
@@ -108,7 +106,7 @@ Before releasing, ensure:
 1. **Find the parent issue** - Look for "Release Testing: v[VERSION] - Overview"
 2. **Choose your hardware** - Find the hardware-specific issue that matches your configuration
 3. **Claim the issue** - Comment that you're testing this config and add your name to the "Primary Tester" field
-4. **Download firmware** - Get the appropriate UF2 file from parent issue or `docs/firmware_files/`
+4. **Download firmware** - Get the appropriate UF2 file from the GitHub Release for the version (attached as a release asset)
 5. **Run through tests** - Check off items in the hardware-specific issue as you test them
 6. **Report issues** - Add detailed bug reports in the "Issues Found" section
 7. **Sign off** - Check the final "Tester Sign-Off" boxes when complete
@@ -169,8 +167,8 @@ If you found a **critical** bug that blocks release:
 
 **Day 1: Development & CI**
 - Maintainer merges feature branches to master
-- CI automatically builds all 8 firmware variants
-- UF2 files committed to `docs/firmware_files/`
+- CI automatically builds all firmware variants
+- UF2 files attached to the GitHub Release as version-stamped assets
 
 **Day 1: Testing Issues Created**
 - Maintainer creates parent overview issue #42 for v2.1.0
@@ -279,12 +277,10 @@ A: Not really! Most edits are quick (checking a box). If someone's editing, wait
 
 ## Related Documents
 
-- [AUTOMATED_ISSUE_CREATION.md](AUTOMATED_ISSUE_CREATION.md) - **Automated issue creation workflow (recommended)**
 - [TESTING_GUIDE.md](TESTING_GUIDE.md) - Detailed manual testing procedures for the firmware update website
 - [.github/ISSUE_TEMPLATE/release-testing-overview.md](../.github/ISSUE_TEMPLATE/release-testing-overview.md) - Parent issue template
 - [.github/ISSUE_TEMPLATE/release-testing-hardware.md](../.github/ISSUE_TEMPLATE/release-testing-hardware.md) - Hardware-specific issue template
 - [.github/workflows/create-release-testing-issues.yml](../.github/workflows/create-release-testing-issues.yml) - The workflow file
-- [CLAUDE.md](../CLAUDE.md) - Project architecture and development guide
 
 ## Quick Reference
 
@@ -304,7 +300,7 @@ A: Not really! Most edits are quick (checking a box). If someone's editing, wait
 - [ ] Minimum 2 different testers signed off
 - [ ] No critical bugs blocking release
 - [ ] CI builds successful for all 8 configs
-- [ ] `docs/index.html` updated
+- [ ] `online-updater/index.html` updated
 - [ ] Update parent issue progress summary
 - [ ] Mark parent issue "Ready for Release"
 - [ ] Create GitHub release

@@ -3,3 +3,15 @@ case/adapter-case.stl
 pcb/pcb-backups
 .claude/
 build_output/
+CLAUDE.md
+
+# Local firmware build artifacts (firmware ships via GitHub Releases, not the repo)
+firmware_uf2_files/
+build_log.txt
+compile.log
+**/build_output_xiao/
+
+# Build kit outputs (tools/build-kit/)
+tools/build-kit/uf2_output/
+tools/build-kit/bin/
+config.h.kitbak

@@ -1,4 +1,8 @@
-name: Build and Deploy Arduino UF2 Firmware
+name: Build Arduino Firmware
+
+# Firmware is distributed via GitHub Releases. On push this workflow builds all
+# targets as a compile check (artifacts only); on a published release it builds
+# and attaches the version-stamped UF2/HEX files as release assets.
 
 on:
   push:
@@ -13,17 +17,7 @@ on:
       - '.github/workflows/build_uf2.yml'  # This workflow itself
   release:
     types: [published] # Triggers when you publish a new release
-  workflow_dispatch:
-    inputs:
-      deploy_target:
-        description: 'Where to deploy the built firmware'
-        required: true
-        default: 'test'
-        type: choice
-        options:
-          - test    # → docs/firmware_files/test/ (beta channel on live site)
-          - stable  # → docs/firmware_files/ (production; same as master push)
-          - none    # → build only, artifacts only, no commit
+  workflow_dispatch:    # Manual build (artifacts attached to the run)
 
 jobs:
   build_firmware: # This remains mostly the same
@@ -33,49 +27,54 @@ jobs:
       matrix:
         include:
           # --- XIAO SAMD21 Configurations ---
+          # uf2_name is a short, DOS 8.3-safe code (<=8 chars, single dot). The
+          # release step appends a 2-digit version code, e.g. xb2 -> xb2_50.uf2.
+          # Long names (xiao_basic_pcb_v2_v5.0.uf2) force Windows to write a VFAT
+          # long-filename entry onto the SAMD21 bootloader's tiny emulated FAT
+          # drive, which can hang/fail the drag-to-bootloader copy on Win10/11.
           - board_name: "XIAO_SAMD21"
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
             hw_define: "V1_Basic_PCB"
-            uf2_name: "xiao_basic_pcb_v1.uf2"
+            uf2_name: "xb1.uf2"
           - board_name: "XIAO_SAMD21"
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
             hw_define: "V2_Basic_PCB"
-            uf2_name: "xiao_basic_pcb_v2.uf2"
+            uf2_name: "xb2.uf2"
           - board_name: "XIAO_SAMD21"
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
             hw_define: "NO_PCB_GITHUB_SPECS"
-            uf2_name: "xiao_non_pcb.uf2"
+            uf2_name: "xnp.uf2"
           - board_name: "XIAO_SAMD21"
             fqbn: "Seeeduino:samd:seeed_XIAO_m0"
             hw_define: "Advanced_PCB"
-            uf2_name: "xiao_advanced_pcb.uf2"
+            uf2_name: "xad.uf2"
           # --- Adafruit QT Py SAMD21 Configurations ---
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
             hw_define: "V1_Basic_PCB"
-            uf2_name: "qtpy_basic_pcb_v1.uf2"
+            uf2_name: "qb1.uf2"
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
             hw_define: "V2_Basic_PCB"
-            uf2_name: "qtpy_basic_pcb_v2.uf2"
+            uf2_name: "qb2.uf2"
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
             hw_define: "Advanced_PCB"
-            uf2_name: "qtpy_advanced_pcb.uf2"
+            uf2_name: "qad.uf2"
           - board_name: "QTPY_SAMD21"
             fqbn: "adafruit:samd:adafruit_qtpy_m0"
             hw_define: "NO_PCB_GITHUB_SPECS"
-            uf2_name: "qtpy_non_pcb.uf2"
-          # --- Adafruit TRRS Trinkey SAMD21 Configuration ---
+            uf2_name: "qnp.uf2"
+          # --- Adafruit TRRS Trinkey SAMD21 Configuration (Vail Lite) ---
           - board_name: "TRRS_TRINKEY"
             fqbn: "adafruit:samd:adafruit_TRRStrinkey_m0"
             hw_define: "TRRS_TRINKEY"
-            uf2_name: "trinkey_vail_adapter.uf2"
+            uf2_name: "vl.uf2"
           # --- Arduino Micro (ATmega32U4) — produces .hex, not .uf2 ---
           - board_name: "ARDUINO_MICRO"
             fqbn: "arduino:avr:micro"
             hw_define: "ARDUINO_MICRO_BOARD"
-            uf2_name: "arduino_micro.hex"
+            uf2_name: "mic.hex"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -141,80 +140,43 @@ jobs:
           name: ${{ matrix.uf2_name }}
           path: ${{ matrix.uf2_name }}
 
-  deploy:
-    needs: build_firmware # Runs only after all build_firmware jobs succeed
-    # Skip deploy entirely when user explicitly asked for build-only
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.deploy_target != 'none' }}
+  # On any published release (stable or pre-release), attach the built firmware
+  # as version-stamped assets so the updater can offer per-version downloads.
+  attach_release_assets:
+    needs: build_firmware
+    if: ${{ github.event_name == 'release' }}
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Allow writing to repository
+      contents: write
     steps:
-      - name: Determine deploy target directory
-        id: target
-        run: |
-          # Default for push / release events: stable
-          TARGET_DIR="firmware_files"
-          COMMIT_MSG="Update firmware files (UF2 + HEX)"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            case "${{ inputs.deploy_target }}" in
-              stable)
-                TARGET_DIR="firmware_files"
-                COMMIT_MSG="Update firmware files (manual dispatch from ${{ github.ref_name }})"
-                ;;
-              test)
-                TARGET_DIR="firmware_files/test"
-                COMMIT_MSG="chore: update TEST firmware from ${{ github.ref_name }} @ ${{ github.sha }}"
-                ;;
-            esac
-          fi
-          echo "dir=$TARGET_DIR" >> $GITHUB_OUTPUT
-          echo "msg=$COMMIT_MSG" >> $GITHUB_OUTPUT
-          echo "Target directory: docs/$TARGET_DIR"
-
-      # Always commit to master, regardless of the source branch. A test
-      # deploy from a feature branch still updates live-site assets only.
-      - name: Checkout master
-        uses: actions/checkout@v4
-        with:
-          ref: master
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Download all firmware artifacts
         uses: actions/download-artifact@v4
         with:
-          path: all_uf2_files
+          path: all_fw
 
-      - name: List downloaded files
+      - name: Version-stamp and upload assets to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
         run: |
-          echo "Listing downloaded artifacts:"
-          ls -R all_uf2_files
-
-      - name: Copy firmware files to docs/${{ steps.target.outputs.dir }}
-        run: |
-          DEST="docs/${{ steps.target.outputs.dir }}"
-          echo "Copying firmware files to $DEST..."
-          mkdir -p "$DEST"
-          find all_uf2_files -name "*.uf2" -exec cp {} "$DEST/" \;
-          find all_uf2_files -name "*.hex" -exec cp {} "$DEST/" \;
-          # Record build provenance so testers know what they're flashing
-          cat > "$DEST/BUILD_INFO.txt" <<EOF
-          Built from:   ${{ github.ref_name }}
-          Commit:       ${{ github.sha }}
-          Event:        ${{ github.event_name }}
-          Deploy target: ${{ steps.target.outputs.dir }}
-          Built at:     $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          EOF
-          echo "Files in $DEST:"
-          ls "$DEST"
-
-      - name: Commit and Push updated firmware files
-        run: |
-          git config user.name "GitHub Action"
-          git config user.email "action@github.com"
-          git add docs/${{ steps.target.outputs.dir }}/
-          if git diff --staged --quiet; then
-            echo "No changes to commit."
-          else
-            git commit -m "${{ steps.target.outputs.msg }}"
-            git push origin master
-          fi
+          set -e
+          mkdir -p release_assets
+          # Stamp a short, digits-only version code onto each short board code so
+          # the asset name stays DOS 8.3-safe (<=8 chars, single dot). The code is
+          # major.minor with the dot removed, e.g. v5.0 -> 50, v5.2.0-beta.1 -> 52:
+          #   xb2.uf2 -> xb2_50.uf2
+          # Embedding the raw tag (v5.0) would add a second dot and break 8.3.
+          VERCODE="$(printf '%s' "$TAG" | sed -E 's/^[vV]?([0-9]+)\.([0-9]+).*/\1\2/')"
+          # Fallback for tags without a major.minor: strip to alphanumerics.
+          case "$VERCODE" in *[!0-9A-Za-z]*|'') VERCODE="$(printf '%s' "$TAG" | tr -cd '0-9A-Za-z')";; esac
+          echo "Version code for $TAG: $VERCODE"
+          # Artifacts download into per-name subdirs; flatten and stamp.
+          find all_fw -type f \( -name "*.uf2" -o -name "*.hex" \) | while read -r f; do
+            base="$(basename "$f")"
+            name="${base%.*}"
+            ext="${base##*.}"
+            cp "$f" "release_assets/${name}_${VERCODE}.${ext}"
+          done
+          echo "Assets to upload to $TAG:"
+          ls -1 release_assets
+          gh release upload "$TAG" release_assets/* --clobber --repo "$GITHUB_REPOSITORY"

@@ -1,0 +1,44 @@
+name: Deploy updater to GitHub Pages
+
+# Publishes the browser-based firmware updater (the online-updater/ folder)
+# to GitHub Pages. Pages must be set to "GitHub Actions" as its source.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'online-updater/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; don't cancel an in-progress production deploy
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload updater as Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: online-updater
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
