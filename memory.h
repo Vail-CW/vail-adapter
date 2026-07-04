@@ -41,7 +41,7 @@
 // Address 7: Start of CW memory storage
 //
 // NOTE: This start address moved from 6 to 7 when the paddle-swap flag
-// (EEPROM_PADDLES_SWAPPED_ADDR = 6) was added. On first boot after that
+// (EEPROM_PADDLE_SWAP_MODE_ADDR = 6) was added. On first boot after that
 // firmware bump, previously-recorded CW memories will read as invalid
 // counts and be auto-cleared by loadMemoryFromEEPROM().
 

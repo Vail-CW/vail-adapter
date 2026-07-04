@@ -48,6 +48,7 @@ void playMorseChar(char c) {
     case 'C': playMorseDah(); playMorseDit(); playMorseDah(); playMorseDit(); break;
     case 'D': playMorseDah(); playMorseDit(); playMorseDit(); break;
     case 'E': playMorseDit(); break;
+    case 'F': playMorseDit(); playMorseDit(); playMorseDah(); playMorseDit(); break;
     case 'I': playMorseDit(); playMorseDit(); break;
     case 'K': playMorseDah(); playMorseDit(); playMorseDah(); break;
     case 'L': playMorseDit(); playMorseDah(); playMorseDit(); playMorseDit(); break;
@@ -63,6 +64,9 @@ void playMorseChar(char c) {
     case '1': playMorseDit(); playMorseDah(); playMorseDah(); playMorseDah(); playMorseDah(); break;
     case '2': playMorseDit(); playMorseDit(); playMorseDah(); playMorseDah(); playMorseDah(); break;
     case '3': playMorseDit(); playMorseDit(); playMorseDit(); playMorseDah(); playMorseDah(); break;
+    // Space: pad the gap out to a full 7-dit word space (2 extra dits here,
+    // plus the trailing delays from the previous and current char)
+    case ' ': if (adapter) delay(adapter->getDitDuration() * 2); break;
   }
   // Inter-character space = 3 dits (we already have 1 from last element)
   if (adapter) {

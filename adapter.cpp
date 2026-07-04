@@ -13,14 +13,14 @@
 #endif
 
 extern void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote);
-extern void savePaddlesSwappedToEEPROM(bool paddlesSwapped);
+extern void savePaddleSwapModeToEEPROM(uint8_t paddleSwapMode);
 
 VailAdapter::VailAdapter(unsigned int PiezoPin) {
 this->buzzer = new PolyBuzzer(PiezoPin);
 this->buzzerEnabled = true;
 this->radioModeActive = false;
 this->radioKeyerMode = false;
-this->paddlesSwapped = false;
+this->paddleSwapMode = PADDLE_SWAP_OFF;
 this->keyIsPressed = false;
 this->keyPressStartTime = 0;
 this->ditHoldStartTime = 0;
@@ -78,12 +78,13 @@ void VailAdapter::SetRadioKeyerMode(bool enabled) {
 this->radioKeyerMode = enabled;
 }
 
-bool VailAdapter::isPaddlesSwapped() const {
-return this->paddlesSwapped;
+uint8_t VailAdapter::getPaddleSwapMode() const {
+return this->paddleSwapMode;
 }
 
-void VailAdapter::SetPaddlesSwapped(bool swapped, bool announce) {
-if (this->paddlesSwapped == swapped) {
+void VailAdapter::SetPaddleSwapMode(uint8_t mode, bool announce) {
+if (mode > PADDLE_SWAP_TOUCH) mode = PADDLE_SWAP_OFF;
+if (this->paddleSwapMode == mode) {
     return;
 }
 
@@ -93,13 +94,19 @@ if (this->keyer) this->keyer->Release();
 if (this->keyIsPressed) this->EndTx();
 this->ReleaseAllKeys();
 
-this->paddlesSwapped = swapped;
-savePaddlesSwappedToEEPROM(this->paddlesSwapped);
-Serial.print("Paddles swapped: "); Serial.println(this->paddlesSwapped ? "ON" : "OFF");
+this->paddleSwapMode = mode;
+savePaddleSwapModeToEEPROM(this->paddleSwapMode);
+Serial.print(F("Paddle swap mode: ")); Serial.println(mode);
 
 if (announce) {
-    // Announce the change in Morse: "INVERT"
-    playMorseWord("INVERT");
+    // Announce the new state in Morse: "INV" (all), "INV C" (touch only),
+    // "INV OFF" (off). Composed from shared pieces to save AVR SRAM.
+    playMorseWord("INV");
+    if (mode == PADDLE_SWAP_TOUCH) {
+        playMorseChar('C');
+    } else if (mode == PADDLE_SWAP_OFF) {
+        playMorseWord("OFF");
+    }
 }
 }
 
@@ -665,9 +672,12 @@ Serial.println("Radio output not configured. Radio Keyer mode unavailable.");
 void VailAdapter::ProcessPaddleInput(Paddle paddle, bool pressed, bool isCapacitive) {
 unsigned long currentTime = millis();
 
-// Apply paddle swap to physical and capacitive dit/dah inputs.
-// Straight key input is intentionally unaffected.
-if (this->paddlesSwapped) {
+// Apply paddle swap to dit/dah inputs per the configured scope:
+// ALL swaps both physical pins and capacitive touch pads, TOUCH swaps
+// capacitive touch pads only. Straight key input is intentionally unaffected.
+bool swapThisInput = (this->paddleSwapMode == PADDLE_SWAP_ALL) ||
+                     (this->paddleSwapMode == PADDLE_SWAP_TOUCH && isCapacitive);
+if (swapThisInput) {
     if (paddle == PADDLE_DIT) paddle = PADDLE_DAH;
     else if (paddle == PADDLE_DAH) paddle = PADDLE_DIT;
 }
@@ -833,17 +843,22 @@ saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote);
 break;
 case 3:
 {
-    // CC3 - Paddle swap.
-    //   0..63   -> swap OFF
-    //   64..126 -> swap ON
-    //   127     -> toggle current state
-    bool desired;
+    // CC3 - Paddle swap scope.
+    //   0..31   -> swap OFF
+    //   32..63  -> swap capacitive touch pads only
+    //   64..126 -> swap physical paddle pins AND capacitive touch pads
+    //   127     -> toggle between OFF and full swap (legacy behavior)
+    uint8_t desired;
     if (event.byte3 == 127) {
-        desired = !this->paddlesSwapped;
+        desired = (this->paddleSwapMode == PADDLE_SWAP_OFF) ? PADDLE_SWAP_ALL : PADDLE_SWAP_OFF;
+    } else if (event.byte3 >= 64) {
+        desired = PADDLE_SWAP_ALL;
+    } else if (event.byte3 >= 32) {
+        desired = PADDLE_SWAP_TOUCH;
     } else {
-        desired = (event.byte3 >= 64);
+        desired = PADDLE_SWAP_OFF;
     }
-    this->SetPaddlesSwapped(desired, true);
+    this->SetPaddleSwapMode(desired, true);
 }
 break;
 }

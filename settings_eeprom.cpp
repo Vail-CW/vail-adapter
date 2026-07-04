@@ -50,20 +50,21 @@ void saveRadioKeyerModeToEEPROM(bool radioKeyerMode) {
   Serial.print("Saved Radio Keyer Mode to EEPROM: "); Serial.println(radioKeyerMode ? "ON" : "OFF");
 }
 
-void savePaddlesSwappedToEEPROM(bool paddlesSwapped) {
-  EEPROM.write(EEPROM_PADDLES_SWAPPED_ADDR, paddlesSwapped ? 1 : 0);
+void savePaddleSwapModeToEEPROM(uint8_t paddleSwapMode) {
+  EEPROM.write(EEPROM_PADDLE_SWAP_MODE_ADDR, paddleSwapMode);
   eeprom_commit();
-  Serial.print("Saved Paddles Swapped to EEPROM: "); Serial.println(paddlesSwapped ? "ON" : "OFF");
+  Serial.print(F("Saved Paddle Swap mode to EEPROM: ")); Serial.println(paddleSwapMode);
 }
 
-void loadPaddlesSwappedFromEEPROM(VailAdapter& adapter) {
+void loadPaddleSwapModeFromEEPROM(VailAdapter& adapter) {
   if (EEPROM.read(EEPROM_VALID_FLAG_ADDR) == EEPROM_VALID_VALUE) {
-    uint8_t v = EEPROM.read(EEPROM_PADDLES_SWAPPED_ADDR);
-    // Treat 0xFF (uninitialized AVR EEPROM) as OFF.
-    bool swapped = (v == 1);
-    adapter.SetPaddlesSwapped(swapped, false);
-    Serial.print("Loaded Paddles Swapped from EEPROM: ");
-    Serial.println(swapped ? "ON" : "OFF");
+    uint8_t v = EEPROM.read(EEPROM_PADDLE_SWAP_MODE_ADDR);
+    // Treat anything out of range (including 0xFF from uninitialized
+    // AVR EEPROM or leftover CW memory bytes) as OFF.
+    if (v > PADDLE_SWAP_TOUCH) v = PADDLE_SWAP_OFF;
+    adapter.SetPaddleSwapMode(v, false);
+    Serial.print(F("Loaded Paddle Swap mode from EEPROM: "));
+    Serial.println(v);
   }
 }
 
@@ -112,7 +113,7 @@ void loadSettingsFromEEPROM(VailAdapter& adapter) {
     EEPROM.put(EEPROM_DIT_DURATION_ADDR, (uint16_t)DEFAULT_ADAPTER_DIT_DURATION_MS);
     EEPROM.write(EEPROM_TX_NOTE_ADDR, DEFAULT_TONE_NOTE);
     EEPROM.write(EEPROM_RADIO_KEYER_MODE_ADDR, 0); // Default: Radio Keyer Mode OFF
-    EEPROM.write(EEPROM_PADDLES_SWAPPED_ADDR, 0);  // Default: Paddles not swapped
+    EEPROM.write(EEPROM_PADDLE_SWAP_MODE_ADDR, 0);  // Default: Paddles not swapped
     EEPROM.write(EEPROM_VALID_FLAG_ADDR, EEPROM_VALID_VALUE);
     eeprom_commit();
     Serial.println("EEPROM initialized. Loading these defaults now.");

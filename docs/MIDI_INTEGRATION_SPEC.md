@@ -54,21 +54,25 @@ The Vail Adapter responds to the following MIDI message types:
 - **Example**: `B0 02 2D` sets sidetone to note 45 = A2 (110 Hz)
 
 #### CC3 - Paddle Swap (Dit/Dah Inversion)
-**Purpose**: Swap which input pad is treated as dit vs. dah. Affects both physical paddle pins (DIT_PIN / DAH_PIN) and the capacitive touch pads (QT_DIT_PIN / QT_DAH_PIN). The straight-key input (PADDLE_STRAIGHT) and the radio output pin assignments (RADIO_DIT_PIN / RADIO_DAH_PIN) are intentionally **not** affected — only the input mapping is inverted.
+**Purpose**: Swap which input is treated as dit vs. dah. The swap can apply to **all inputs** (physical paddle pins DIT_PIN / DAH_PIN plus the capacitive touch pads QT_DIT_PIN / QT_DAH_PIN) or to the **capacitive touch pads only**, leaving the physical paddle jack alone. The straight-key input (PADDLE_STRAIGHT) and the radio output pin assignments (RADIO_DIT_PIN / RADIO_DAH_PIN) are intentionally **not** affected — only the input mapping is inverted.
 
 - **Message**: `B0 03 xx`
 - **Values**:
-  - `00-3F` (0-63): Set paddle swap **OFF** (normal mapping)
-  - `40-7E` (64-126): Set paddle swap **ON** (dit and dah inputs swapped)
-  - `7F` (127): **Toggle** the current swap state
+  - `00-1F` (0-31): Swap **OFF** (normal mapping everywhere)
+  - `20-3F` (32-63): Swap **touch pads only** (physical paddle stays normal)
+  - `40-7E` (64-126): Swap **all inputs** (physical paddle pins and touch pads)
+  - `7F` (127): **Toggle** between OFF and all-inputs swap (legacy toggle behavior)
 - **Default**: OFF
-- **Persistence**: Saved to EEPROM and restored on power-up
-- **Audible feedback**: Whenever the state actually changes (in either direction), the adapter plays "INVERT" in Morse code on the sidetone buzzer at the user's current WPM and tone. No tone is played if the command does not change the current state.
+- **Persistence**: Saved to EEPROM and restored on power-up (`0`=off, `1`=all, `2`=touch only)
+- **Audible feedback**: Whenever the state actually changes, the adapter announces the new state in Morse on the sidetone buzzer at the user's current WPM and tone: "INV" (all inputs swapped), "INV C" (touch pads only), "INV OFF" (back to normal). No tone is played if the command does not change the current state.
 - **Side effects on change**: Any in-flight transmission is ended and all keyboard/MIDI keys are released cleanly before the new mapping takes effect.
+- **Backward compatibility**: The first beta used `00-3F` = off and `40-7E` = on. The `40-7E` = full swap meaning is unchanged; values `20-3F` (previously "off") now select the touch-only swap.
 - **Examples**:
-  - `B0 03 7F` → toggle swap (announces "INVERT" if state changed)
-  - `B0 03 00` → force swap OFF
-  - `B0 03 40` → force swap ON
+  - `B0 03 00` → swap off ("INV OFF")
+  - `B0 03 20` → swap touch pads only ("INV C")
+  - `B0 03 40` → swap everything ("INV")
+  - `B0 03 7F` → toggle off/all ("INV" or "INV OFF")
+- **Special-feature gestures**: Gesture detection (5-second dit hold for buzzer disable, capacitive dah taps for radio mode, etc.) keys off the **post-swap** dit/dah roles, so documented gestures follow whichever input currently acts as dit or dah.
 
 ### Program Change Messages (0xCn)
 

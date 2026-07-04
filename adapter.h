@@ -6,6 +6,13 @@
 #include "config.h" // Include config.h
 #include "memory.h" // Include memory.h for recording state
 
+// Paddle swap scope (CC3). Values are stored in EEPROM as-is, so keep them
+// stable: legacy firmware stored 0=off / 1=swapped, which maps onto
+// OFF / ALL below unchanged.
+#define PADDLE_SWAP_OFF   0  // normal mapping
+#define PADDLE_SWAP_ALL   1  // swap physical paddle pins AND capacitive touch pads
+#define PADDLE_SWAP_TOUCH 2  // swap capacitive touch pads only
+
 class VailAdapter: public Transmitter {
 private:
     unsigned int txNote = DEFAULT_TONE_NOTE;
@@ -23,7 +30,7 @@ private:
 
     bool radioModeActive = false;
     bool radioKeyerMode = false;
-    bool paddlesSwapped = false;
+    uint8_t paddleSwapMode = PADDLE_SWAP_OFF;
     unsigned long lastCapDahTime = 0;
     unsigned int capDahPressCount = 0;
     unsigned long dahHoldStartTime = 0;
@@ -75,8 +82,8 @@ public:
     void ResetDahCounter();
     void ResetDahHoldCounter();
 
-    bool isPaddlesSwapped() const;
-    void SetPaddlesSwapped(bool swapped, bool announce);
+    uint8_t getPaddleSwapMode() const;
+    void SetPaddleSwapMode(uint8_t mode, bool announce);
 
     uint8_t getCurrentKeyerType() const;
     uint16_t getDitDuration() const;
