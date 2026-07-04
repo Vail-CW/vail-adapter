@@ -3,69 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vail Adapter Firmware Update</title>
+    <title>Vail Firmware Updater</title>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
-    <link rel="stylesheet" href="style.css?v=2026-06-12.2">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=2026-07-04.6">
 </head>
 <body>
 <nav>
-    <ul>
-        <li><a href="index.html">Home</a></li>
-        <li><a href="troubleshoot.html">Get Help</a></li>
-        <li><a href="https://vailadapter.com/assembly" target="_blank">Assembly Instructions</a></li>
-    </ul>
+    <div class="nav-inner">
+        <a class="nav-brand" href="index.html">
+            <span class="brand-word">VAIL UPDATER</span>
+        </a>
+        <ul>
+            <li><a href="troubleshoot.html">Get Help</a></li>
+            <li><a href="https://vailadapter.com/assembly" target="_blank" rel="noopener">Assembly</a></li>
+            <li><a href="https://vailadapter.com/manual" target="_blank" rel="noopener">Manual</a></li>
+        </ul>
+    </div>
 </nav>
 
 <div class="container">
-    <h1 id="pageTitle">Vail Firmware Update</h1>
+    <header class="page-header">
+        <h1 id="pageTitle">Update your Vail device</h1>
+        <p class="page-sub" id="pageSub">Pick your device and we'll take care of the rest.</p>
+    </header>
 
-    <!-- What's New Section (hidden until device selected) -->
+    <!-- Breadcrumb of choices made so far (click a chip to change it) -->
+    <div class="crumb-bar" id="crumbBar" style="display: none;"></div>
+
+    <!-- Quick resume from a previous visit -->
+    <div class="resume-card" id="resumeCard" style="display: none;">
+        <div class="resume-text">
+            <strong>Welcome back.</strong>
+            <span id="resumeSummary"></span>
+        </div>
+        <div class="resume-actions">
+            <button class="btn-primary btn-sm" id="resumeButton">Continue</button>
+            <button class="btn-ghost btn-sm" id="resumeDismiss">Start fresh</button>
+        </div>
+    </div>
+
+    <!-- What's New (shown once a device is selected) -->
     <details class="whats-new" id="whatsNewSection" style="display: none;">
         <summary>
             <span class="expand-icon">▶</span>
-            <strong><span id="whatsNewDevice">Vail</span> Updates:</strong> <span id="lastUpdateDate">Loading...</span>
-            <span class="click-hint">— Click to see what's new</span>
+            <strong><span id="whatsNewDevice">Vail</span></strong>&nbsp;<span id="lastUpdateDate">Loading...</span>
+            <span class="click-hint">what's new</span>
         </summary>
         <div id="recentCommitsScroll" class="whats-new-scroll">
             <ul id="recentCommitsList">
                 <li>Loading recent updates...</li>
             </ul>
         </div>
-        <p class="manual-link" id="releaseNotesLink" style="display: none;">📖 <a href="#" target="_blank" rel="noopener">View full release notes on GitHub →</a></p>
-        <p class="manual-link" id="manualLink">📖 <a href="https://vailadapter.com/manual" target="_blank">View User Manual</a></p>
+        <p class="manual-link" id="releaseNotesLink" style="display: none;"><a href="#" target="_blank" rel="noopener">Full release notes on GitHub →</a></p>
+        <p class="manual-link" id="manualLink"><a href="https://vailadapter.com/manual" target="_blank" rel="noopener">User manual →</a></p>
     </details>
 
-    <!-- Progress Indicator -->
-    <div class="progress-bar">
-        <div class="progress-step active" data-step="1">
-            <div class="step-number">1</div>
-            <div class="step-label">Model</div>
-        </div>
-        <div class="progress-line"></div>
-        <div class="progress-step" data-step="2">
-            <div class="step-number">2</div>
-            <div class="step-label">Board</div>
-        </div>
-        <div class="progress-line"></div>
-        <div class="progress-step" data-step="3">
-            <div class="step-number">3</div>
-            <div class="step-label">Update</div>
-        </div>
-    </div>
-
-    <!-- Step 1: Device Selection -->
+    <!-- Step: Device -->
     <section id="step1" class="wizard-step active">
-        <h2>Which Vail device do you have?</h2>
-        <p class="step-description">Choose your device type.</p>
+        <h2>Which device do you have?</h2>
 
         <div class="card-grid">
-            <div class="selection-card" data-device="adapter">
+            <div class="selection-card" data-device="adapter" role="button" tabindex="0">
                 <div class="card-icon">📡</div>
                 <h3>Vail Adapter</h3>
                 <p>USB adapter that connects paddles to your computer for web-based CW</p>
             </div>
 
-            <div class="selection-card" data-device="summit">
+            <div class="selection-card" data-device="summit" role="button" tabindex="0">
                 <div class="card-icon">⛰️</div>
                 <h3>Vail Summit</h3>
                 <p>Standalone morse code trainer with built-in screen and keyboard</p>
@@ -73,602 +80,254 @@
         </div>
     </section>
 
-    <!-- Step 1.5: Adapter Model Selection (only shown for Adapter) -->
-    <section id="step1_5" class="wizard-step">
-        <h2>What model of Vail Adapter do you have?</h2>
-        <p class="step-description">Choose the PCB version that matches your adapter.</p>
+    <!-- Step: Adapter model (the board inside is auto-detected over USB) -->
+    <section id="stepModel" class="wizard-step">
+        <h2>Which adapter do you have?</h2>
+        <p class="step-description">Just the model. The exact board inside gets detected automatically when you connect.</p>
 
         <div class="card-grid">
-            <div class="selection-card" data-model="basic_pcb">
+            <div class="selection-card" data-model="basic_pcb" role="button" tabindex="0">
                 <div class="card-icon">🎛️</div>
                 <h3>Basic PCB</h3>
-                <p>Standard Vail Adapter PCB with paddle inputs and sidetone</p>
+                <p>Standard PCB with paddle inputs and sidetone</p>
             </div>
 
-            <div class="selection-card" data-model="advanced_pcb">
+            <div class="selection-card" data-model="advanced_pcb" role="button" tabindex="0">
                 <div class="card-icon">⚡</div>
                 <h3>Advanced PCB</h3>
-                <p>Includes radio output port and built-in capacitive touch points</p>
+                <p>Adds a radio output port and built-in capacitive touch points</p>
             </div>
 
-            <div class="selection-card" data-model="vail_lite">
+            <div class="selection-card" data-model="vail_lite" role="button" tabindex="0">
                 <div class="card-icon">🪶</div>
                 <h3>Vail Lite</h3>
-                <p>USB stick form factor with buzzer sidetone only - no buttons, capacitive touch, headphone jack, or radio output</p>
+                <p>USB stick form factor with buzzer sidetone only</p>
             </div>
 
-            <div class="selection-card" data-model="non_pcb">
+            <div class="selection-card" data-model="non_pcb" role="button" tabindex="0">
                 <div class="card-icon">🔧</div>
                 <h3>DIY No PCB</h3>
-                <p>Hand-wired or breadboard build following GitHub specs</p>
+                <p>Hand-wired or breadboard build following GitHub specs, QT Py, XIAO, or Arduino Micro</p>
             </div>
         </div>
-
-        <button class="btn-secondary" id="backToStep1FromModel">← Back</button>
     </section>
 
-    <!-- Step 2: Board Selection -->
-    <section id="step2" class="wizard-step">
-        <h2>Which Arduino board are you using?</h2>
-        <p class="step-description">Select the microcontroller on your adapter.</p>
+    <!-- Step: Update (one screen for every adapter flash path) -->
+    <section id="stepUpdate" class="wizard-step">
+        <h2>Update firmware</h2>
 
-        <div class="card-grid">
-            <div class="selection-card" data-board="qtpy">
-                <div class="card-icon">🔷</div>
-                <h3>Adafruit QT Py SAMD21</h3>
-                <p>Look for "QT Py" labeling on the board</p>
-                <div class="hint" id="qtpyHint">💡 Most purchased Adapters will likely be a QT Py when in doubt</div>
+        <!-- Version picker -->
+        <div class="panel">
+            <div class="panel-row">
+                <label class="panel-label" for="adapterVersionSelect">Version</label>
+                <select id="adapterVersionSelect" class="version-select" disabled>
+                    <option value="">Loading releases…</option>
+                </select>
+                <label class="test-release-toggle">
+                    <input type="checkbox" id="adapterShowTestRelease">
+                    <span class="toggle-label">Test builds</span>
+                </label>
             </div>
-
-            <div class="selection-card" data-board="xiao">
-                <div class="card-icon">🔶</div>
-                <h3>Seeeduino XIAO SAMD21</h3>
-                <p>Look for "XIAO" labeling on the board</p>
+            <div id="adapterTestReleaseWarning" class="test-release-warning" style="display: none;">
+                Test builds may be unstable. They include features still in development.
             </div>
-
-            <div class="selection-card" data-board="micro" id="microCard">
-                <div class="card-icon">🔸</div>
-                <h3>Arduino Micro</h3>
-                <p>ATmega32U4-based. Breadboard / DIY builds only.</p>
-                <div class="hint">⚠️ Experimental: no capacitive touch, no button menu, limited CW memory length. Flashed via WebSerial (not UF2 drag-and-drop).</div>
-            </div>
+            <details class="release-notes-details" id="adapterReleaseDetails" style="display: none;">
+                <summary>Release notes <span id="adapterReleaseDate" class="release-date"></span></summary>
+                <div id="adapterReleaseNotes" class="release-notes"></div>
+            </details>
         </div>
 
-        <button class="btn-secondary" id="backToStep1">← Back</button>
-    </section>
+        <!-- Method toggle -->
+        <div class="method-toggle" id="methodToggle" role="tablist">
+            <button class="method-tab active" id="tabSerial" data-method="serial" role="tab">⚡ Install from browser</button>
+            <button class="method-tab" id="tabUf2" data-method="uf2" role="tab">📁 Download file</button>
+        </div>
 
-    <!-- Step 2.5: Choose firmware version + flashing method -->
-    <section id="stepMethod" class="wizard-step">
-        <h2>Set up your update</h2>
-        <p class="step-description">You've selected: <strong id="selectedConfigMethod"></strong></p>
-
-        <!-- Pick version -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">1</span>
-                <h3>Pick a firmware version</h3>
+        <!-- Browser flash panel -->
+        <div class="method-panel active" id="methodSerialPanel">
+            <div class="no-webserial" id="noWebSerialNote" style="display: none;">
+                This browser can't talk to USB devices. Use <strong>Chrome, Edge, or Opera</strong> on a computer, or switch to the <button class="linklike" id="switchToUf2">Download file</button> method.
             </div>
-            <p>The latest stable release is selected by default.</p>
-            <div class="version-selector-container">
-                <div class="version-selector-row">
-                    <select id="adapterVersionSelect" class="version-select" disabled>
-                        <option value="">Loading releases…</option>
-                    </select>
-                    <label class="test-release-toggle">
-                        <input type="checkbox" id="adapterShowTestRelease">
-                        <span class="toggle-label">Show test release</span>
-                    </label>
-                </div>
-                <div id="adapterTestReleaseWarning" class="test-release-warning" style="display: none;">
-                    <strong>Warning:</strong> Test releases may not be stable and could contain bugs. They include features currently being developed. Use at your own risk.
-                </div>
-                <div id="adapterReleaseInfo" class="release-info" style="display: none;">
-                    <div class="release-info-header">
-                        <span id="adapterReleaseVersionBadge" class="firmware-version"></span>
-                        <span id="adapterReleaseDate" class="release-date"></span>
+
+            <div class="flash-hero" id="flashHero">
+                <p class="flash-hero-text" id="flashHeroText">Plug in your adapter, then click the button. Your browser will ask which device to use the first time.</p>
+                <button id="flashNowButton" class="btn-hero">Update firmware</button>
+                <div class="flash-hint" id="flashHint" style="display: none;"></div>
+
+                <ol class="flash-timeline" id="flashTimeline" style="display: none;">
+                    <li data-stage="find"><span class="tl-dot"></span>Find your adapter</li>
+                    <li data-stage="boot"><span class="tl-dot"></span>Enter bootloader</li>
+                    <li data-stage="write"><span class="tl-dot"></span>Install firmware
+                        <div class="progress-track" id="serialProgressTrack" style="display: none;">
+                            <div class="progress-fill" id="serialFlashProgressBar"></div>
+                        </div>
+                    </li>
+                    <li data-stage="done"><span class="tl-dot"></span>Done</li>
+                </ol>
+
+                <div class="flash-result" id="flashResult" style="display: none;"></div>
+            </div>
+
+            <details class="advanced" id="flashAdvanced">
+                <summary>Advanced options &amp; troubleshooting</summary>
+                <div class="advanced-body">
+                    <p class="advanced-note">The update button above handles all of this automatically. These are here for when something goes sideways.</p>
+                    <div class="advanced-actions">
+                        <button id="bootOnlyButton" class="btn-secondary btn-sm">Enter bootloader mode only</button>
+                        <button id="manualPortButton" class="btn-secondary btn-sm">Pick port manually &amp; install</button>
+                        <button id="forgetPortsButton" class="btn-secondary btn-sm">Forget remembered devices</button>
                     </div>
-                    <div id="adapterReleaseNotes" class="release-notes"></div>
-                </div>
-            </div>
-        </div>
+                    <ul class="advanced-tips">
+                        <li>You can also enter bootloader mode by double-tapping the reset button on the adapter. A drive named QTPYBOOT, XIAOBOOT, or ADAPTERBOOT will appear.</li>
+                        <li>The normal picker is filtered to devices that look like your adapter. "Pick port manually" shows every serial port on the system.</li>
+                        <li>Linux permission denied: <code>sudo usermod -a -G dialout $USER</code> then log out and back in.</li>
+                    </ul>
 
-        <!-- Pick method -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">2</span>
-                <h3>Choose how to flash</h3>
-            </div>
-            <p>Two ways to get the firmware onto your adapter. <strong>Not sure? Use the UF2 file method</strong> — it's the simplest and works almost everywhere.</p>
-
-            <div class="card-grid">
-                <div class="selection-card" data-method="uf2">
-                    <div class="card-icon">📄</div>
-                    <h3>UF2 file <span style="font-size: 12px; color: #4CAF50; font-weight: 600;">★ Recommended</span></h3>
-                    <p>Download a small file and drag it onto a drive that pops up. No special browser needed for the copy.</p>
-                    <div class="hint">✅ Works on Windows, macOS, Linux, ChromeOS — and even a phone. Best for most people.</div>
-                </div>
-
-                <div class="selection-card" data-method="serial">
-                    <div class="card-icon">🔌</div>
-                    <h3>Web flasher <span style="font-size: 12px; color: #b388ff; font-weight: 600;">BETA</span></h3>
-                    <p>Flashes straight over the USB port from your browser — nothing to download or drag.</p>
-                    <div class="hint">💡 Try this if the UF2 copy stalls or you'd rather not handle files. Requires <strong>Chrome, Edge, or Opera on a computer</strong> (not Safari, Firefox, or phones).</div>
-                </div>
-            </div>
-        </div>
-
-        <button class="btn-secondary" id="backToBoardFromMethod">← Back</button>
-    </section>
-
-    <!-- Step 3: Flash Adapter Firmware (UF2) -->
-    <section id="step3" class="wizard-step">
-        <h2>Flash Your Firmware</h2>
-        <p class="step-description">You've selected: <strong id="selectedConfig"></strong></p>
-
-        <!-- Sub-step 1: Plug In -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">1</span>
-                <h3>Plug In Your Adapter</h3>
-            </div>
-            <p>Use a USB-C cable (must support data transfer) and connect your Vail Adapter to your computer.</p>
-        </div>
-
-        <!-- Sub-step 2: Enter Boot Mode -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">2</span>
-                <h3>Enter Boot Mode</h3>
-            </div>
-            <p>Choose one of these methods to put your adapter into bootloader mode:</p>
-
-            <div class="boot-methods">
-                <div class="boot-method">
-                    <h4>Method 1: WebSerial (Recommended)</h4>
-                    <p>Click the button below to automatically trigger boot mode. Works in Chrome, Edge, and Opera browsers.</p>
-                    <button id="bootModeButton" class="btn-primary">🔌 Enter Boot Mode via WebSerial</button>
-                    <div class="log-container">
-                        <h4>Activity Log:</h4>
-                        <pre id="serialLog"></pre>
+                    <div id="serialEraseTest" style="display: none;">
+                        <p class="advanced-note"><strong>Testing tool:</strong> erase the firmware to reproduce the "stuck in bootloader" state (recoverable, the bootloader is never touched).</p>
+                        <button id="serialEraseButton" class="btn-secondary btn-sm danger">🧪 Erase app (simulate stuck state)</button>
                     </div>
+
+                    <details class="log-details">
+                        <summary>Activity log</summary>
+                        <pre id="serialFlashLog" class="log-pre"></pre>
+                    </details>
                 </div>
+            </details>
+        </div>
 
-                <div class="boot-method">
-                    <h4>Method 2: Manual Reset (Double-tap)</h4>
-                    <p>Quickly double-tap the reset button on your adapter. The board should appear as a USB storage device (e.g., "QTPYBOOT" or "XIAOBOOT").</p>
+        <!-- UF2 file panel -->
+        <div class="method-panel" id="methodUf2Panel">
+            <ol class="uf2-steps">
+                <li>
+                    <div class="uf2-step-title">Put the adapter in bootloader mode</div>
+                    <p>Click below and pick your adapter, or double-tap the reset button on the board. Either way a USB drive named <strong>QTPYBOOT</strong>, <strong>XIAOBOOT</strong>, or <strong>ADAPTERBOOT</strong> appears.</p>
+                    <button id="bootModeButton" class="btn-secondary">Enter bootloader mode</button>
+                    <div class="flash-hint" id="uf2BootHint" style="display: none;"></div>
+                </li>
+                <li>
+                    <div class="uf2-step-title">Download the firmware file</div>
+                    <div class="board-row" id="uf2BoardRow" style="display: none;">
+                        <span class="board-row-label">Board inside <span class="muted">(auto-filled if you used the button above, otherwise it's printed on the board)</span></span>
+                        <button class="board-pick" data-board="qtpy">QT Py</button>
+                        <button class="board-pick" data-board="xiao">XIAO</button>
+                    </div>
+                    <a href="#" id="downloadButton" class="btn-download disabled" role="button" aria-disabled="true">
+                        <span class="download-icon">⬇️</span>
+                        <span id="downloadText">Download UF2 file</span>
+                    </a>
+                </li>
+                <li>
+                    <div class="uf2-step-title">Drag the file onto the boot drive</div>
+                    <p>Drop the downloaded .uf2 onto the QTPYBOOT / XIAOBOOT / ADAPTERBOOT drive. The drive ejects itself when the update finishes, then the adapter restarts on the new firmware.</p>
+                </li>
+            </ol>
+
+            <div class="success-message subtle">
+                All done? Head to the <a href="https://vailadapter.com/gettingstarted" target="_blank" rel="noopener">Getting Started guide</a> to set your keyer type, speed, and tone.
+            </div>
+
+            <details class="advanced">
+                <summary>Troubleshooting</summary>
+                <div class="advanced-body">
+                    <ul class="advanced-tips">
+                        <li>No boot drive appears: try a different USB cable (many are charge-only), a different USB port, or slow down the double-tap.</li>
+                        <li>The copy hangs on Windows: switch to the <strong>Install from browser</strong> method, it writes over the COM port instead.</li>
+                        <li>Bootloader button needs Chrome, Edge, or Opera. On other browsers use the double-tap method.</li>
+                        <li>Linux permission denied: <code>sudo usermod -a -G dialout $USER</code> then log out and back in.</li>
+                    </ul>
+                    <details class="log-details">
+                        <summary>Activity log</summary>
+                        <pre id="serialLog" class="log-pre"></pre>
+                    </details>
                 </div>
-            </div>
-        </div>
-
-        <!-- Sub-step 3: Download Firmware -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">3</span>
-                <h3>Download the Firmware File</h3>
-            </div>
-            <p>This is the firmware version you picked on the previous screen — <strong id="uf2VersionLabel">the selected release</strong>.</p>
-            <a href="#" id="downloadButton" class="btn-download disabled" role="button" aria-disabled="true">
-                <span class="download-icon">⬇️</span>
-                <span id="downloadText">Download UF2 File</span>
-            </a>
-        </div>
-
-        <!-- Sub-step 4: Copy to Device -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">4</span>
-                <h3>Copy Firmware to Device</h3>
-            </div>
-            <ol>
-                <li>Open your file explorer (Finder on Mac, File Explorer on Windows)</li>
-                <li>Find your Downloads folder and locate the downloaded .uf2 file</li>
-                <li>Look for the adapter drive (named "QTPYBOOT", "XIAOBOOT", "ADAPTERBOOT", or similar)</li>
-                <li>Drag and drop the .uf2 file onto the adapter drive</li>
-                <li>Wait for the LED to stop flashing - the drive will automatically disconnect when complete</li>
-            </ol>
-        </div>
-
-        <!-- Sub-step 5: Finalize -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">5</span>
-                <h3>Finalize Setup</h3>
-            </div>
-            <ol>
-                <li>Wait 10 seconds after the firmware copies</li>
-                <li>Unplug and reconnect your Vail Adapter</li>
-                <li><strong>Important:</strong> Visit the <a href="https://vailadapter.com/gettingstarted" target="_blank">Getting Started guide</a> to set up your adapter — keyer type, speed, and tone.</li>
-                <li>Your settings will be saved to the device and can be used with any compatible CW application</li>
-            </ol>
-            <div class="success-message">
-                <strong>✅ You're all set!</strong> Your Vail Adapter is now running the latest firmware.
-            </div>
-        </div>
-
-        <!-- Troubleshooting -->
-        <div class="troubleshooting">
-            <h3>❓ Troubleshooting</h3>
-            <details>
-                <summary>Device doesn't appear as storage drive</summary>
-                <p>Try these steps:</p>
-                <ul>
-                    <li>Try the double-tap reset method instead of WebSerial</li>
-                    <li>Use a different USB-C cable (some cables are charge-only)</li>
-                    <li>Try a different USB port on your computer</li>
-                    <li>Wait 5 seconds between taps when double-tapping the reset button</li>
-                </ul>
-            </details>
-
-            <details>
-                <summary>WebSerial button doesn't work</summary>
-                <p>WebSerial requires Chrome, Edge, or Opera browser. If you're using Firefox or Safari, please switch browsers or use the manual reset method.</p>
-            </details>
-
-            <details>
-                <summary>Linux: Permission denied</summary>
-                <p>Add your user to the dialout group: <code>sudo usermod -a -G dialout $USER</code> then log out and back in.</p>
             </details>
         </div>
-
-        <button class="btn-secondary" id="backToMethodFromUf2">← Back</button>
-        <button class="btn-primary" id="startOver">Start Over</button>
     </section>
 
-    <!-- Step 3 (Serial / Web flasher variant): SAM-BA over WebSerial -->
-    <section id="stepSerial" class="wizard-step">
-        <h2>Flash Over USB (Web Flasher)</h2>
-        <p class="step-description">You've selected: <strong id="selectedConfigSerial"></strong></p>
-
-        <div class="warning-box" style="background: linear-gradient(135deg, #2a2350 0%, #3a3066 100%); border: 2px solid #b388ff; border-radius: 8px; padding: 14px; margin-bottom: 20px;">
-            <strong style="color: #d0b3ff;">Beta feature.</strong> Requires <strong>Chrome, Edge, or Opera on a computer</strong> (not Safari, Firefox, or phones). Flashes directly over the USB port — no file to download or drag. If it doesn't work, go back and use the UF2 file method.
-        </div>
-
-        <!-- Sub-step 1: Plug in -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">1</span>
-                <h3>Plug In Your Adapter</h3>
-            </div>
-            <p>Connect the adapter with a USB cable that supports data transfer.</p>
-        </div>
-
-        <!-- Sub-step 2: Enter bootloader -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">2</span>
-                <h3>Enter Bootloader Mode</h3>
-            </div>
-            <p><strong>Double-tap the reset button</strong> on your adapter — a USB drive named "QTPYBOOT", "XIAOBOOT", or "ADAPTERBOOT" should appear. (If your adapter is already stuck in this mode, you're ready.)</p>
-            <p style="margin-top: 10px;">Or click below to trigger it automatically:</p>
-            <button id="serialBootButton" class="btn-primary">🔌 Enter Bootloader via WebSerial</button>
-            <div class="log-container" style="margin-top: 12px;">
-                <h4>Activity Log:</h4>
-                <pre id="serialBootLog"></pre>
-            </div>
-        </div>
-
-        <!-- Sub-step 3: Flash -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">3</span>
-                <h3>Flash the Firmware</h3>
-            </div>
-            <p>Click below and pick your adapter's <strong>COM port</strong> (on Windows it's usually the highest-numbered COM port that appears when the bootloader is active). The firmware writes directly over the connection.</p>
-            <button id="serialFlashButton" class="btn-primary">⚡ Flash Firmware Over Serial</button>
-
-            <div class="progress-container" id="serialFlashProgressContainer" style="display: none; margin-top: 16px;">
-                <div class="progress-label" id="serialFlashProgressLabel">Preparing…</div>
-                <div style="background: #2a2a2a; border-radius: 8px; overflow: hidden; height: 20px;">
-                    <div id="serialFlashProgressBar" style="background: linear-gradient(90deg, #6a5acd, #836fff); height: 100%; width: 0%; transition: width 0.2s;"></div>
-                </div>
-                <div id="serialFlashProgressPercent" style="margin-top: 6px; font-size: 13px; color: #999;">0%</div>
-            </div>
-            <div class="log-container" style="margin-top: 16px;">
-                <h4>Flash Log:</h4>
-                <pre id="serialFlashLog"></pre>
-            </div>
-
-            <!-- Test-only: revealed when the URL hash contains "test" -->
-            <div id="serialEraseTest" style="display: none; margin-top: 14px; padding-top: 12px; border-top: 1px solid #444;">
-                <p style="font-size: 13px; color: #b0a0e0; margin: 0 0 8px;"><strong>Testing tool:</strong> erase the firmware to reproduce the "stuck in bootloader" state (recoverable — the bootloader is never touched).</p>
-                <button id="serialEraseButton" class="btn-secondary" style="border-color: #b5651d; color: #ffb27a;">🧪 Erase app (simulate stuck state)</button>
-            </div>
-        </div>
-
-        <!-- Sub-step 4: Finalize -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">4</span>
-                <h3>Finalize Setup</h3>
-            </div>
-            <ol>
-                <li>The adapter reboots into the new firmware automatically (unplug/replug if it stays in bootloader mode)</li>
-                <li>Visit the <a href="https://vailadapter.com/gettingstarted" target="_blank">Getting Started guide</a> to set up your keyer type, speed, and tone</li>
-            </ol>
-            <div class="success-message">
-                <strong>✅ Done!</strong> Your Vail Adapter is running the new firmware.
-            </div>
-        </div>
-
-        <button class="btn-secondary" id="backToMethodFromSerial">← Back</button>
-        <button class="btn-primary" id="startOverFromSerial">Start Over</button>
-    </section>
-
-    <!-- Step 3 (Micro variant): WebSerial AVR109 flash flow -->
-    <section id="step3_micro" class="wizard-step">
-        <h2>Flash Your Arduino Micro</h2>
-        <p class="step-description">You've selected: <strong id="selectedConfigMicro"></strong></p>
-
-        <div class="warning-box" style="background: linear-gradient(135deg, #3a2a00 0%, #4a3600 100%); border: 2px solid #ffc107; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
-            <h3 style="margin-top: 0; color: #ffc107;">⚠️ Experimental board</h3>
-            <ul style="margin: 8px 0 0 18px; color: #e0e0e0;">
-                <li>No capacitive touch, no button menu, no LED status indicators</li>
-                <li>CW memory slots reduced to 3 × ~12 seconds (vs. 25 seconds on SAMD21)</li>
-                <li>Requires Chrome, Edge, or Opera — the flasher uses WebSerial</li>
-                <li>Radio output on A2/A3 is 5V logic — check radio tolerance before wiring</li>
-            </ul>
-        </div>
-
-        <!-- Sub-step 1: Plug In -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">1</span>
-                <h3>Plug In Your Arduino Micro</h3>
-            </div>
-            <p>Connect the Micro to your computer using a micro-USB data cable. Wait a few seconds for your OS to recognize it as a serial device.</p>
-        </div>
-
-        <!-- Sub-step 2: Enter Bootloader -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">2</span>
-                <h3>Enter Bootloader Mode</h3>
-            </div>
-            <p>Click the button below, then select your Arduino Micro in the browser's serial port picker. The browser will briefly open the port at 1200 baud and close it — this signals the Caterina bootloader to take over for ~8 seconds.</p>
-            <button id="microBootModeButton" class="btn-primary">🔌 Trigger Bootloader (1200-baud Touch)</button>
-            <div class="log-container" style="margin-top: 12px;">
-                <h4>Activity Log:</h4>
-                <pre id="microSerialLog"></pre>
-            </div>
-            <div style="margin-top: 10px; font-size: 14px; color: #ccc;">
-                <strong>Alternative:</strong> press the reset button on the Micro twice quickly to force bootloader mode manually.
-            </div>
-        </div>
-
-        <!-- Sub-step 3: Flash -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">3</span>
-                <h3>Flash Firmware</h3>
-            </div>
-            <p>Once the Micro is in bootloader mode (a new serial port will appear for ~8 seconds), click the button below and select that <strong>new</strong> bootloader port. The firmware will be written directly over the serial connection.</p>
-            <button id="microFlashButton" class="btn-primary">⚡ Flash Firmware via WebSerial</button>
-            <div class="progress-container" id="microProgressContainer" style="display: none; margin-top: 16px;">
-                <div class="progress-label" id="microProgressLabel">Preparing…</div>
-                <div style="background: #2a2a2a; border-radius: 8px; overflow: hidden; height: 20px;">
-                    <div id="microProgressBar" style="background: linear-gradient(90deg, #4CAF50, #45a049); height: 100%; width: 0%; transition: width 0.2s;"></div>
-                </div>
-                <div id="microProgressPercent" style="margin-top: 6px; font-size: 13px; color: #999;">0%</div>
-            </div>
-            <div class="log-container" style="margin-top: 16px;">
-                <h4>Flash Log:</h4>
-                <pre id="microFlashLog"></pre>
-            </div>
-        </div>
-
-        <!-- Sub-step 4: Finalize -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">4</span>
-                <h3>Finalize Setup</h3>
-            </div>
-            <ol>
-                <li>Wait for the bootloader to exit and the Micro to re-enumerate as your running application</li>
-                <li>Unplug and reconnect if needed</li>
-                <li>Visit the <a href="https://vailadapter.com/gettingstarted" target="_blank">Getting Started guide</a> to set up keyer type, speed, and tone</li>
-            </ol>
-            <div class="success-message">
-                <strong>✅ You're set!</strong> Your Arduino Micro is now running the Vail Adapter firmware.
-            </div>
-        </div>
-
-        <!-- Troubleshooting -->
-        <div class="troubleshooting">
-            <h3>❓ Troubleshooting</h3>
-            <details>
-                <summary>No new port appears after the 1200-baud touch</summary>
-                <p>The Caterina bootloader only stays active for ~8 seconds. If you miss the window, just click "Trigger Bootloader" again — or double-tap the reset button on the Micro.</p>
-            </details>
-            <details>
-                <summary>"Expected 0x0D" or timeout errors</summary>
-                <p>You likely selected the running-app port instead of the new bootloader port. Re-trigger the bootloader and pick the newer COM/ttyACM number.</p>
-            </details>
-            <details>
-                <summary>WebSerial not supported</summary>
-                <p>Use Chrome, Edge, or Opera. Firefox and Safari do not support the Web Serial API.</p>
-            </details>
-            <details>
-                <summary>Linux: Permission denied</summary>
-                <p>Add your user to the dialout group: <code>sudo usermod -a -G dialout $USER</code> then log out and back in.</p>
-            </details>
-        </div>
-
-        <button class="btn-secondary" id="backToStep2FromMicro">← Back</button>
-        <button class="btn-primary" id="startOverFromMicro">Start Over</button>
-    </section>
-
-    <!-- Step 4: Flash Summit Firmware (ESP32 Web Flasher) -->
+    <!-- Step: Summit (ESP32 web flasher) -->
     <section id="step4" class="wizard-step">
-        <h2>Flash Vail Summit Firmware</h2>
-        <p class="step-description">Web-based ESP32 flasher for the Vail Summit</p>
+        <h2>Update your Summit</h2>
 
-        <!-- Version Selection -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">1</span>
-                <h3>Select Firmware Version</h3>
+        <!-- Version picker -->
+        <div class="panel">
+            <div class="panel-row">
+                <label class="panel-label" for="versionSelect">Version</label>
+                <select id="versionSelect" class="version-select" disabled>
+                    <option value="">Loading releases...</option>
+                </select>
+                <label class="test-release-toggle">
+                    <input type="checkbox" id="showTestRelease">
+                    <span class="toggle-label">Test builds</span>
+                </label>
             </div>
-            <p>Choose which firmware version to flash. The latest stable release is selected by default.</p>
+            <div id="testReleaseWarning" class="test-release-warning" style="display: none;">
+                Test builds may be unstable. They include features still in development.
+            </div>
+            <details class="release-notes-details" id="releaseInfo" style="display: none;">
+                <summary>Release notes <span id="releaseDateDisplay" class="release-date"></span></summary>
+                <span id="releaseVersionBadge" class="firmware-version" style="display: none;"></span>
+                <div id="releaseNotes" class="release-notes"></div>
+            </details>
+        </div>
 
-            <div class="version-selector-container">
-                <div class="version-selector-row">
-                    <select id="versionSelect" class="version-select" disabled>
-                        <option value="">Loading releases...</option>
-                    </select>
-                    <label class="test-release-toggle">
-                        <input type="checkbox" id="showTestRelease">
-                        <span class="toggle-label">Show test release</span>
-                    </label>
+        <div id="espFlasherContainer">
+            <div class="flash-hero">
+                <p class="flash-hero-text">Plug in your Summit with a USB-C data cable, then connect. The flasher puts it in bootloader mode automatically and shows the install options.</p>
+                <div class="esp-buttons">
+                    <button id="enterBootloaderButton" class="btn-hero">Connect to Summit</button>
+                    <button id="connectButton" class="btn-primary" style="display: none;">Connect and Flash</button>
+                    <button id="programButton" class="btn-download" style="display: none;">Flash Firmware</button>
+                    <button id="eraseAndFlashButton" class="btn-warning" style="display: none;">Full Erase &amp; Flash (fixes USB issues)</button>
+                    <button id="eraseButton" class="btn-secondary" style="display: none;">Erase Only</button>
+                    <button id="disconnectButton" class="btn-secondary" style="display: none;">Disconnect</button>
                 </div>
 
-                <div id="testReleaseWarning" class="test-release-warning" style="display: none;">
-                    <strong>Warning:</strong> Test releases may not be stable and could contain bugs. They include features currently being developed. Use at your own risk.
-                </div>
-
-                <div id="releaseInfo" class="release-info" style="display: none;">
-                    <div class="release-info-header">
-                        <span id="releaseVersionBadge" class="firmware-version"></span>
-                        <span id="releaseDateDisplay" class="release-date"></span>
+                <div class="progress-container" id="progressContainer" style="display: none;">
+                    <div class="progress-label" id="progressLabel">Preparing...</div>
+                    <div class="progress-track">
+                        <div class="progress-fill" id="progressBar"></div>
                     </div>
-                    <div id="releaseNotes" class="release-notes"></div>
+                    <div class="progress-percent" id="progressPercent">0%</div>
                 </div>
             </div>
-        </div>
 
-        <!-- Flash Instructions -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">2</span>
-                <h3>Connect Your Device</h3>
-            </div>
-            <p>Make sure your Vail Summit is plugged in via USB-C.</p>
-        </div>
-
-        <!-- ESP32 Flash Interface -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">3</span>
-                <h3>Flash Firmware</h3>
-            </div>
-
-            <div id="espFlasherContainer">
-                <!-- Primary Method: Automatic Connection -->
-                <div class="auto-flash-section">
-                    <p style="margin-bottom: 1rem;">Click the button below to connect to your Summit. The flasher will automatically enter bootloader mode and show flash options.</p>
-                    <button id="enterBootloaderButton" class="btn-primary highlight-button">🔌 Connect to Summit</button>
-                </div>
-
-                <!-- Fallback: Manual Bootloader Entry -->
-                <details class="manual-fallback" style="margin-top: 1.5rem;">
-                    <summary style="cursor: pointer; color: #ffc107; font-weight: 500;">⚠️ Connection not working? Try manual bootloader entry</summary>
-                    <div class="manual-bootloader-instructions" style="padding: 1rem; margin-top: 0.5rem; background: rgba(255, 193, 7, 0.1); border-radius: 8px; border: 1px solid rgba(255, 193, 7, 0.3);">
-                        <p style="margin: 0 0 1rem; color: #ccc;">If automatic connection fails (e.g., "port in use" error), manually enter bootloader mode:</p>
-                        <ol style="margin: 0 0 1rem; padding-left: 1.5rem;">
+            <details class="advanced">
+                <summary>Advanced options &amp; troubleshooting</summary>
+                <div class="advanced-body">
+                    <div class="manual-bootloader-instructions">
+                        <p class="advanced-note">If automatic connection fails (like a "port in use" error), enter bootloader mode by hand:</p>
+                        <ol>
                             <li>Hold down the <strong>BOOT</strong> button on your Summit</li>
                             <li>While holding BOOT, press and release <strong>RESET</strong></li>
                             <li>Release the <strong>BOOT</strong> button</li>
-                            <li>Your device will now show as "USB JTAG/Serial" instead of "TinyUSB CDC"</li>
+                            <li>The device now shows up as "USB JTAG/Serial" instead of "TinyUSB CDC"</li>
                         </ol>
-                        <button id="directConnectButton" class="btn-warning">I'm in Bootloader Mode - Connect</button>
+                        <button id="directConnectButton" class="btn-warning btn-sm">I'm in bootloader mode, connect</button>
                     </div>
-                </details>
-                <button id="connectButton" class="btn-primary" style="display: none;">Connect and Flash</button>
-                <button id="disconnectButton" class="btn-secondary" style="display: none;">Disconnect</button>
-                <button id="programButton" class="btn-download" style="display: none;">Flash Firmware</button>
-                <button id="eraseAndFlashButton" class="btn-warning" style="display: none;">Full Erase & Flash (Recommended for USB issues)</button>
-                <button id="eraseButton" class="btn-secondary" style="display: none;">Erase Only</button>
-
-                <div class="progress-container" id="progressContainer" style="display: none; margin-top: 20px;">
-                    <div class="progress-label" id="progressLabel">Preparing...</div>
-                    <div style="background: #e0e0e0; border-radius: 8px; overflow: hidden; height: 24px;">
-                        <div id="progressBar" style="background: linear-gradient(90deg, #4CAF50, #45a049); height: 100%; width: 0%; transition: width 0.3s;"></div>
-                    </div>
-                    <div id="progressPercent" style="margin-top: 8px; font-size: 14px; color: #666;">0%</div>
+                    <ul class="advanced-tips">
+                        <li>"Port in use" on Windows: close Arduino IDE, PuTTY, or any serial monitor, then try again. Still stuck? Device Manager → Ports → right-click the COM port → Disable, wait 2 seconds, Enable.</li>
+                        <li>Flashing fails or stalls: unplug for 5 seconds, replug, and use the manual BOOT + RESET steps above.</li>
+                        <li>Some cables are charge-only. Use one you know carries data.</li>
+                        <li>Web Serial needs Chrome, Edge, or Opera on a computer.</li>
+                    </ul>
+                    <details class="log-details">
+                        <summary>Flash log</summary>
+                        <pre id="espFlashLog" class="log-pre"></pre>
+                    </details>
                 </div>
+            </details>
 
-                <div class="log-container" style="margin-top: 20px;">
-                    <h4>Flash Log:</h4>
-                    <pre id="espFlashLog"></pre>
-                </div>
+            <div class="success-message subtle">
+                When flashing finishes the Summit restarts on its own. If it doesn't, unplug it, wait 2 seconds, and plug it back in. Then follow the on-screen setup wizard.
             </div>
         </div>
-
-        <!-- Finalize -->
-        <div class="flash-step">
-            <div class="step-header">
-                <span class="step-badge">4</span>
-                <h3>Complete!</h3>
-            </div>
-            <p>Once flashing is complete, your device will automatically restart with the new firmware. If it doesn't restart automatically:</p>
-            <ol>
-                <li><strong>Unplug</strong> your Vail Summit from USB</li>
-                <li><strong>Wait 2 seconds</strong></li>
-                <li><strong>Plug it back in</strong> to power it on</li>
-                <li>Follow the on-screen setup wizard to configure WiFi and preferences</li>
-            </ol>
-            <div class="success-message">
-                <strong>✅ You're all set!</strong> Your Vail Summit is ready for morse code training.
-            </div>
-        </div>
-
-        <!-- Troubleshooting -->
-        <div class="troubleshooting">
-            <h3>❓ Troubleshooting</h3>
-            <details>
-                <summary>Browser doesn't support Web Serial</summary>
-                <p>Web Serial API is required for ESP32 flashing. Please use Chrome, Edge, or Opera browser. Firefox and Safari are not currently supported.</p>
-            </details>
-
-            <details>
-                <summary>"Port in use" or "Cannot access COM port" error</summary>
-                <p>This is common on Windows. Try these solutions:</p>
-                <ol>
-                    <li><strong>Use manual bootloader entry:</strong> Expand the yellow section above and follow the BOOT + RESET instructions.</li>
-                    <li><strong>Close other programs:</strong> Make sure Arduino IDE, PuTTY, or any other serial terminal is completely closed.</li>
-                    <li><strong>Windows Device Manager fix:</strong>
-                        <ul>
-                            <li>Open Device Manager (Win+X → Device Manager)</li>
-                            <li>Find the COM port under "Ports (COM & LPT)"</li>
-                            <li>Right-click → Disable device, wait 2 seconds</li>
-                            <li>Right-click → Enable device</li>
-                            <li>Try flashing again</li>
-                        </ul>
-                    </li>
-                    <li><strong>Try a different USB port</strong> - preferably a USB 2.0 port if available.</li>
-                </ol>
-            </details>
-
-            <details>
-                <summary>Device shows as "TinyUSB CDC" but won't connect</summary>
-                <p>Some devices use TinyUSB which doesn't support automatic bootloader entry. Use manual bootloader entry:</p>
-                <ol>
-                    <li>Hold down the <strong>BOOT</strong> button</li>
-                    <li>While holding BOOT, press and release <strong>RESET</strong></li>
-                    <li>Release the BOOT button</li>
-                    <li>Device will now show as "USB JTAG/Serial"</li>
-                    <li>Click "I'm in Bootloader Mode - Connect Now"</li>
-                </ol>
-            </details>
-
-            <details>
-                <summary>Flashing failed or stuck</summary>
-                <p>If flashing fails:</p>
-                <ul>
-                    <li>Unplug the device, wait 5 seconds, and reconnect</li>
-                    <li>Try manual bootloader entry (BOOT + RESET)</li>
-                    <li>Try a different USB cable (some cables are charge-only)</li>
-                </ul>
-            </details>
-        </div>
-
-        <button class="btn-secondary" id="backToStep1FromSummit">← Back</button>
-        <button class="btn-primary" id="startOverFromSummit">Start Over</button>
     </section>
 </div>
 
-<script src="esp-flasher.js?v=2026-06-11.1" type="module"></script>
+<script src="esp-flasher.js?v=2026-07-04.1" type="module"></script>
 <script src="avr109-flasher.js?v=2026-06-11.1"></script>
 <script src="samba-flasher.js?v=2026-06-13.5"></script>
-<script src="script.js?v=2026-06-13.6" defer></script>
+<script src="script.js?v=2026-07-04.4" defer></script>
 </body>
 </html>
