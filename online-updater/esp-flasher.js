@@ -362,10 +362,14 @@ class ESP32Flasher {
                 if (this.device) {
                     this.log("✓ Device reconnected!");
                     this.bootloaderModeReady = true;
-                    document.getElementById('enterBootloaderButton').style.display = 'none';
-                    document.getElementById('directConnectButton').style.display = 'none';
-                    document.getElementById('alternativeResetButton').style.display = 'none';
-                    document.getElementById('connectButton').style.display = 'inline-block';
+                    const ebBtn = document.getElementById('enterBootloaderButton');
+                    if (ebBtn) ebBtn.style.display = 'none';
+                    const dcBtn2 = document.getElementById('directConnectButton');
+                    if (dcBtn2) dcBtn2.style.display = 'none';
+                    const arBtn = document.getElementById('alternativeResetButton');
+                    if (arBtn) arBtn.style.display = 'none';
+                    const cBtn = document.getElementById('connectButton');
+                    if (cBtn) cBtn.style.display = 'inline-block';
                     return true;
                 } else {
                     this.log("Device did not reconnect as a new port.");

@@ -1,36 +1,47 @@
-// Wizard state management
+// Vail firmware updater — wizard flow + one-click WebSerial flashing.
+//
+// Port handling philosophy: the user should pick their adapter at most ONCE.
+// Web Serial permissions persist per USB device (vendor/product/serial), so
+// every port we've ever been granted comes back via navigator.serial.getPorts().
+// The app firmware and the bootloader enumerate as different USB devices
+// (Adafruit/Seeed/Arduino convention: app PID has the 0x8000 bit set, the
+// bootloader PID is the same value without it), so we classify granted ports
+// by their USB IDs and only fall back to the browser picker when we've never
+// seen the device before.
+
+// Wizard state
 const wizardState = {
-    currentStep: 1,
-    device: null,     // 'adapter' or 'summit'
-    model: null,      // 'basic_pcb', 'advanced_pcb', or 'non_pcb' (for adapter only)
-    board: null,      // 'qtpy' or 'xiao' (for adapter only)
+    step: 'device',
+    device: null,     // 'adapter' | 'summit'
+    model: null,      // 'basic_pcb' | 'advanced_pcb' | 'vail_lite' | 'non_pcb'
+    board: null,      // 'qtpy' | 'xiao' | 'micro' | 'trinkey'
+    flashMethod: 'serial', // 'serial' | 'uf2'
 };
 
-// CORS proxy for cross-origin firmware fetches (Arduino Micro WebSerial flow).
-// The same Cloudflare Worker that serves Summit; generalized to accept a repo
-// segment: /<repo>/<tag>/<file>. See tools/firmware-proxy/worker.js.
+const STORAGE_KEY = 'vailUpdaterSetup';
+
+// CORS proxy for cross-origin firmware fetches. The same Cloudflare Worker that
+// serves Summit; generalized to accept a repo segment: /<repo>/<tag>/<file>.
 const ADAPTER_FIRMWARE_PROXY = 'https://vail-firmware-proxy.brett-hollifield.workers.dev';
 
-// --- Adapter release/version selector ------------------------------------
-// Mirrors the Summit ESP flasher: a version dropdown + "Show test release"
-// checkbox driven by GitHub Releases. Pre-releases are surfaced as the test
-// option. Per-version firmware comes from the release's attached assets,
-// which the build workflow stamps with the tag (e.g. xiao_basic_pcb_v2_v5.0.uf2).
 // Only surface releases at or above this version. Earlier releases used a
 // different firmware layout/board set and shouldn't be offered for flashing.
 const MIN_ADAPTER_VERSION = 5.0;
 
+const webSerialSupported = ('serial' in navigator);
+
+// --- Adapter release/version selector ---------------------------------------
+
 const adapterReleases = {
-    stable: [],          // published, non-prerelease releases that carry firmware assets
-    testRelease: null,   // most recent pre-release with firmware assets (the "test" build)
-    selected: null,      // currently selected release, or null = repository fallback
+    stable: [],
+    testRelease: null,
+    selected: null,
     fetched: false,
 
     hasFirmware(release) {
         return release.assets && release.assets.some(a => /\.(uf2|hex)$/i.test(a.name));
     },
 
-    // Parse a tag like "v5.0" / "V5.1.2" to a comparable number (5.0 / 5.1)
     parseVersion(tag) {
         const m = String(tag || '').match(/(\d+(?:\.\d+)?)/);
         return m ? parseFloat(m[1]) : 0;
@@ -53,8 +64,6 @@ const adapterReleases = {
             const pre = all.filter(r => r.prerelease && this.eligible(r));
             this.testRelease = pre.length ? pre[0] : null;
             this.populate();
-            // Default to the latest stable release. Firmware is distributed
-            // entirely via release assets — there is no repository fallback.
             this.select(this.stable[0] || null);
         } catch (err) {
             console.log('Error fetching adapter releases:', err.message);
@@ -93,7 +102,6 @@ const adapterReleases = {
             else this.select(this.stable.find(r => r.tag_name === tag) || null);
         };
 
-        // Hide the "Show test release" checkbox entirely when there is no test build
         const checkbox = document.getElementById('adapterShowTestRelease');
         if (checkbox) {
             const container = checkbox.closest('.test-release-toggle');
@@ -138,28 +146,20 @@ const adapterReleases = {
     select(release) {
         this.selected = release;
         this.updateInfo(release);
-        // Re-resolve the active download for the new version
-        if (wizardState.currentStep === 3) updateStep3Content();
-        if (wizardState.currentStep === 3.1) updateStep3MicroContent();
+        if (wizardState.step === 'update') updateUpdateScreen();
     },
 
     updateInfo(release) {
-        const info = document.getElementById('adapterReleaseInfo');
-        const badge = document.getElementById('adapterReleaseVersionBadge');
+        const details = document.getElementById('adapterReleaseDetails');
         const dateEl = document.getElementById('adapterReleaseDate');
         const notes = document.getElementById('adapterReleaseNotes');
-        if (!info) return;
+        if (!details) return;
 
         if (!release) {
-            // Repository fallback — no specific release metadata to show
-            info.style.display = 'none';
+            details.style.display = 'none';
             return;
         }
-        info.style.display = 'block';
-        if (badge) {
-            badge.textContent = release.tag_name;
-            badge.className = 'firmware-version' + (release.prerelease ? ' test-version' : '');
-        }
+        details.style.display = 'block';
         if (dateEl) {
             dateEl.textContent = new Date(release.published_at).toLocaleDateString('en-US', {
                 year: 'numeric', month: 'long', day: 'numeric'
@@ -167,13 +167,12 @@ const adapterReleases = {
         }
         if (notes) {
             const items = releaseBodyToItems(release.body);
-            notes.innerHTML = items.length ? `<ul>${items.join('')}</ul>` : '';
+            notes.innerHTML = items.length ? `<ul>${items.join('')}</ul>` : '<p class="no-notes">No notes for this release.</p>';
         }
     },
 
-    // Find the asset for a given base firmware name (e.g. "xiao_basic_pcb_v2")
-    // within the selected release. Asset names are tag-stamped, so match the
-    // base plus an optional "_<tag>" suffix.
+    // Find the asset for a given base firmware name within the selected release.
+    // Asset names are tag-stamped, so match the base plus an optional "_<tag>".
     findAsset(base, ext) {
         if (!this.selected || !this.selected.assets) return null;
         const re = new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(_.+)?\\.' + ext + '$', 'i');
@@ -182,41 +181,27 @@ const adapterReleases = {
 };
 
 // Resolve the base firmware name (no extension) and extension for the current
-// board/model selection. Returns null if the selection is incomplete.
-//
-// `base` is the short, 8.3-safe asset code (e.g. "xb2" -> xb2_50.uf2). The build
-// stamps the major.minor version onto it as the release asset name. `legacyBase`
-// is the old long name (e.g. "xiao_basic_pcb_v2") so the updater keeps finding
-// assets on releases that haven't been re-stamped yet — this lets the new code
-// deploy before the existing release assets are migrated, with no broken window.
+// board/model selection. `base` is the short 8.3-safe asset code; `legacyBase`
+// keeps older, not-yet-restamped releases working.
 function getFirmwareBase() {
     if (wizardState.model === 'vail_lite') return { base: 'vl', legacyBase: 'trinkey_vail_adapter', ext: 'uf2' };
     if (wizardState.board === 'micro') return { base: 'mic', legacyBase: 'arduino_micro', ext: 'hex' };
     if (!wizardState.model || !wizardState.board) return null;
-    const p = wizardState.board === 'xiao' ? 'x' : 'q'; // short board prefix
+    const p = wizardState.board === 'xiao' ? 'x' : 'q';
     if (wizardState.model === 'basic_pcb') return { base: `${p}b2`, legacyBase: `${wizardState.board}_basic_pcb_v2`, ext: 'uf2' };
     if (wizardState.model === 'advanced_pcb') return { base: `${p}ad`, legacyBase: `${wizardState.board}_advanced_pcb`, ext: 'uf2' };
     return { base: `${p}np`, legacyBase: `${wizardState.board}_non_pcb`, ext: 'uf2' };
 }
 
 // Resolve the firmware download for the current selection + selected version.
-// Firmware comes exclusively from the selected release's tag-stamped asset.
-// .hex (Arduino Micro) is fetched in JS, so its asset URL is routed through the
-// CORS proxy; .uf2 is a direct anchor download of the GitHub asset. The asset
-// names are already short and DOS 8.3-safe (e.g. xb2_50.uf2), so the downloaded
-// file keeps GitHub's exact name — which doubles as a troubleshooting label
-// (which board/variant/version was flashed) and won't hang the Windows copy.
 function getFirmwareFile() {
     const sel = getFirmwareBase();
     if (!sel) return null;
     const { base, legacyBase, ext } = sel;
 
-    // A release must be selected, and it must carry this board's asset.
     if (!adapterReleases.selected) {
         return { unavailable: true, version: '(none)', board: `${base}.${ext}` };
     }
-    // Prefer the new short-name asset; fall back to the legacy long name for
-    // releases that haven't been re-stamped yet.
     const asset = adapterReleases.findAsset(base, ext) ||
         (legacyBase ? adapterReleases.findAsset(legacyBase, ext) : null);
     if (!asset) {
@@ -225,310 +210,654 @@ function getFirmwareFile() {
     const url = ext === 'hex'
         ? `${ADAPTER_FIRMWARE_PROXY}/vail-adapter/${adapterReleases.selected.tag_name}/${asset.name}`
         : asset.browser_download_url;
-    return { url, filename: asset.name };
+    return { url, filename: asset.name, ext };
 }
 
-// Get friendly names for display
+// Friendly names
 function getModelName(model) {
-    const names = {
-        'basic_pcb': 'Basic PCB',
-        'advanced_pcb': 'Advanced PCB',
-        'vail_lite': 'Vail Lite',
-        'non_pcb': 'DIY No PCB'
-    };
-    return names[model] || model;
+    return ({
+        basic_pcb: 'Basic PCB',
+        advanced_pcb: 'Advanced PCB',
+        vail_lite: 'Vail Lite',
+        non_pcb: 'DIY No PCB',
+    })[model] || model;
 }
 
 function getBoardName(board) {
-    const names = {
-        'qtpy': 'Adafruit QT Py SAMD21',
-        'xiao': 'Seeeduino XIAO SAMD21',
-        'micro': 'Arduino Micro (experimental)'
-    };
-    return names[board] || board;
+    return ({
+        qtpy: 'QT Py',
+        xiao: 'XIAO',
+        micro: 'Arduino Micro',
+        trinkey: 'Trinkey',
+    })[board] || board;
 }
 
-// Step navigation functions
-function goToStep(stepNumber) {
-    // Hide all steps
-    document.querySelectorAll('.wizard-step').forEach(step => {
-        step.classList.remove('active');
-    });
-
-    // Show target step. Some steps map to non-numeric section ids and all of
-    // the "Update" screens (method chooser, UF2 flow, serial flow, micro flow)
-    // light up progress dot 3.
-    let targetStepId = `step${stepNumber}`;
-    let progressStep = stepNumber;
-    if (stepNumber === 1.5) { targetStepId = 'step1_5'; }
-    else if (stepNumber === 2.5) { targetStepId = 'stepMethod'; progressStep = 3; }
-    else if (stepNumber === 3.1) { targetStepId = 'step3_micro'; progressStep = 3; }
-    else if (stepNumber === 3.2) { targetStepId = 'stepSerial'; progressStep = 3; }
-
-    const targetStep = document.getElementById(targetStepId);
-    if (targetStep) {
-        targetStep.classList.add('active');
-        wizardState.currentStep = stepNumber;
-        updateProgressBar(progressStep);
-
-        // Update step 2 content if navigating there
-        if (stepNumber === 2) {
-            updateStep2Content();
-        }
-
-        // Method chooser
-        if (stepNumber === 2.5) {
-            updateMethodContent();
-        }
-
-        // Update step 3 content if navigating there
-        if (stepNumber === 3) {
-            updateStep3Content();
-        }
-
-        // Update Micro step content if navigating there
-        if (stepNumber === 3.1) {
-            updateStep3MicroContent();
-        }
-
-        // Serial (web flasher) flow
-        if (stepNumber === 3.2) {
-            updateStepSerialContent();
-        }
-
-        // Initialize ESP flasher if navigating to step 4 (Summit)
-        if (stepNumber === 4) {
-            // Wait a moment for the DOM to update
-            setTimeout(() => {
-                if (typeof window.initializeESPFlasher === 'function') {
-                    window.initializeESPFlasher();
-                }
-            }, 100);
-        }
-    }
-}
-
-function updateStep2Content() {
-    // Show/hide QT Py hint based on model selection
-    const qtpyHint = document.getElementById('qtpyHint');
-    if (qtpyHint) {
-        if (wizardState.model === 'non_pcb') {
-            qtpyHint.style.display = 'none';
-        } else {
-            qtpyHint.style.display = 'block';
-        }
-    }
-    // The Arduino Micro is an experimental DIY/breadboard target, so its board
-    // card only appears on the "DIY No PCB" path.
-    const microCard = document.getElementById('microCard');
-    if (microCard) {
-        microCard.style.display = wizardState.model === 'non_pcb' ? '' : 'none';
-    }
-}
-
-function updateProgressBar(stepNumber) {
-    document.querySelectorAll('.progress-step').forEach(step => {
-        const stepNum = parseInt(step.dataset.step);
-        if (stepNum < stepNumber) {
-            step.classList.add('completed');
-            step.classList.remove('active');
-        } else if (stepNum === stepNumber) {
-            step.classList.add('active');
-            step.classList.remove('completed');
-        } else {
-            step.classList.remove('active', 'completed');
-        }
-    });
-}
-
-function updateStep3MicroContent() {
-    // Display the selected config on the Micro flash page
-    const configEl = document.getElementById('selectedConfigMicro');
-    if (configEl) {
-        const modelLabel = getModelName(wizardState.model) || 'DIY';
-        configEl.textContent = `${modelLabel} + ${getBoardName('micro')}`;
-    }
-}
-
-// --- Arduino Micro WebSerial flasher state ---
-const microFlasher = {
-    appPort: null,          // running-application serial port (pre-touch)
-    lastLoggedLine: '',
-};
-
-function microLog(message) {
-    console.log('[micro]', message);
-    const logArea = document.getElementById('microFlashLog');
-    if (logArea) {
-        logArea.textContent += message + '\n';
-        logArea.scrollTop = logArea.scrollHeight;
-    }
-}
-
-function microSerialLog(message) {
-    console.log('[micro-boot]', message);
-    const logArea = document.getElementById('microSerialLog');
-    if (logArea) {
-        logArea.textContent += message + '\n';
-        logArea.scrollTop = logArea.scrollHeight;
-    }
-}
-
-async function triggerMicroBootloader() {
-    if (!('serial' in navigator)) {
-        alert('WebSerial API not supported. Please use Chrome, Edge, or Opera.');
-        return;
-    }
-
-    try {
-        microSerialLog('Requesting the Arduino Micro port…');
-        const port = await navigator.serial.requestPort();
-        microSerialLog('Port selected. Performing 1200-baud touch…');
-        await window.avr109Touch1200(port);
-        microSerialLog('✅ Touch sent. The Micro should now re-enumerate as the Caterina bootloader for ~8 seconds.');
-        microSerialLog('Proceed to step 3 and select the NEW port (different COM/ttyACM number).');
-    } catch (err) {
-        microSerialLog(`❌ ${err.message}`);
-        if (err.name !== 'NotFoundError') {
-            alert(`Bootloader touch failed: ${err.message}`);
-        }
-    }
-}
-
-async function flashMicroFirmware() {
-    if (!('serial' in navigator)) {
-        alert('WebSerial API not supported. Please use Chrome, Edge, or Opera.');
-        return;
-    }
-
-    const firmware = getFirmwareFile();
-    if (!firmware) {
-        alert('No firmware file available for this configuration.');
-        return;
-    }
-    if (firmware.unavailable) {
-        alert(`Arduino Micro firmware is not available in ${firmware.version}. Choose a newer version.`);
-        return;
-    }
-
-    const progressContainer = document.getElementById('microProgressContainer');
-    const progressBar = document.getElementById('microProgressBar');
-    const progressLabel = document.getElementById('microProgressLabel');
-    const progressPercent = document.getElementById('microProgressPercent');
-
-    let port = null;
-    let flasher = null;
-
-    try {
-        microLog(`Downloading ${firmware.filename} from ${firmware.url}…`);
-        const resp = await fetch(firmware.url, { cache: 'no-cache' }).catch(() => null);
-        if (!resp || !resp.ok) {
-            throw new Error(`Firmware fetch failed: HTTP ${resp ? resp.status : 'network error'}`);
-        }
-        const hexText = await resp.text();
-        microLog(`Firmware fetched (${hexText.length} chars of Intel HEX).`);
-
-        microLog('Select the BOOTLOADER port (different from your running-app port).');
-        port = await navigator.serial.requestPort();
-
-        progressContainer.style.display = 'block';
-        progressLabel.textContent = 'Opening bootloader port…';
-
-        flasher = new window.AVR109Flasher({
-            log: microLog,
-            progress: (current, total) => {
-                const pct = Math.round((current / total) * 100);
-                progressBar.style.width = pct + '%';
-                progressPercent.textContent = `${pct}% (block ${current}/${total})`;
-                progressLabel.textContent = 'Writing firmware…';
-            },
-        });
-
-        await flasher.openPort(port, 57600);
-        await flasher.flashHex(hexText);
-
-        progressLabel.textContent = '✅ Done';
-        progressPercent.textContent = '100%';
-        progressBar.style.width = '100%';
-        alert('Firmware flashed successfully! The Micro will restart running the Vail Adapter firmware.');
-    } catch (err) {
-        microLog(`❌ Flash failed: ${err.message}`);
-        progressLabel.textContent = '❌ Error';
-        alert(`Flash failed: ${err.message}`);
-    } finally {
-        if (flasher) {
-            try { await flasher.close(); } catch (e) { /* ignore */ }
-        }
-    }
-}
-
-// Human-readable description of the current model/board selection.
 function getConfigText() {
     if (wizardState.model === 'vail_lite') return getModelName(wizardState.model);
-    return `${getModelName(wizardState.model)} + ${getBoardName(wizardState.board)}`;
+    if (wizardState.device === 'summit') return 'Vail Summit';
+    return `${getModelName(wizardState.model)} · ${getBoardName(wizardState.board)}`;
 }
 
-// Label for the currently selected release (or empty until releases load).
 function getSelectedVersionLabel() {
     const r = adapterReleases.selected;
-    return r ? (r.name || r.tag_name) : 'the selected release';
+    return r ? (r.name || r.tag_name) : 'the latest release';
 }
 
-// Method chooser: just reflect the current selection.
-function updateMethodContent() {
-    const el = document.getElementById('selectedConfigMethod');
-    if (el) el.textContent = getConfigText();
+// --- Step navigation ---------------------------------------------------------
+
+const STEP_SECTIONS = {
+    device: 'step1',
+    model: 'step1_5',
+    board: 'step2',
+    update: 'stepUpdate',
+    summit: 'step4',
+};
+
+function goToStep(step) {
+    document.querySelectorAll('.wizard-step').forEach(s => s.classList.remove('active'));
+    const section = document.getElementById(STEP_SECTIONS[step]);
+    if (!section) return;
+    section.classList.add('active');
+    wizardState.step = step;
+
+    if (step === 'board') updateBoardCards();
+    if (step === 'update') updateUpdateScreen();
+    if (step === 'summit') {
+        setTimeout(() => {
+            if (typeof window.initializeESPFlasher === 'function') window.initializeESPFlasher();
+        }, 100);
+    }
+    renderCrumbs();
+    updateHeader();
 }
 
-// Serial (web flasher) flow: reflect selection and reveal the test-only erase
-// tool when the URL hash opts in.
-function updateStepSerialContent() {
-    const el = document.getElementById('selectedConfigSerial');
-    if (el) el.textContent = `${getConfigText()} — ${getSelectedVersionLabel()}`;
+function updateHeader() {
+    const sub = document.getElementById('pageSub');
+    if (sub) sub.style.display = wizardState.step === 'device' ? '' : 'none';
+}
+
+function updateBoardCards() {
+    const qtpyHint = document.getElementById('qtpyHint');
+    if (qtpyHint) qtpyHint.style.display = wizardState.model === 'non_pcb' ? 'none' : '';
+    // The Arduino Micro is an experimental DIY target: only on the No-PCB path.
+    const microCard = document.getElementById('microCard');
+    if (microCard) microCard.style.display = wizardState.model === 'non_pcb' ? '' : 'none';
+}
+
+// Breadcrumb chips: one per decision already made, click to change it.
+function renderCrumbs() {
+    const bar = document.getElementById('crumbBar');
+    if (!bar) return;
+    const crumbs = [];
+
+    if (wizardState.device) {
+        crumbs.push({ label: wizardState.device === 'summit' ? 'Vail Summit' : 'Vail Adapter', step: 'device' });
+    }
+    if (wizardState.device === 'adapter' && wizardState.model) {
+        crumbs.push({ label: getModelName(wizardState.model), step: 'model' });
+    }
+    if (wizardState.device === 'adapter' && wizardState.board && wizardState.model !== 'vail_lite') {
+        crumbs.push({ label: getBoardName(wizardState.board), step: 'board' });
+    }
+
+    if (!crumbs.length || wizardState.step === 'device') {
+        bar.style.display = 'none';
+        return;
+    }
+
+    bar.style.display = '';
+    bar.innerHTML = '';
+    crumbs.forEach(c => {
+        const chip = document.createElement('button');
+        chip.className = 'crumb-chip';
+        chip.innerHTML = `${escapeHtml(c.label)} <span class="crumb-edit">change</span>`;
+        chip.addEventListener('click', () => goToStep(c.step));
+        bar.appendChild(chip);
+    });
+}
+
+function saveSetup() {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            device: wizardState.device,
+            model: wizardState.model,
+            board: wizardState.board,
+            flashMethod: wizardState.flashMethod,
+        }));
+    } catch (_) { /* private mode etc. */ }
+}
+
+function loadSetup() {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return null;
+        const s = JSON.parse(raw);
+        if (s.device === 'summit') return s;
+        if (s.device === 'adapter' && s.model) return s;
+        return null;
+    } catch (_) { return null; }
+}
+
+// --- Update screen -------------------------------------------------------------
+
+function setMethod(method) {
+    wizardState.flashMethod = method;
+    document.getElementById('tabSerial')?.classList.toggle('active', method === 'serial');
+    document.getElementById('tabUf2')?.classList.toggle('active', method === 'uf2');
+    document.getElementById('methodSerialPanel')?.classList.toggle('active', method === 'serial');
+    document.getElementById('methodUf2Panel')?.classList.toggle('active', method === 'uf2');
+    saveSetup();
+}
+
+function updateUpdateScreen() {
+    const isMicro = wizardState.board === 'micro';
+
+    // Arduino Micro flashes over serial only (Intel HEX, no UF2 bootloader).
+    const tabUf2 = document.getElementById('tabUf2');
+    if (tabUf2) tabUf2.style.display = isMicro ? 'none' : '';
+    const toggle = document.getElementById('methodToggle');
+    if (toggle) toggle.style.display = isMicro ? 'none' : '';
+
+    if (isMicro) {
+        setMethod('serial');
+    } else if (!webSerialSupported && wizardState.flashMethod === 'serial') {
+        setMethod('uf2');
+    } else {
+        setMethod(wizardState.flashMethod || (webSerialSupported ? 'serial' : 'uf2'));
+    }
+
+    // Browser-support note
+    const note = document.getElementById('noWebSerialNote');
+    if (note) note.style.display = webSerialSupported ? 'none' : '';
+    const heroBtn = document.getElementById('flashNowButton');
+    if (heroBtn) heroBtn.disabled = !webSerialSupported;
+
+    // Hero copy
+    const heroText = document.getElementById('flashHeroText');
+    if (heroText) {
+        heroText.textContent =
+            `Plug in your adapter and click once. This installs ${getSelectedVersionLabel()} on your ${getConfigText()}. ` +
+            `The first time, your browser asks which device to use. After that it's fully automatic.`;
+    }
+
+    // UF2 download link
+    updateDownloadButton();
+
+    // Test-only erase tool
     maybeRevealEraseTest();
 }
 
-function updateStep3Content() {
-    const cfg = document.getElementById('selectedConfig');
-    if (cfg) cfg.textContent = getConfigText();
-    const ver = document.getElementById('uf2VersionLabel');
-    if (ver) ver.textContent = getSelectedVersionLabel();
-
-    // Update download button
+function updateDownloadButton() {
     const downloadButton = document.getElementById('downloadButton');
     const downloadText = document.getElementById('downloadText');
+    if (!downloadButton) return;
     const firmwareFile = getFirmwareFile();
 
-    if (firmwareFile && firmwareFile.unavailable) {
-        // The selected release predates this board / has no matching asset
+    if (!firmwareFile || firmwareFile.unavailable) {
         downloadButton.removeAttribute('href');
         downloadButton.removeAttribute('download');
         downloadButton.classList.add('disabled');
         downloadButton.setAttribute('aria-disabled', 'true');
-        downloadText.textContent = `${firmwareFile.board} not available in ${firmwareFile.version}`;
-    } else if (firmwareFile) {
-        // Download the GitHub asset directly, keeping its exact (short, 8.3-safe)
-        // name so the saved file matches the release asset — useful as a
-        // troubleshooting label for which firmware was flashed.
-        const savedName = firmwareFile.filename;
+        downloadText.textContent = firmwareFile
+            ? `Not available in ${firmwareFile.version}`
+            : 'Download UF2 file';
+    } else {
         downloadButton.href = firmwareFile.url;
-        downloadButton.download = savedName;
-        downloadText.textContent = `Download ${savedName}`;
+        downloadButton.download = firmwareFile.filename;
+        downloadText.textContent = `Download ${firmwareFile.filename}`;
         downloadButton.classList.remove('disabled');
         downloadButton.removeAttribute('aria-disabled');
     }
 }
 
-// --- Web flasher: SAM-BA / BOSSA serial flashing for SAMD21 boards ----------
-// The "Web flasher" method chosen on the method screen. Flashes the selected
-// release's .uf2 directly over the bootloader's COM port — fetched via the CORS
-// proxy and converted to a raw binary — the same path the Arduino IDE uses via
-// bossac. Bypasses the UF2 drag-and-drop, which can hang on Windows.
+// --- Port intelligence ---------------------------------------------------------
+//
+// Adafruit, Seeed, and Arduino all follow the same convention: the application
+// runs on PID 0x80xx and the bootloader on the matching 0x00xx. That lets us
+// tell "running adapter" from "bootloader" without opening anything.
 
-function serialFlashLog(message) {
-    console.log('[samba]', message);
+const KNOWN_VENDORS = [
+    0x239A, // Adafruit (QT Py, Trinkey / Vail Lite)
+    0x2886, // Seeed (XIAO)
+    0x2341, // Arduino (Micro)
+    0x2A03, // Arduino.org (older Micro clones)
+    0x1B4F, // SparkFun (32U4 clones)
+];
+
+// Vendor filters for the browser's port picker, narrowed to the selected board
+// so the list doesn't fill up with Bluetooth COM ports and other serial junk.
+// The unfiltered list stays available via "Pick port manually".
+function boardFilters() {
+    const vendors = ({
+        qtpy: [0x239A],
+        trinkey: [0x239A],
+        xiao: [0x2886],
+        micro: [0x2341, 0x2A03, 0x1B4F],
+    })[wizardState.board] || KNOWN_VENDORS;
+    return vendors.map(v => ({ usbVendorId: v }));
+}
+
+function classifyPort(port) {
+    try {
+        const info = port.getInfo();
+        if (!info || !info.usbVendorId) return 'unknown';
+        if (!KNOWN_VENDORS.includes(info.usbVendorId)) return 'unknown';
+        return (info.usbProductId & 0x8000) ? 'app' : 'bootloader';
+    } catch (_) { return 'unknown'; }
+}
+
+function portLabel(port) {
+    try {
+        const i = port.getInfo();
+        if (i && i.usbVendorId) {
+            return `USB ${i.usbVendorId.toString(16).padStart(4, '0')}:${(i.usbProductId || 0).toString(16).padStart(4, '0')}`;
+        }
+    } catch (_) {}
+    return 'serial device';
+}
+
+// Open at 1200 baud and close: the "magic touch" that asks the app to reboot
+// into its bootloader. Works for SAMD21 (uf2-samdx1) and ATmega32U4 (Caterina).
+async function touch1200(port) {
+    try { await port.close(); } catch (_) { /* wasn't open */ }
+    await port.open({ baudRate: 1200 });
+    await new Promise(r => setTimeout(r, 100));
+    await port.close();
+}
+
+// After a 1200-baud touch the board re-enumerates as a different USB device.
+// If we've EVER been granted that bootloader before, it shows up in getPorts()
+// on its own — no picker. Poll for it, and also listen for the connect event.
+async function waitForBootloaderPort(previousPorts, timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const ports = await navigator.serial.getPorts();
+        const found = ports.find(p => classifyPort(p) === 'bootloader') ||
+            ports.find(p => !previousPorts.includes(p));
+        if (found) return found;
+        await new Promise(r => setTimeout(r, 300));
+    }
+    return null;
+}
+
+// --- One-click flash engine ------------------------------------------------------
+
+const flashUI = {
+    stages: ['find', 'boot', 'write', 'done'],
+
+    reset() {
+        const tl = document.getElementById('flashTimeline');
+        if (tl) {
+            tl.style.display = 'none';
+            tl.querySelectorAll('li').forEach(li => li.classList.remove('active', 'done', 'error'));
+        }
+        this.progress(0, 0);
+        const track = document.getElementById('serialProgressTrack');
+        if (track) track.style.display = 'none';
+        const res = document.getElementById('flashResult');
+        if (res) { res.style.display = 'none'; res.innerHTML = ''; res.classList.remove('ok', 'err'); }
+        this.hint('');
+    },
+
+    stage(name, state) {
+        const tl = document.getElementById('flashTimeline');
+        if (!tl) return;
+        tl.style.display = '';
+        const idx = this.stages.indexOf(name);
+        tl.querySelectorAll('li').forEach(li => {
+            const i = this.stages.indexOf(li.dataset.stage);
+            li.classList.remove('active', 'error');
+            if (i < idx) li.classList.add('done');
+            if (i === idx) li.classList.add(state === 'error' ? 'error' : 'active');
+            if (i === idx && state === 'done') { li.classList.remove('active'); li.classList.add('done'); }
+        });
+    },
+
+    progress(cur, total) {
+        const bar = document.getElementById('serialFlashProgressBar');
+        const track = document.getElementById('serialProgressTrack');
+        if (!bar) return;
+        if (total > 0) {
+            if (track) track.style.display = '';
+            bar.style.width = Math.round((cur / total) * 100) + '%';
+        } else {
+            bar.style.width = '0%';
+        }
+    },
+
+    hint(text) {
+        const el = document.getElementById('flashHint');
+        if (!el) return;
+        el.style.display = text ? '' : 'none';
+        el.textContent = text || '';
+    },
+
+    result(html, ok) {
+        const res = document.getElementById('flashResult');
+        if (!res) return;
+        res.style.display = '';
+        res.classList.toggle('ok', !!ok);
+        res.classList.toggle('err', !ok);
+        res.innerHTML = html;
+    },
+
+    button(label, disabled) {
+        const btn = document.getElementById('flashNowButton');
+        if (!btn) return;
+        btn.textContent = label;
+        btn.disabled = !!disabled;
+        btn.classList.toggle('attention', /select/i.test(label));
+    },
+};
+
+function flashLog(message) {
+    console.log('[flash]', message);
     const el = document.getElementById('serialFlashLog');
     if (el) { el.textContent += message + '\n'; el.scrollTop = el.scrollHeight; }
+}
+
+const flashEngine = {
+    running: false,
+    pendingPick: null, // resolver waiting for a user click to open the picker
+
+    // Called by the hero button. Either starts a run or satisfies a pending
+    // "we need one more user gesture to show the picker" state.
+    onHeroClick() {
+        if (this.pendingPick) {
+            const resolve = this.pendingPick;
+            this.pendingPick = null;
+            resolve();
+            return;
+        }
+        if (this.running) return;
+        this.run({ manualPick: false });
+    },
+
+    // Wait for the user to click the hero button so we regain a user gesture
+    // (requestPort needs one). Used only when the bootloader device has never
+    // been granted before.
+    waitForGesture(buttonLabel, hintText) {
+        flashUI.button(buttonLabel, false);
+        flashUI.hint(hintText);
+        return new Promise(resolve => { this.pendingPick = resolve; });
+    },
+
+    async requestPortFiltered() {
+        try {
+            return await navigator.serial.requestPort({ filters: boardFilters() });
+        } catch (err) {
+            if (err.name === 'NotFoundError') {
+                // Nothing matched the filters (unusual bootloader IDs) — offer
+                // the unfiltered list once.
+                await this.waitForGesture('Select the new device', 'Your adapter was not in the list. Click to see every port.');
+                return await navigator.serial.requestPort();
+            }
+            throw err;
+        }
+    },
+
+    async run({ manualPick }) {
+        if (!webSerialSupported) return;
+        this.running = true;
+        flashUI.reset();
+        flashUI.button('Working…', true);
+
+        const isMicro = wizardState.board === 'micro';
+
+        try {
+            // Validate firmware selection up front and start the download early.
+            const firmware = getFirmwareFile();
+            if (!firmware || firmware.unavailable) {
+                throw new Error(firmware
+                    ? `This board has no firmware in ${firmware.version}. Pick a different version above.`
+                    : 'Pick a version above first.');
+            }
+            flashLog(`Fetching ${firmware.filename}…`);
+            const firmwarePromise = this.fetchFirmware(firmware);
+
+            // Stage 1: find the adapter
+            flashUI.stage('find', 'active');
+            let port = null;
+
+            if (!manualPick) {
+                const granted = await navigator.serial.getPorts();
+                port = granted.find(p => classifyPort(p) === 'bootloader') ||
+                       granted.find(p => classifyPort(p) === 'app');
+                if (port) flashLog(`Reusing remembered device (${portLabel(port)}).`);
+            }
+            if (!port) {
+                flashUI.hint('Pick your adapter in the popup. The list only shows devices that look like yours.');
+                // Filtered to the selected board's USB vendor so unrelated COM
+                // ports (Bluetooth etc.) never appear. Manual mode shows all.
+                port = manualPick
+                    ? await navigator.serial.requestPort()
+                    : await navigator.serial.requestPort({ filters: boardFilters() });
+                flashUI.hint('');
+                flashLog(`Port selected (${portLabel(port)}).`);
+            }
+
+            let cls = classifyPort(port);
+            if (manualPick && cls === 'unknown') {
+                // Manual mode: trust the user, assume it's already the bootloader.
+                cls = 'bootloader';
+            }
+            flashUI.stage('find', 'done');
+
+            // Stage 2: get into the bootloader
+            flashUI.stage('boot', 'active');
+            let bootPort = null;
+
+            if (cls === 'bootloader') {
+                flashLog('Device is already in bootloader mode.');
+                bootPort = port;
+            } else if (cls === 'unknown' && !isMicro) {
+                // Unrecognized USB IDs (DIY builds): probe SAM-BA first — it may
+                // already be a bootloader we don't recognize.
+                flashLog('Unrecognized device, probing for a bootloader…');
+                bootPort = (await this.probeSamba(port)) ? port : null;
+                if (!bootPort) {
+                    flashLog('Not a bootloader. Sending reboot command…');
+                    bootPort = await this.rebootAndReacquire(port, isMicro);
+                }
+            } else {
+                flashLog('Adapter is running normally. Sending reboot-to-bootloader command…');
+                bootPort = await this.rebootAndReacquire(port, isMicro);
+            }
+            flashUI.stage('boot', 'done');
+
+            // Stage 3: write firmware
+            flashUI.stage('write', 'active');
+            const fw = await firmwarePromise;
+            if (isMicro) {
+                await this.flashAvr109(bootPort, fw);
+            } else {
+                await this.flashSamba(bootPort, fw);
+            }
+            flashUI.stage('write', 'done');
+
+            // Done
+            flashUI.stage('done', 'done');
+            flashUI.progress(1, 1);
+            flashUI.result(
+                `<strong>Firmware installed.</strong> Your adapter is rebooting into ${escapeHtml(getSelectedVersionLabel())}. ` +
+                `Next stop: the <a href="https://vailadapter.com/gettingstarted" target="_blank" rel="noopener">Getting Started guide</a> to set keyer type, speed, and tone.`,
+                true
+            );
+            flashUI.button('Update again', false);
+        } catch (err) {
+            if (err && err.name === 'NotFoundError') {
+                flashLog('Port selection cancelled.');
+                flashUI.reset();
+                flashUI.hint('No device picked. If your adapter was missing from the list, check the cable (some only charge), or use "Pick port manually" under advanced options to see every port.');
+                flashUI.button('Update firmware', false);
+            } else {
+                flashLog(`❌ ${err.message}`);
+                const stage = document.querySelector('#flashTimeline li.active');
+                if (stage) flashUI.stage(stage.dataset.stage, 'error');
+                flashUI.result(
+                    `<strong>That didn't work.</strong> ${escapeHtml(err.message)}<br>` +
+                    `Unplug the adapter, plug it back in, and try again. The activity log under advanced options has the details, ` +
+                    `and the Download file method always works as a backup.`,
+                    false
+                );
+                flashUI.button('Try again', false);
+            }
+        } finally {
+            this.running = false;
+            this.pendingPick = null;
+        }
+    },
+
+    async fetchFirmware(firmware) {
+        const tag = adapterReleases.selected && adapterReleases.selected.tag_name;
+        const proxyUrl = `${ADAPTER_FIRMWARE_PROXY}/vail-adapter/${tag}/${firmware.filename}`;
+        const resp = await fetch(proxyUrl, { cache: 'no-cache' });
+        if (!resp.ok) throw new Error(`Firmware download failed (HTTP ${resp.status}). Check your connection and try again.`);
+        if (firmware.ext === 'hex') {
+            return { kind: 'hex', text: await resp.text() };
+        }
+        const { bin, baseAddr } = window.uf2ToBin(await resp.arrayBuffer());
+        flashLog(`Firmware ready: ${bin.length} bytes @ 0x${baseAddr.toString(16)}.`);
+        return { kind: 'bin', bin, baseAddr };
+    },
+
+    // Quick, quiet SAM-BA handshake check used for unrecognized devices.
+    async probeSamba(port) {
+        const probe = new window.SAMBAFlasher({ log: () => {} });
+        try {
+            await probe.open(port);
+            await probe.connect();
+            await probe.close();
+            return true;
+        } catch (_) {
+            try { await probe.close(); } catch (_) {}
+            return false;
+        }
+    },
+
+    // 1200-baud touch, then get the bootloader port back WITHOUT a second
+    // picker whenever possible.
+    async rebootAndReacquire(appPort, isMicro) {
+        const before = await navigator.serial.getPorts();
+        await touch1200(appPort);
+        flashLog('Reboot command sent. Waiting for the bootloader to appear…');
+        flashUI.hint('The adapter is restarting into bootloader mode…');
+
+        const found = await waitForBootloaderPort(before, isMicro ? 6000 : 8000);
+        if (found) {
+            flashUI.hint('');
+            flashLog(`Bootloader found automatically (${portLabel(found)}).`);
+            return found;
+        }
+
+        // Never-granted bootloader: we need one click to show the picker.
+        // (Chrome forgets the user gesture after a few seconds of waiting.)
+        flashLog('Bootloader needs a one-time permission grant.');
+        await this.waitForGesture(
+            'Select the new device',
+            'One more click: the adapter reappeared as a new device. Click the button, then pick it in the popup. You only do this once.'
+        );
+        flashUI.button('Working…', true);
+        const picked = await this.requestPortFiltered();
+        flashUI.hint('');
+        flashLog(`Bootloader selected (${portLabel(picked)}).`);
+        return picked;
+    },
+
+    async flashSamba(port, fw) {
+        if (fw.kind !== 'bin') throw new Error('Wrong firmware type for this board.');
+        const flasher = new window.SAMBAFlasher({
+            log: flashLog,
+            progress: (cur, total) => flashUI.progress(cur, total),
+        });
+        try {
+            await flasher.open(port);
+            await flasher.connect();
+            await flasher.eraseApp();
+            await flasher.writeFirmware(fw.bin, fw.baseAddr);
+            await flasher.resetDevice();
+        } finally {
+            try { await flasher.close(); } catch (_) {}
+        }
+    },
+
+    async flashAvr109(port, fw) {
+        if (fw.kind !== 'hex') throw new Error('Wrong firmware type for this board.');
+        const flasher = new window.AVR109Flasher({
+            log: flashLog,
+            progress: (cur, total) => flashUI.progress(cur, total),
+        });
+        try {
+            await flasher.openPort(port, 57600);
+            await flasher.flashHex(fw.text);
+        } finally {
+            try { await flasher.close(); } catch (_) {}
+        }
+    },
+};
+
+// --- Advanced tools ----------------------------------------------------------
+
+// Reboot into bootloader mode without flashing (feeds the UF2 flow too).
+// logFn/hintEl let the UF2 panel and the advanced panel share this.
+async function enterBootloaderOnly(logFn, hintElId) {
+    const hintEl = document.getElementById(hintElId);
+    const setHint = (t, ok) => {
+        if (!hintEl) return;
+        hintEl.style.display = t ? '' : 'none';
+        hintEl.textContent = t || '';
+        hintEl.classList.toggle('ok', !!ok);
+    };
+
+    if (!webSerialSupported) {
+        setHint('This browser cannot talk to USB devices. Double-tap the reset button on the adapter instead.');
+        return;
+    }
+
+    try {
+        let port = null;
+        const granted = await navigator.serial.getPorts();
+        port = granted.find(p => classifyPort(p) === 'app');
+        if (granted.find(p => classifyPort(p) === 'bootloader')) {
+            setHint('Your adapter is already in bootloader mode. The boot drive should be visible now.', true);
+            return;
+        }
+        if (port) {
+            logFn(`Reusing remembered device (${portLabel(port)}).`);
+        } else {
+            setHint('Pick your adapter in the popup.');
+            port = await navigator.serial.requestPort({ filters: boardFilters() });
+        }
+        logFn('Sending reboot-to-bootloader command (1200 baud touch)…');
+        await touch1200(port);
+        logFn('✅ Done. The boot drive (QTPYBOOT / XIAOBOOT / ADAPTERBOOT) should appear in a few seconds.');
+        setHint('Done. Watch for the boot drive to appear, then continue to the next step.', true);
+    } catch (err) {
+        if (err.name === 'NotFoundError') { setHint(''); return; }
+        logFn(`❌ ${err.message}`);
+        setHint(`That failed: ${err.message}. You can always double-tap the reset button instead.`);
+    }
+}
+
+function uf2Log(message) {
+    console.log('[uf2]', message);
+    const el = document.getElementById('serialLog');
+    if (el) { el.textContent += message + '\n'; el.scrollTop = el.scrollHeight; }
+}
+
+async function forgetRememberedPorts() {
+    const hint = document.getElementById('flashHint');
+    try {
+        const ports = await navigator.serial.getPorts();
+        let n = 0;
+        for (const p of ports) {
+            if (typeof p.forget === 'function') { await p.forget(); n++; }
+        }
+        flashLog(`Forgot ${n} remembered device${n === 1 ? '' : 's'}.`);
+        if (hint) { hint.style.display = ''; hint.textContent = `Forgot ${n} remembered device${n === 1 ? '' : 's'}. The next update will ask you to pick again.`; }
+    } catch (err) {
+        flashLog(`❌ ${err.message}`);
+    }
 }
 
 // The "Erase app" tool is test-only — reveal it only when the URL hash opts in.
@@ -537,208 +866,58 @@ function maybeRevealEraseTest() {
     if (el) el.style.display = /test|erase|debug/i.test(location.hash) ? 'block' : 'none';
 }
 
-async function flashAdapterOverSerial() {
-    if (!('serial' in navigator)) {
-        alert('WebSerial is not supported. Please use Chrome, Edge, or Opera.');
-        return;
-    }
-    const firmware = getFirmwareFile();
-    if (!firmware || firmware.unavailable) {
-        alert('Select a firmware version and board above first.');
-        return;
-    }
-    if (!firmware.filename.toLowerCase().endsWith('.uf2')) {
-        alert('Serial flashing applies to the SAMD21 boards (UF2). The Arduino Micro has its own flasher.');
-        return;
-    }
-
-    const tag = adapterReleases.selected && adapterReleases.selected.tag_name;
-    const proxyUrl = `${ADAPTER_FIRMWARE_PROXY}/vail-adapter/${tag}/${firmware.filename}`;
-
-    const container = document.getElementById('serialFlashProgressContainer');
-    const bar = document.getElementById('serialFlashProgressBar');
-    const label = document.getElementById('serialFlashProgressLabel');
-    const percent = document.getElementById('serialFlashProgressPercent');
-
-    let flasher = null;
-    try {
-        serialFlashLog(`Downloading ${firmware.filename}…`);
-        const resp = await fetch(proxyUrl, { cache: 'no-cache' });
-        if (!resp.ok) throw new Error(`Firmware download failed: HTTP ${resp.status}`);
-        const { bin, baseAddr } = window.uf2ToBin(await resp.arrayBuffer());
-        serialFlashLog(`Firmware ready: ${bin.length} bytes @ 0x${baseAddr.toString(16)}.`);
-
-        serialFlashLog("Select your adapter's bootloader COM port…");
-        const port = await navigator.serial.requestPort();
-
-        if (container) container.style.display = 'block';
-        if (label) label.textContent = 'Connecting to bootloader…';
-
-        flasher = new window.SAMBAFlasher({
-            log: serialFlashLog,
-            progress: (cur, total) => {
-                const pct = Math.round((cur / total) * 100);
-                if (bar) bar.style.width = pct + '%';
-                if (percent) percent.textContent = `${pct}% (${cur}/${total} bytes)`;
-                if (label) label.textContent = 'Writing firmware…';
-            },
-        });
-
-        await flasher.open(port);
-        await flasher.connect();
-        await flasher.eraseApp();
-        await flasher.writeFirmware(bin, baseAddr);
-        await flasher.resetDevice();
-
-        if (label) label.textContent = '✅ Done';
-        if (percent) percent.textContent = '100%';
-        if (bar) bar.style.width = '100%';
-        serialFlashLog('✅ Flash complete. The adapter should reboot into the new firmware.');
-        alert('Firmware flashed over serial! The adapter will reboot. If it stays in bootloader mode, unplug and replug it.');
-    } catch (err) {
-        serialFlashLog(`❌ ${err.message}`);
-        if (label) label.textContent = '❌ Error';
-        if (err.name !== 'NotFoundError') alert(`Serial flash failed: ${err.message}`);
-    } finally {
-        if (flasher) { try { await flasher.close(); } catch (e) { /* ignore */ } }
-    }
-}
-
 // Testing helper: erase just the app region so the bootloader finds no valid
-// app and stays in storage/bootloader mode on every power-up — i.e. reproduce
-// the "stuck" state on purpose. Fully recoverable: the bootloader (0x0000-0x2000)
-// is never erased, so "Flash over serial" or UF2 brings it back.
+// app — reproduces the "stuck in bootloader" state. Fully recoverable.
 async function eraseAdapterAppForTest() {
-    if (!('serial' in navigator)) {
-        alert('WebSerial is not supported. Please use Chrome, Edge, or Opera.');
-        return;
-    }
-    if (!confirm('TEST ONLY: this erases the adapter\'s firmware so it boots into bootloader (storage) mode every time — reproducing the "stuck" state. You can recover it with "Flash over serial" or UF2. Continue?')) {
+    if (!webSerialSupported) return;
+    if (!confirm('TEST ONLY: this erases the adapter\'s firmware so it boots into bootloader (storage) mode every time. You can recover it with the update button or a UF2 file. Continue?')) {
         return;
     }
     let flasher = null;
     try {
-        serialFlashLog("Select your adapter's bootloader COM port…");
-        const port = await navigator.serial.requestPort();
-        flasher = new window.SAMBAFlasher({ log: serialFlashLog });
+        let port = (await navigator.serial.getPorts()).find(p => classifyPort(p) === 'bootloader');
+        if (!port) {
+            flashLog("Select your adapter's bootloader COM port…");
+            port = await navigator.serial.requestPort({ filters: boardFilters() });
+        }
+        flasher = new window.SAMBAFlasher({ log: flashLog });
         await flasher.open(port);
         await flasher.connect();
         await flasher.eraseApp();
         await flasher.resetDevice();
-        serialFlashLog('✅ App erased. The adapter will now boot into bootloader mode on every plug-in until you reflash it.');
-        alert('App erased — the adapter is now in the "stuck" state (boots to bootloader/storage mode every time). Use "Flash over serial" or UF2 to recover it.');
+        flashLog('✅ App erased. The adapter now boots into bootloader mode on every plug-in until you reflash it.');
     } catch (err) {
-        serialFlashLog(`❌ ${err.message}`);
-        if (err.name !== 'NotFoundError') alert(`Erase failed: ${err.message}`);
+        flashLog(`❌ ${err.message}`);
     } finally {
-        if (flasher) { try { await flasher.close(); } catch (e) { /* ignore */ } }
+        if (flasher) { try { await flasher.close(); } catch (_) {} }
     }
 }
 
-// WebSerial boot mode functionality
-let port;
+// --- Markdown helpers for release notes ---------------------------------------
 
-// Which <pre> the bootloader-trigger logs to. The UF2 flow uses #serialLog; the
-// web-flasher flow uses #serialBootLog. Set by each boot button before calling.
-let bootLogTargetId = 'serialLog';
-
-function logToPage(message) {
-    console.log(message);
-    const logArea = document.getElementById(bootLogTargetId);
-    if (logArea) {
-        logArea.textContent += message + '\n';
-        logArea.scrollTop = logArea.scrollHeight;
-    }
-}
-
-async function triggerBootloaderViaWebSerial() {
-    logToPage("Attempting to trigger bootloader via WebSerial...");
-
-    if (!("serial" in navigator)) {
-        logToPage("Error: WebSerial API not supported by this browser. Please use Chrome, Edge, or Opera.");
-        alert("WebSerial API not supported. Please use Chrome, Edge, or Opera browser, or try the manual reset method.");
-        return;
-    }
-
-    try {
-        // Close previous port if open
-        if (port && port.readable) {
-            logToPage("Closing previously opened port...");
-            try {
-                if (port.readable) {
-                    const reader = port.readable.getReader();
-                    reader.cancel();
-                    reader.releaseLock();
-                }
-                await port.close();
-                logToPage("Previously opened port closed.");
-            } catch (closeErr) {
-                logToPage(`Note: Error closing previous port: ${closeErr.message}`);
-            }
-            port = null;
-        }
-
-        logToPage("Linux users: Select the port that represents your Arduino (e.g., /dev/ttyACM0 or /dev/ttyUSB0).");
-        logToPage("Requesting serial port selection...");
-        port = await navigator.serial.requestPort();
-        logToPage("Port selected.");
-
-        logToPage("Attempting 1200bps touch to trigger bootloader...");
-        await port.open({ baudRate: 1200 });
-        logToPage("Port opened at 1200bps.");
-
-        await port.close();
-        logToPage("Port closed after 1200bps touch.");
-        logToPage("✅ SUCCESS: Bootloader mode command sent!");
-        logToPage("Your device should now appear as a storage drive (QTPYBOOT, XIAOBOOT, or ADAPTERBOOT).");
-        alert("Bootloader mode activated! Your device should now appear as a USB storage drive. Proceed to download the firmware.");
-
-        port = null;
-
-    } catch (err) {
-        logToPage(`❌ Error: ${err.message}`);
-        if (err.name === 'NotFoundError') {
-            alert("Serial port selection cancelled or no compatible device found.");
-        } else if (err.name === 'InvalidStateError') {
-            alert("Serial port is already closed. Please try again.");
-        } else {
-            alert(`An error occurred: ${err.message}`);
-        }
-
-        if (port) {
-            try { await port.close(); } catch (e) { /* ignore */ }
-            port = null;
-        }
-    }
-}
-
-// Escape HTML special characters so release-note text can't inject markup
 function escapeHtml(s) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-// Strip the small subset of Markdown that shows up in release notes
 function stripMarkdown(s) {
     return s
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [text](url) -> text
-        .replace(/\*\*([^*]+)\*\*/g, '$1')        // **bold** -> bold
-        .replace(/`([^`]+)`/g, '$1')              // `code` -> code
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/`([^`]+)`/g, '$1')
         .trim();
 }
 
-// Turn a release-note body (Markdown) into <li> items for the What's New list
 function releaseBodyToItems(body) {
     const items = [];
     for (const raw of (body || '').split(/\r?\n/)) {
         const line = raw.trim();
         if (!line) continue;
-        // Skip the "Go to https://update.vailadapter.com/" promo lines
         if (/^go to\s+https?:\/\//i.test(line) || /update\.vailadapter\.com/i.test(line)) continue;
 
         const heading = line.match(/^#{1,6}\s+(.*)$/);
         if (heading) {
             const text = escapeHtml(stripMarkdown(heading[1]));
-            items.push(`<li style="list-style:none;margin-left:-20px;font-weight:600;">${text}</li>`);
+            items.push(`<li class="note-heading">${text}</li>`);
             continue;
         }
 
@@ -749,11 +928,8 @@ function releaseBodyToItems(body) {
     return items;
 }
 
-// Populate the "What's New" section from the latest GitHub Release for the
-// selected device. Both repos publish firmware as GitHub Releases; if a repo
-// has no published release yet (e.g. Summit's official channel), the section
-// is hidden rather than falling back to raw commit history.
-// deviceType: 'adapter' or 'summit'
+// --- What's New ---------------------------------------------------------------
+
 async function fetchRecentUpdates(deviceType) {
     const repoName = deviceType === 'summit' ? 'vail-summit' : 'vail-adapter';
     const deviceLabel = deviceType === 'summit' ? 'Vail Summit' : 'Vail Adapter';
@@ -762,61 +938,39 @@ async function fetchRecentUpdates(deviceType) {
     const dateElement = document.getElementById('lastUpdateDate');
     const listElement = document.getElementById('recentCommitsList');
 
-    // Update the global page title to match the selected device
     const pageTitle = document.getElementById('pageTitle');
-    if (pageTitle) {
-        pageTitle.textContent = `${deviceLabel} Firmware Update`;
-    }
+    if (pageTitle) pageTitle.textContent = `Update your ${deviceLabel}`;
 
-    // Update the device name in the header
     const deviceElement = document.getElementById('whatsNewDevice');
-    if (deviceElement) {
-        deviceElement.textContent = deviceLabel;
-    }
+    if (deviceElement) deviceElement.textContent = deviceLabel;
 
-    // Update manual link (hide for Summit since it doesn't have a manual page)
     const manualLink = document.getElementById('manualLink');
-    if (manualLink) {
-        manualLink.style.display = deviceType === 'adapter' ? 'block' : 'none';
-    }
+    if (manualLink) manualLink.style.display = deviceType === 'adapter' ? 'block' : 'none';
 
-    // Hide the "full release notes" link until this fetch resolves with a URL
     const releaseNotesLink = document.getElementById('releaseNotesLink');
     if (releaseNotesLink) releaseNotesLink.style.display = 'none';
 
-    // Show the section in a loading state, clearing any stale content from a
-    // previously selected device so the other device's notes never show through
     if (section) section.style.display = 'block';
     if (dateElement) dateElement.textContent = 'Loading...';
     if (listElement) listElement.innerHTML = '<li>Loading latest release...</li>';
 
     try {
         const response = await fetch(`https://api.github.com/repos/Vail-CW/${repoName}/releases/latest`);
-        if (response.status === 404) {
-            // No published release for this device yet — hide the section
-            if (section) section.style.display = 'none';
-            return;
-        }
         if (!response.ok) {
-            console.log('Could not fetch latest release');
             if (section) section.style.display = 'none';
             return;
         }
         const release = await response.json();
 
-        // Header: "<Version> — <date>", e.g. "V4.4 — October 3, 2025"
         const versionLabel = release.name || release.tag_name || '';
         const publishedDate = new Date(release.published_at);
         const dateStr = publishedDate.toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
+            year: 'numeric', month: 'long', day: 'numeric'
         });
         if (dateElement) {
             dateElement.textContent = versionLabel ? `${versionLabel} — ${dateStr}` : dateStr;
         }
 
-        // Body: render the release notes as a bullet list
         if (listElement) {
             const items = releaseBodyToItems(release.body);
             listElement.innerHTML = items.length
@@ -824,8 +978,6 @@ async function fetchRecentUpdates(deviceType) {
                 : '<li>See the release notes on GitHub for details.</li>';
         }
 
-        // Link to the full release notes on GitHub (nothing is silently cut off,
-        // but this is the canonical source for the complete changelog)
         if (releaseNotesLink && release.html_url) {
             const anchor = releaseNotesLink.querySelector('a');
             if (anchor) anchor.href = release.html_url;
@@ -837,199 +989,128 @@ async function fetchRecentUpdates(deviceType) {
     }
 }
 
-// Hide the What's New section and reset the page title
 function hideWhatsNew() {
     const section = document.getElementById('whatsNewSection');
-    if (section) {
-        section.style.display = 'none';
-    }
+    if (section) section.style.display = 'none';
     const pageTitle = document.getElementById('pageTitle');
-    if (pageTitle) {
-        pageTitle.textContent = 'Vail Firmware Update';
+    if (pageTitle) pageTitle.textContent = 'Update your Vail device';
+}
+
+// --- Selection handling ---------------------------------------------------------
+
+function selectDevice(device) {
+    wizardState.device = device;
+    if (device === 'adapter') {
+        fetchRecentUpdates('adapter');
+        adapterReleases.fetch();
+        goToStep('model');
+    } else {
+        wizardState.model = null;
+        wizardState.board = null;
+        fetchRecentUpdates('summit');
+        saveSetup();
+        goToStep('summit');
     }
 }
 
-// Initialize wizard on page load
+function selectModel(model) {
+    if (wizardState.model !== model) wizardState.board = null;
+    wizardState.model = model;
+    if (model === 'vail_lite') {
+        wizardState.board = 'trinkey';
+        saveSetup();
+        goToStep('update');
+    } else {
+        goToStep('board');
+    }
+}
+
+function selectBoard(board) {
+    wizardState.board = board;
+    saveSetup();
+    goToStep('update');
+}
+
+function wireCards(sectionId, dataKey, handler) {
+    document.querySelectorAll(`#${sectionId} .selection-card`).forEach(card => {
+        const pick = () => {
+            document.querySelectorAll(`#${sectionId} .selection-card`).forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            handler(card.dataset[dataKey]);
+        };
+        card.addEventListener('click', pick);
+        card.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); }
+        });
+    });
+}
+
+// --- Init -----------------------------------------------------------------------
+
 document.addEventListener('DOMContentLoaded', () => {
-    // Step 1: Device selection (Adapter vs Summit)
-    document.querySelectorAll('#step1 .selection-card').forEach(card => {
-        card.addEventListener('click', () => {
-            // Remove selected state from all cards
-            document.querySelectorAll('#step1 .selection-card').forEach(c => {
-                c.classList.remove('selected');
-            });
+    wireCards('step1', 'device', selectDevice);
+    wireCards('step1_5', 'model', selectModel);
+    wireCards('step2', 'board', selectBoard);
 
-            // Mark this card as selected
-            card.classList.add('selected');
-            wizardState.device = card.dataset.device;
-
-            // Navigate based on device type
-            setTimeout(() => {
-                if (wizardState.device === 'adapter') {
-                    // Go to adapter model selection (step 1.5)
-                    goToStep(1.5);
-                    fetchRecentUpdates('adapter');
-                    adapterReleases.fetch();
-                } else if (wizardState.device === 'summit') {
-                    // Go directly to Summit flash page (step 4)
-                    goToStep(4);
-                    fetchRecentUpdates('summit');
-                }
-            }, 300);
-        });
+    // Method tabs
+    document.getElementById('tabSerial')?.addEventListener('click', () => {
+        if (webSerialSupported) setMethod('serial');
     });
+    document.getElementById('tabUf2')?.addEventListener('click', () => setMethod('uf2'));
+    document.getElementById('switchToUf2')?.addEventListener('click', () => setMethod('uf2'));
 
-    // Step 1.5: Adapter Model selection
-    document.querySelectorAll('#step1_5 .selection-card').forEach(card => {
-        card.addEventListener('click', () => {
-            // Remove selected state from all cards
-            document.querySelectorAll('#step1_5 .selection-card').forEach(c => {
-                c.classList.remove('selected');
-            });
+    // One-click flash
+    document.getElementById('flashNowButton')?.addEventListener('click', () => flashEngine.onHeroClick());
 
-            // Mark this card as selected
-            card.classList.add('selected');
-            wizardState.model = card.dataset.model;
-
-            // Vail Lite skips board selection (only one hardware variant)
-            if (wizardState.model === 'vail_lite') {
-                wizardState.board = 'trinkey'; // Set board for internal tracking
-                setTimeout(() => {
-                    goToStep(2.5); // Go to the flashing-method chooser
-                }, 300);
-            } else {
-                // Other models need board selection
-                setTimeout(() => {
-                    goToStep(2);
-                }, 300);
-            }
-        });
+    // Advanced tools
+    document.getElementById('bootOnlyButton')?.addEventListener('click', () => enterBootloaderOnly(flashLog, 'flashHint'));
+    document.getElementById('manualPortButton')?.addEventListener('click', () => {
+        if (!flashEngine.running) flashEngine.run({ manualPick: true });
     });
-
-    // Step 2: Board selection
-    document.querySelectorAll('#step2 .selection-card').forEach(card => {
-        card.addEventListener('click', () => {
-            // Remove selected state from all cards
-            document.querySelectorAll('#step2 .selection-card').forEach(c => {
-                c.classList.remove('selected');
-            });
-
-            // Mark this card as selected
-            card.classList.add('selected');
-            wizardState.board = card.dataset.board;
-
-            // Arduino Micro has its own serial-only flow; SAMD21 boards go to
-            // the flashing-method chooser (UF2 vs web flasher).
-            const nextStep = wizardState.board === 'micro' ? 3.1 : 2.5;
-            setTimeout(() => {
-                goToStep(nextStep);
-            }, 300);
-        });
-    });
-
-    // Method chooser: UF2 vs web flasher
-    document.querySelectorAll('#stepMethod .selection-card').forEach(card => {
-        card.addEventListener('click', () => {
-            document.querySelectorAll('#stepMethod .selection-card').forEach(c => c.classList.remove('selected'));
-            card.classList.add('selected');
-            wizardState.flashMethod = card.dataset.method;
-            setTimeout(() => {
-                goToStep(wizardState.flashMethod === 'serial' ? 3.2 : 3);
-            }, 300);
-        });
-    });
-
-    // Back buttons
-    document.getElementById('backToStep1FromModel')?.addEventListener('click', () => {
-        hideWhatsNew();
-        goToStep(1);
-    });
-
-    document.getElementById('backToStep1')?.addEventListener('click', () => {
-        goToStep(1.5);
-    });
-
-    // Method chooser back → board selection (or model, for Vail Lite which skips it)
-    document.getElementById('backToBoardFromMethod')?.addEventListener('click', () => {
-        goToStep(wizardState.model === 'vail_lite' ? 1.5 : 2);
-    });
-
-    // Both flow screens go back to the method chooser
-    document.getElementById('backToMethodFromUf2')?.addEventListener('click', () => goToStep(2.5));
-    document.getElementById('backToMethodFromSerial')?.addEventListener('click', () => goToStep(2.5));
-
-    document.getElementById('backToStep1FromSummit')?.addEventListener('click', () => {
-        hideWhatsNew();
-        goToStep(1);
-    });
-
-    // Start over buttons
-    document.getElementById('startOver')?.addEventListener('click', () => {
-        wizardState.device = null;
-        wizardState.model = null;
-        wizardState.board = null;
-        document.querySelectorAll('.selection-card').forEach(card => {
-            card.classList.remove('selected');
-        });
-        hideWhatsNew();
-        goToStep(1);
-    });
-
-    document.getElementById('startOverFromSummit')?.addEventListener('click', () => {
-        wizardState.device = null;
-        wizardState.model = null;
-        wizardState.board = null;
-        document.querySelectorAll('.selection-card').forEach(card => {
-            card.classList.remove('selected');
-        });
-        hideWhatsNew();
-        goToStep(1);
-    });
-
-    // Boot mode buttons (UF2 flow logs to #serialLog; serial flow to #serialBootLog)
-    document.getElementById('bootModeButton')?.addEventListener('click', () => {
-        bootLogTargetId = 'serialLog';
-        triggerBootloaderViaWebSerial();
-    });
-    document.getElementById('serialBootButton')?.addEventListener('click', () => {
-        bootLogTargetId = 'serialBootLog';
-        triggerBootloaderViaWebSerial();
-    });
-
-    // Web flasher (serial) flow
-    document.getElementById('serialFlashButton')?.addEventListener('click', flashAdapterOverSerial);
+    document.getElementById('forgetPortsButton')?.addEventListener('click', forgetRememberedPorts);
     document.getElementById('serialEraseButton')?.addEventListener('click', eraseAdapterAppForTest);
-    document.getElementById('startOverFromSerial')?.addEventListener('click', () => {
-        wizardState.device = null;
-        wizardState.model = null;
-        wizardState.board = null;
-        document.querySelectorAll('.selection-card').forEach(card => card.classList.remove('selected'));
-        hideWhatsNew();
-        goToStep(1);
+
+    // UF2 flow
+    document.getElementById('bootModeButton')?.addEventListener('click', () => enterBootloaderOnly(uf2Log, 'uf2BootHint'));
+    document.getElementById('downloadButton')?.addEventListener('click', function (event) {
+        if (this.classList.contains('disabled')) event.preventDefault();
     });
+
+    // Test-only erase tool reveal
     window.addEventListener('hashchange', maybeRevealEraseTest);
     maybeRevealEraseTest();
 
-    // Arduino Micro (WebSerial AVR109) buttons
-    document.getElementById('microBootModeButton')?.addEventListener('click', triggerMicroBootloader);
-    document.getElementById('microFlashButton')?.addEventListener('click', flashMicroFirmware);
-    document.getElementById('backToStep2FromMicro')?.addEventListener('click', () => goToStep(2));
-    document.getElementById('startOverFromMicro')?.addEventListener('click', () => {
-        wizardState.device = null;
-        wizardState.model = null;
-        wizardState.board = null;
-        document.querySelectorAll('.selection-card').forEach(card => {
-            card.classList.remove('selected');
-        });
-        hideWhatsNew();
-        goToStep(1);
-    });
+    // Quick resume from a previous visit
+    const saved = loadSetup();
+    if (saved) {
+        const card = document.getElementById('resumeCard');
+        const summary = document.getElementById('resumeSummary');
+        if (card && summary) {
+            const label = saved.device === 'summit'
+                ? 'Vail Summit'
+                : [getModelName(saved.model), saved.model === 'vail_lite' ? null : getBoardName(saved.board)].filter(Boolean).join(' · ');
+            summary.textContent = `Jump straight to updating your ${label}.`;
+            card.style.display = '';
 
-    // Download button click handler (for disabled state)
-    document.getElementById('downloadButton')?.addEventListener('click', function(event) {
-        if (this.classList.contains('disabled')) {
-            event.preventDefault();
-            alert("Please complete the previous steps first.");
+            document.getElementById('resumeButton')?.addEventListener('click', () => {
+                card.style.display = 'none';
+                wizardState.device = saved.device;
+                wizardState.model = saved.model;
+                wizardState.board = saved.board;
+                wizardState.flashMethod = saved.flashMethod || 'serial';
+                if (saved.device === 'summit') {
+                    fetchRecentUpdates('summit');
+                    goToStep('summit');
+                } else {
+                    fetchRecentUpdates('adapter');
+                    adapterReleases.fetch();
+                    goToStep('update');
+                }
+            });
+            document.getElementById('resumeDismiss')?.addEventListener('click', () => {
+                card.style.display = 'none';
+                try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+            });
         }
-    });
+    }
 });
