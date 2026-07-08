@@ -859,6 +859,9 @@ const flashEngine = {
         const flasher = new window.SAMBAFlasher({
             log: flashLog,
             progress: (cur, total) => flashUI.progress(cur, total),
+            // XIAO factory bootloaders are older builds, so stage in small
+            // conservative chunks there. QT Py is proven solid at the default.
+            chunkSize: wizardState.board === 'xiao' ? 512 : undefined,
         });
         try {
             await flasher.open(port);

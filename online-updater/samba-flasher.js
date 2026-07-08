@@ -51,9 +51,12 @@
     }
 
     class SAMBAFlasher {
-        constructor({ log, progress } = {}) {
+        constructor({ log, progress, chunkSize } = {}) {
             this.log = log || (() => {});
             this.progress = progress || (() => {});
+            // Per-transfer staging size. Smaller chunks are gentler on older
+            // factory bootloaders (Seeed XIAO); QT Py is proven at 4 KB.
+            this.chunkSize = chunkSize || CHUNK;
             this.port = null;
             this.reader = null;
             this.writer = null;
@@ -155,10 +158,14 @@
             const total = bin.length;
             let offset = 0;
             while (offset < total) {
-                const size = Math.min(CHUNK, total - offset);
+                const size = Math.min(this.chunkSize, total - offset);
                 const chunk = bin.subarray(offset, offset + size);
                 // 1) stage the chunk in SRAM
                 await this._sendStr(`S${hex8(SRAM_BUFFER)},${hex8(size)}#`);
+                // Give the monitor a beat to consume the command by itself.
+                // The bootloader's receive handler mis-assembles the staged
+                // data if command and payload ever land in one buffer read.
+                await new Promise((r) => setTimeout(r, 15));
                 await this._sendBytes(chunk);
                 // 2) point the source buffer at the staged data
                 await this._sendStr(`Y${hex8(SRAM_BUFFER)},0#`);
