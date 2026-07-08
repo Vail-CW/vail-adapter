@@ -210,7 +210,9 @@ function getFirmwareFile() {
     const url = ext === 'hex'
         ? `${ADAPTER_FIRMWARE_PROXY}/vail-adapter/${adapterReleases.selected.tag_name}/${asset.name}`
         : asset.browser_download_url;
-    return { url, filename: asset.name, ext };
+    // size is the exact byte count GitHub reports for the asset, used to catch
+    // truncated downloads before anything touches the flash.
+    return { url, filename: asset.name, ext, size: asset.size || 0 };
 }
 
 // Friendly names
@@ -792,9 +794,19 @@ const flashEngine = {
         const resp = await fetch(proxyUrl, { cache: 'no-cache' });
         if (!resp.ok) throw new Error(`Firmware download failed (HTTP ${resp.status}). Check your connection and try again.`);
         if (firmware.ext === 'hex') {
-            return { kind: 'hex', text: await resp.text() };
+            const text = await resp.text();
+            if (firmware.size && text.length !== firmware.size) {
+                throw new Error(`Firmware download was incomplete (got ${text.length} of ${firmware.size} bytes). Try again.`);
+            }
+            return { kind: 'hex', text };
         }
-        const { bin, baseAddr } = window.uf2ToBin(await resp.arrayBuffer());
+        const buf = await resp.arrayBuffer();
+        // The GitHub release API told us exactly how big this asset is. If the
+        // proxy served anything else, stop before flash is ever touched.
+        if (firmware.size && buf.byteLength !== firmware.size) {
+            throw new Error(`Firmware download was incomplete (got ${buf.byteLength} of ${firmware.size} bytes). Try again.`);
+        }
+        const { bin, baseAddr } = window.uf2ToBin(buf);
         flashLog(`Firmware ready: ${bin.length} bytes @ 0x${baseAddr.toString(16)}.`);
         return { kind: 'bin', bin, baseAddr };
     },
@@ -847,12 +859,35 @@ const flashEngine = {
         const flasher = new window.SAMBAFlasher({
             log: flashLog,
             progress: (cur, total) => flashUI.progress(cur, total),
+            // XIAO factory bootloaders are older builds, so stage in small
+            // conservative chunks there. QT Py is proven solid at the default.
+            chunkSize: wizardState.board === 'xiao' ? 512 : undefined,
         });
         try {
             await flasher.open(port);
             await flasher.connect();
-            await flasher.eraseApp();
-            await flasher.writeFirmware(fw.bin, fw.baseAddr);
+            // Write, then verify what actually landed in flash before letting
+            // the device reboot into it. One automatic rewrite on mismatch. If
+            // it still doesn't verify, do NOT reset: the device stays in
+            // bootloader mode, visible and recoverable, instead of rebooting
+            // into a half-written app that never enumerates.
+            for (let attempt = 1; ; attempt++) {
+                await flasher.eraseApp();
+                await flasher.writeFirmware(fw.bin, fw.baseAddr);
+                flashUI.hint('Double-checking the flash contents…');
+                try {
+                    await flasher.verifyFirmware(fw.bin, fw.baseAddr);
+                    flashUI.hint('');
+                    break;
+                } catch (err) {
+                    if (attempt >= 2) {
+                        flashUI.hint('');
+                        throw new Error(`${err.message} The adapter was left in bootloader mode, so it is still recoverable. Use the Download file method instead.`);
+                    }
+                    flashLog('Verification failed, erasing and writing again…');
+                    flashUI.progress(0, fw.bin.length);
+                }
+            }
             await flasher.resetDevice();
         } finally {
             try { await flasher.close(); } catch (_) {}
