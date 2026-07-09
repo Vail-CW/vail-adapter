@@ -123,9 +123,12 @@
                 await new Promise((r) => setTimeout(r, 120));
                 await this._sendStr('V#');           // request version
                 try {
-                    await this._waitFor('\n', 1200); // any newline = a line arrived
+                    // The version reply IS the first line (N# has no ack on
+                    // shipped bootloaders), so keep what _waitFor consumes.
+                    // The reply carries a stray NUL terminator — strip it.
+                    const line = await this._waitFor('\n', 1200);
                     await new Promise((r) => setTimeout(r, 150)); // let the rest land
-                    version = (this.rx || '').replace(/[\r\n]/g, ' ').trim();
+                    version = (line + this.rx).replace(/\0/g, '').replace(/[\r\n]/g, ' ').trim();
                 } catch (_) {
                     this.log(`No bootloader response yet (attempt ${attempt}/5)…`);
                 }
