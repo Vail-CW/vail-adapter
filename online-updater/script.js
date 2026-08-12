@@ -791,7 +791,22 @@ const flashEngine = {
     async fetchFirmware(firmware) {
         const tag = adapterReleases.selected && adapterReleases.selected.tag_name;
         const proxyUrl = `${ADAPTER_FIRMWARE_PROXY}/vail-adapter/${tag}/${firmware.filename}`;
-        const resp = await fetch(proxyUrl, { cache: 'no-cache' });
+        // GitHub occasionally 5xxs the first fetch of an asset, so retry a
+        // couple of times before giving up.
+        let resp;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                resp = await fetch(proxyUrl, { cache: 'no-cache' });
+            } catch (err) {
+                resp = null;
+            }
+            if (resp && (resp.ok || resp.status < 500)) break;
+            if (attempt < 3) {
+                flashLog(`Firmware download hiccup (${resp ? 'HTTP ' + resp.status : 'network error'}), retrying...`);
+                await new Promise(r => setTimeout(r, 1000 * attempt));
+            }
+        }
+        if (!resp) throw new Error('Firmware download failed (network error). Check your connection and try again.');
         if (!resp.ok) throw new Error(`Firmware download failed (HTTP ${resp.status}). Check your connection and try again.`);
         if (firmware.ext === 'hex') {
             const text = await resp.text();
