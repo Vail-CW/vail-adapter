@@ -51,7 +51,14 @@ export default {
     const githubUrl = `https://github.com/Vail-CW/${repo}/releases/download/${tag}/${filename}`;
 
     try {
-      const response = await fetch(githubUrl, { redirect: 'follow' });
+      // GitHub intermittently 5xxs the first fetch of an asset, so retry
+      // before reporting failure to the updater.
+      let response;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        response = await fetch(githubUrl, { redirect: 'follow' });
+        if (response.ok || response.status < 500) break;
+        if (attempt < 3) await new Promise(r => setTimeout(r, 500 * attempt));
+      }
       if (!response.ok) {
         return new Response(`GitHub returned ${response.status}`, {
           status: response.status,
