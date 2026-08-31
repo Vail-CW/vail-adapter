@@ -101,6 +101,11 @@ if (this->keyer) this->keyer->Release();
 if (this->keyIsPressed) this->EndTx();
 this->ReleaseAllKeys();
 
+// Reset() and Release() put the keyer back to the hard coded 100 ms default
+// dit duration, so restore the real speed like ToggleRadioMode does. Without
+// this the adapter keys at 12 WPM until you set the speed again.
+if (this->keyer) this->keyer->SetDitDuration(this->ditDuration);
+
 this->paddleSwapMode = mode;
 savePaddleSwapModeToEEPROM(this->paddleSwapMode);
 Serial.print(F("Paddle swap mode: ")); Serial.println(mode);
