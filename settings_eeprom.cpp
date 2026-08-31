@@ -2,14 +2,25 @@
 #include "config.h"
 #include <Arduino.h>
 #if defined(ARDUINO_ARCH_SAMD)
-  // SAMD21 has no true EEPROM — FlashStorage_SAMD emulates it in Flash
-  // and requires an explicit EEPROM.commit() to flush writes.
+  // SAMD21 has no true EEPROM. FlashStorage_SAMD emulates it in flash and needs
+  // an explicit EEPROM.commit() to flush writes.
+  //
+  // That library defaults its buffer to 1024 bytes and does no bounds checking
+  // at all on read/write/get/put. Our map is bigger than that once all three
+  // memory slots are counted, so recording to slot 3 used to run off the end of
+  // the buffer and scribble on the library's own state and then on whatever
+  // global the linker put next (the VailAdapter object, as it happens). Size the
+  // buffer from the real map so that cannot happen.
+  #define EEPROM_EMULATION_SIZE (EEPROM_MEMORY_3_ADDR + MEMORY_SLOT_SIZE_BYTES)
   #include <FlashStorage_SAMD.h>
   #define EEPROM_NEEDS_COMMIT 1
 #else
-  // AVR (e.g. Arduino Micro ATmega32U4) has native EEPROM; writes are
-  // committed per-byte by the hardware, and EEPROM.commit() is not provided.
+  // AVR (e.g. Arduino Micro ATmega32U4) has native EEPROM. Writes are committed
+  // per byte by the hardware and EEPROM.commit() is not provided.
   #include <EEPROM.h>
+  // No emulation to size here, so just make sure the map actually fits.
+  static_assert(EEPROM_MEMORY_3_ADDR + MEMORY_SLOT_SIZE_BYTES <= E2END + 1,
+                "CW memory map does not fit in this chip's EEPROM");
 #endif
 #include <MIDIUSB.h>
 

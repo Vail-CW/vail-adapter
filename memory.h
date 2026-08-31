@@ -2,7 +2,10 @@
 #define MEMORY_H
 
 #include <Arduino.h>
-// Note: FlashStorage_SAMD.h is included in main .ino file only to avoid linking issues
+// config.h has to come before the slot size defaults below. It overrides them on
+// constrained targets like the Micro, and if a .cpp includes memory.h without it
+// then CWMemory ends up a different size in that file than everywhere else.
+#include "config.h"
 
 // ============================================================================
 // CW MEMORY STORAGE SYSTEM
@@ -67,8 +70,10 @@
 #define EEPROM_MEMORY_2_ADDR (EEPROM_MEMORY_1_ADDR + MEMORY_SLOT_SIZE_BYTES)
 #define EEPROM_MEMORY_3_ADDR (EEPROM_MEMORY_2_ADDR + MEMORY_SLOT_SIZE_BYTES)
 
-// Total EEPROM usage: 6 (settings) + 3×402 (memories) = 1212 bytes
-// SAMD21 has 16KB, so we're using < 8% of available space
+// Total EEPROM usage: 6 (settings) + 3x402 (memories) = 1212 bytes.
+// The SAMD21 has no real EEPROM, FlashStorage_SAMD fakes it in flash and the
+// buffer is sized from this map in settings_eeprom.cpp. Grow the map and that
+// buffer grows with it, so do not assume there is room to spare here.
 
 // ============================================================================
 // Data Structures
