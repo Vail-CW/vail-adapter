@@ -40,6 +40,9 @@ this->txRelays[1] = false; // dah
 this->lastPaddlePressed = PADDLE_DIT;
 this->ditKeyPressed = false;
 this->dahKeyPressed = false;
+this->midiNoteOn[0] = false;
+this->midiNoteOn[1] = false;
+this->midiNoteOn[2] = false;
 this->keyboardSimMode = false;
 this->ksksMatchLen = 0;
 this->firstKTime = 0;
@@ -96,15 +99,7 @@ if (this->paddleSwapMode == mode) {
 }
 
 // Cleanly stop any in-flight transmission before changing input mapping
-if (this->keyer) this->keyer->Reset();
-if (this->keyer) this->keyer->Release();
-if (this->keyIsPressed) this->EndTx();
-this->ReleaseAllKeys();
-
-// Reset() and Release() put the keyer back to the hard coded 100 ms default
-// dit duration, so restore the real speed like ToggleRadioMode does. Without
-// this the adapter keys at 12 WPM until you set the speed again.
-if (this->keyer) this->keyer->SetDitDuration(this->ditDuration);
+this->ResetInputState();
 
 this->paddleSwapMode = mode;
 savePaddleSwapModeToEEPROM(this->paddleSwapMode);
@@ -136,6 +131,31 @@ this->dahIsHeld = false;
 this->dahHoldStartTime = 0;
 }
 
+// Drop every piece of in-flight input state: keyer relays, host keys and
+// notes, hold timers. Called when the input path changes underneath the
+// keyer (paddle swap, TRS mode on or off) so nothing stale carries over.
+// A stale keyer relay makes the next press silent, and a stale dit hold
+// timer trips the five second sidetone mute while the key is not even down.
+void VailAdapter::ResetInputState() {
+if (this->keyer) {
+    this->keyer->Reset();
+    this->keyer->Release();
+}
+if (this->keyIsPressed) this->EndTx();
+this->ReleaseAllKeys();
+
+// Reset() and Release() put the keyer back to the hard coded 100 ms default
+// dit duration, so restore the real speed like ToggleRadioMode does. Without
+// this the adapter keys at 12 WPM until you set the speed again.
+if (this->keyer) this->keyer->SetDitDuration(this->ditDuration);
+
+this->keyPressStartTime = 0;
+this->ditIsHeld = false;
+this->ditHoldStartTime = 0;
+this->dahIsHeld = false;
+this->dahHoldStartTime = 0;
+}
+
 // Corrected MIDI key event function
 void VailAdapter::midiKey(uint8_t key, bool down) {
 uint8_t header;
@@ -155,6 +175,21 @@ if (down) { // Note On
 midiEventPacket_t event = {header, status_byte, key, velocity};
 MidiUSB.sendMIDI(event);
 MidiUSB.flush();
+if (key < 3) this->midiNoteOn[key] = down;
+}
+
+// Release whatever host-side output is currently held, in whichever mode it
+// was sent. Transmission end always goes through here so the release matches
+// the press, even when a different relay opened last than the one that closed
+// first (both paddles, or a key cable with tip and ring tied, closing
+// together). Releasing only the last relay's key left the other Ctrl key
+// held on the host, which macOS treats as a stuck right-click.
+void VailAdapter::releaseOutputKeys() {
+if (this->ditKeyPressed) this->keyboardKey(DIT_KEYBOARD_KEY, false);
+if (this->dahKeyPressed) this->keyboardKey(DAH_KEYBOARD_KEY, false);
+for (uint8_t n = 0; n < 3; n++) {
+    if (this->midiNoteOn[n]) this->midiKey(n, false);
+}
 }
 
 void VailAdapter::keyboardKey(uint8_t key, bool down) {
@@ -172,25 +207,13 @@ if (key == DAH_KEYBOARD_KEY) this->dahKeyPressed = false;
 }
 
 void VailAdapter::ReleaseAllKeys() {
-// Release all keyboard keys that might be stuck
-if (this->keyboardMode) {
-if (this->ditKeyPressed) {
-Keyboard.release(DIT_KEYBOARD_KEY);
-this->ditKeyPressed = false;
-}
-if (this->dahKeyPressed) {
-Keyboard.release(DAH_KEYBOARD_KEY);
-this->dahKeyPressed = false;
-}
-// Also send release for both keys as a safety measure
+// Release every host key or note this adapter may have left down. This runs
+// regardless of the current output mode so nothing is stranded when the mode
+// switches while something is held.
 Keyboard.release(DIT_KEYBOARD_KEY);
 Keyboard.release(DAH_KEYBOARD_KEY);
-}
-// Release MIDI notes if in MIDI mode
-if (!this->keyboardMode) {
-this->midiKey(0, false);
-this->midiKey(1, false);
-this->midiKey(2, false);
+for (uint8_t n = 0; n < 3; n++) {
+    if (this->midiNoteOn[n]) this->midiKey(n, false);
 }
 // Reset state tracking
 this->ditKeyPressed = false;
@@ -326,15 +349,7 @@ void VailAdapter::Tx(int relay, bool closed) {
         if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
 
         if (!this->radioModeActive) {
-            // Release only the keys that were pressed
-            if (this->keyboardMode) {
-                if (this->ditKeyPressed) this->keyboardKey(DIT_KEYBOARD_KEY, false);
-                if (this->dahKeyPressed) this->keyboardKey(DAH_KEYBOARD_KEY, false);
-            } else {
-                // In MIDI mode, release the notes that were sent
-                if (this->txRelays[PADDLE_DIT]) this->midiKey(1, false);
-                if (this->txRelays[PADDLE_DAH]) this->midiKey(2, false);
-            }
+            this->releaseOutputKeys();
         }
     }
 }
@@ -419,6 +434,8 @@ if (this->radioModeActive) {
 if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
 
 if (!this->radioModeActive) {
+    // Only undo what BeginTx() did. In passthrough mode the other paddle's
+    // key or note may still be legitimately held, so leave it alone here.
     if (this->keyboardMode) {
         this->keyboardKey(KEY_LEFT_CTRL, false);
     } else {
@@ -554,23 +571,9 @@ if (this->radioModeActive) {
 if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
 
 if (!this->radioModeActive) {
-    if (this->keyboardMode) {
-        if (relay == PADDLE_DIT) {
-            this->keyboardKey(DIT_KEYBOARD_KEY, false);
-        } else if (relay == PADDLE_DAH) {
-            this->keyboardKey(DAH_KEYBOARD_KEY, false);
-        } else {
-            this->keyboardKey(KEY_LEFT_CTRL, false); // fallback for straight key
-        }
-    } else {
-        if (relay == PADDLE_DIT) {
-            this->midiKey(1, false);
-        } else if (relay == PADDLE_DAH) {
-            this->midiKey(2, false);
-        } else {
-            this->midiKey(0, false); // fallback for straight key
-        }
-    }
+    // Every relay is open by the time we get here, so release everything
+    // that is held rather than only the key for the relay that opened last.
+    this->releaseOutputKeys();
 }
 }
 
@@ -721,6 +724,14 @@ if (paddle == PADDLE_DIT) {
         Serial.println(F("ms"));
         this->ditIsHeld = false;
     }
+}
+
+// A straight key release (TRS mode, the KEY pin, or the touch key) ends any
+// dit hold that began on the DIT pin before the input path changed. Otherwise
+// the hold timer keeps running with the key up and mutes the sidetone.
+if (paddle == PADDLE_STRAIGHT && !pressed && this->ditIsHeld) {
+    this->ditIsHeld = false;
+    this->ditHoldStartTime = 0;
 }
 
 // Track dah paddle state for hold detection in radio mode
@@ -935,7 +946,7 @@ if (this->ditIsHeld && this->buzzerEnabled) {
         Serial.println(F("ms - disabling buzzer"));
         this->DisableBuzzer();
         this->ditIsHeld = false; // Reset to prevent re-triggering
-    } else if (holdTime % 1000 == 0) {
+    } else if (holdTime > 0 && holdTime % 1000 == 0) {
         // Debug: show progress every second
         Serial.print(F("Dit held for "));
         Serial.print(holdTime);
@@ -1028,8 +1039,9 @@ void VailAdapter::checkForKSKS(char c) {
     }
 }
 
-// Called by the decoder when it emits a word space. Marks that the next decoded
-// letter begins a fresh word — the leading guard for a starting K.
+// Called by the decoder every time it measures a word-length gap, whether or
+// not a space character is typed for it. Marks that the next decoded letter
+// begins a fresh word, which is the leading guard for a starting K.
 void VailAdapter::notifyWordBoundary() {
     this->wordBoundaryPending = true;
 }

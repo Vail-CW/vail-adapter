@@ -155,6 +155,7 @@ typedef void (*BackspaceCallback)();
 typedef void (*EnterCallback)();
 typedef void (*SpaceCallback)();
 typedef void (*ErrorCallback)();
+typedef void (*WordGapCallback)();
 
 class MorseDecoder {
 public:
@@ -183,6 +184,9 @@ public:
   void setEnterCallback(EnterCallback cb) { onEnter = cb; }
   void setSpaceCallback(SpaceCallback cb) { onSpace = cb; }
   void setErrorCallback(ErrorCallback cb) { onError = cb; }
+  // Fires every time a word-length silence is measured, whether or not a
+  // space character ends up being emitted for it.
+  void setWordGapCallback(WordGapCallback cb) { onWordGap = cb; }
 
   // Get current estimated WPM
   uint16_t getWPM() const { return 1200 / ditLen; }
@@ -200,8 +204,13 @@ private:
   // Timing thresholds
   uint16_t ditLen;            // Expected dit length in ms
   uint16_t ditDahThreshold;   // Threshold between dit and dah
-  uint16_t charSpaceThreshold; // Threshold for character boundary (Farnsworth-friendly)
+  uint16_t charSpaceThreshold; // Threshold for character boundary (2x dit)
   uint16_t dahSpaceThreshold; // Threshold between char space and word space
+
+  // Bounds for the adaptive dit length. 25 ms is about 48 WPM, 400 ms is
+  // about 3 WPM. Anything outside this is noise, not sending.
+  static const uint16_t MIN_DIT_LEN = 25;
+  static const uint16_t MAX_DIT_LEN = 400;
 
   // Key state tracking (for tick timeout)
   bool keyIsDown;
@@ -235,6 +244,7 @@ private:
   EnterCallback onEnter;
   SpaceCallback onSpace;
   ErrorCallback onError;
+  WordGapCallback onWordGap;
 
   // Internal methods
   void updateThresholds();

@@ -13,12 +13,12 @@ MorseDecoder::MorseDecoder() {
   onEnter = nullptr;
   onSpace = nullptr;
   onError = nullptr;
+  onWordGap = nullptr;
   adaptive = true;
 }
 
 void MorseDecoder::begin(uint16_t initialDitLen) {
-  ditLen = initialDitLen;
-  updateThresholds();
+  setDitLength(initialDitLen);
   reset();
 }
 
@@ -41,6 +41,8 @@ void MorseDecoder::reset() {
 }
 
 void MorseDecoder::setDitLength(uint16_t len) {
+  if (len < MIN_DIT_LEN) len = MIN_DIT_LEN;
+  if (len > MAX_DIT_LEN) len = MAX_DIT_LEN;
   ditLen = len;
   updateThresholds();
 }
@@ -49,11 +51,11 @@ void MorseDecoder::updateThresholds() {
   // Threshold between dit (1x) and dah (3x) at midpoint (2x)
   ditDahThreshold = ditLen * 2;
 
-  // Standard PARIS timing:
-  // - Element space: 1x dit (handled by keyer)
-  // - Character space: 3x dit
-  // - Word space: 7x dit
-  charSpaceThreshold = ditLen * 3;
+  // Standard PARIS timing puts an element space at 1 dit and a character
+  // space at 3 dits, so the boundary between them sits at 2 dits. Hand sent
+  // code routinely lands character gaps a little short of 3 dits, and a
+  // 3 dit threshold merged neighbouring letters into one invalid pattern.
+  charSpaceThreshold = ditLen * 2;
   dahSpaceThreshold = ditLen * 7;
 }
 
@@ -94,6 +96,12 @@ void MorseDecoder::addTiming(int16_t duration) {
       if (patternLength > 0) {
         decodePattern(true);  // Force output - word space is definitive end
       }
+      // Report the gap itself. This is independent of whether a space
+      // character gets typed, so listeners that only care about word
+      // boundaries (KSKS detection) see every gap, suppressed or not. It
+      // runs after the pending pattern is decoded so the letter before the
+      // gap does not consume the boundary meant for the letter after it.
+      if (onWordGap) onWordGap();
       // Output space unless suppressed (e.g., after backspace)
       if (suppressNextSpace) {
         Serial.println(F("  -> SPACE SUPPRESSED (after backspace)"));
@@ -105,7 +113,7 @@ void MorseDecoder::addTiming(int16_t duration) {
         Serial.println(F("  -> SPACE PENDING (waiting to see if backspace follows)"));
       }
     } else if (silence >= charSpaceThreshold) {
-      // Character space - decode current pattern (Farnsworth-friendly threshold)
+      // Character space - decode current pattern
       Serial.println(F("  -> CHAR SPACE"));
       if (patternLength > 0) {
         decodePattern();
@@ -139,9 +147,8 @@ void MorseDecoder::tick(unsigned long currentTime) {
     return;
   }
 
-  // Farnsworth-friendly timeout: use charSpaceThreshold (4x dit) for timeout
-  // This gives more time between characters before auto-decoding
-  // If enough time has passed since last event, treat it as character boundary
+  // Once the silence reaches the character space threshold, treat it as the
+  // end of the character and decode what we have.
   if (elapsed >= charSpaceThreshold) {
     Serial.print(F("TICK: timeout after ")); Serial.print(elapsed);
     Serial.print(F("ms (threshold=")); Serial.print(charSpaceThreshold); Serial.println(F("ms), decoding"));
@@ -260,6 +267,10 @@ void MorseDecoder::decodePattern(bool forceOutput) {
       if (onSpace) onSpace();
       pendingWordSpace = false;
     }
+    // A real character clears any space suppression left over from a
+    // backspace, BK or BT. Without this a gap several characters later was
+    // still being swallowed.
+    suppressNextSpace = false;
     Serial.print(F("  -> CHAR: ")); Serial.println(c);
     if (onCharacter) {
       onCharacter(c);
@@ -309,7 +320,7 @@ void MorseDecoder::updateAdaptive(uint16_t duration, bool isDah) {
   }
 
   // Sanity check - don't accept extremely short or long values
-  if (ditEquivalent < 10 || ditEquivalent > 500) {
+  if (ditEquivalent < MIN_DIT_LEN || ditEquivalent > MAX_DIT_LEN) {
     return;
   }
 
@@ -336,7 +347,6 @@ void MorseDecoder::updateAdaptive(uint16_t duration, bool isDah) {
   }
 
   if (totalWeight > 0) {
-    ditLen = sum / totalWeight;
-    updateThresholds();
+    setDitLength(sum / totalWeight);
   }
 }

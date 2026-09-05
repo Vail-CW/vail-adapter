@@ -61,11 +61,15 @@ private:
     bool ditKeyPressed = false;
     bool dahKeyPressed = false;
 
+    // Track which MIDI notes are currently sounding (0=straight, 1=dit, 2=dah)
+    bool midiNoteOn[3] = {false, false, false};
+
     // CW memory recording
     RecordingState* recordingState = nullptr;
 
     void midiKey(uint8_t key, bool down);
     void keyboardKey(uint8_t key, bool down);
+    void releaseOutputKeys();
 
     void setRadioDit(bool active);
     void setRadioDah(bool active);
@@ -109,6 +113,10 @@ public:
 
     // Cleanup method to release all keys
     void ReleaseAllKeys();
+
+    // Drop all in-flight input state (keyer relays, host keys, hold timers).
+    // Call whenever the input path changes underneath the keyer.
+    void ResetInputState();
 
     // Keyboard Sim mode
     bool isKeyboardSimMode() const { return keyboardSimMode; }

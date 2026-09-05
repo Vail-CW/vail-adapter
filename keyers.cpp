@@ -65,6 +65,12 @@ public:
         if (this->output) {
             this->output->EndTx();
         }
+        // Forget any relay that was closed when the reset happened. A relay
+        // left marked closed makes the next real press a no-op (no sidetone,
+        // no host key) until a full press and release resyncs it.
+        this->txRelays[0] = false;
+        this->txRelays[1] = false;
+        this->currentTransmittingRelay = -1;
         this->ditDuration = 100;
     }
 
