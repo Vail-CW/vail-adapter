@@ -70,6 +70,8 @@ private:
     void midiKey(uint8_t key, bool down);
     void keyboardKey(uint8_t key, bool down);
     void releaseOutputKeys();
+    void beginStraightTx(bool sendKeyboardKey);
+    void endStraightTx(bool sendKeyboardKey);
 
     void setRadioDit(bool active);
     void setRadioDah(bool active);

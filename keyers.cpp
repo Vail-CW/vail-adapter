@@ -105,8 +105,12 @@ public:
                 this->currentTransmittingRelay = relay;
                 this->output->BeginTx(relay);
             } else {
+                // End on the relay we started on. With both paddles
+                // overlapping, the last one released isn't always the one
+                // that began the transmission.
+                int endRelay = (this->currentTransmittingRelay >= 0) ? this->currentTransmittingRelay : relay;
                 this->currentTransmittingRelay = -1;
-                this->output->EndTx(relay);
+                this->output->EndTx(endRelay);
             }
         }
     }

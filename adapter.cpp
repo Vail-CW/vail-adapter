@@ -209,16 +209,18 @@ if (key == DAH_KEYBOARD_KEY) this->dahKeyPressed = false;
 void VailAdapter::ReleaseAllKeys() {
 // Release every host key or note this adapter may have left down. This runs
 // regardless of the current output mode so nothing is stranded when the mode
-// switches while something is held.
-Keyboard.release(DIT_KEYBOARD_KEY);
-Keyboard.release(DAH_KEYBOARD_KEY);
+// switches while something is held. releaseAll() clears the whole keyboard
+// report, so a Ctrl left down in keyboard mode always gets let go.
+Keyboard.releaseAll();
 for (uint8_t n = 0; n < 3; n++) {
     if (this->midiNoteOn[n]) this->midiKey(n, false);
 }
+this->buzzer->NoTone(0);
 // Reset state tracking
 this->ditKeyPressed = false;
 this->dahKeyPressed = false;
 this->keyIsPressed = false;
+this->keyPressStartTime = 0;
 this->txRelays[0] = false;
 this->txRelays[1] = false;
 Serial.println(F("All keys released"));
@@ -355,6 +357,17 @@ void VailAdapter::Tx(int relay, bool closed) {
 }
 
 void VailAdapter::BeginTx() {
+beginStraightTx(true);
+}
+
+void VailAdapter::EndTx() {
+endStraightTx(true);
+}
+
+// sendKeyboardKey is false for passthrough, where the paddle has already
+// pressed its own Ctrl. Sending Left Ctrl too would turn every dah into
+// both Ctrls at once.
+void VailAdapter::beginStraightTx(bool sendKeyboardKey) {
 if (!keyIsPressed) {
 keyIsPressed = true;
 if (!this->radioModeActive) {
@@ -395,14 +408,14 @@ if (!this->radioModeActive) {
         // For keyer mode, we need to determine which key to send
         // Since keyers don't tell us which paddle, we'll default to left ctrl
         // This is the problem - keyers always call BeginTx() without relay info
-        this->keyboardKey(KEY_LEFT_CTRL, true);
+        if (sendKeyboardKey) this->keyboardKey(KEY_LEFT_CTRL, true);
     } else {
         this->midiKey(0, true);
     }
 }
 }
 
-void VailAdapter::EndTx() {
+void VailAdapter::endStraightTx(bool sendKeyboardKey) {
 if (keyIsPressed) {
 keyIsPressed = false;
 if (!this->radioModeActive) {
@@ -437,7 +450,7 @@ if (!this->radioModeActive) {
     // Only undo what BeginTx() did. In passthrough mode the other paddle's
     // key or note may still be legitimately held, so leave it alone here.
     if (this->keyboardMode) {
-        this->keyboardKey(KEY_LEFT_CTRL, false);
+        if (sendKeyboardKey) this->keyboardKey(KEY_LEFT_CTRL, false);
     } else {
         this->midiKey(0, false);
     }
@@ -842,10 +855,10 @@ else this->midiKey(2, pressed);
 if (pressed) currentPaddleActivity = true;
 }
 
-            if (currentPaddleActivity) { 
-                if(!keyIsPressed) BeginTx(); 
-            } else { 
-                if(keyIsPressed) EndTx();
+            if (currentPaddleActivity) {
+                if(!keyIsPressed) beginStraightTx(false);
+            } else {
+                if(keyIsPressed) endStraightTx(false);
             }
         }
     }
@@ -857,11 +870,18 @@ uint16_t msg = (event.byte1 << 8) | (event.byte2 << 0);
 switch (event.byte1) {
 case 0xB0:
 switch (event.byte2) {
-case 0:
-this->keyboardMode = (event.byte3 > 0x3f);
+case 0: {
+bool newKeyboardMode = (event.byte3 > 0x3f);
+if (newKeyboardMode != this->keyboardMode) {
+// Let go of anything still held in the old mode before switching.
+// Otherwise a Ctrl pressed in keyboard mode never gets released.
+ReleaseAllKeys();
+}
+this->keyboardMode = newKeyboardMode;
 Serial.print(F("Keyboard mode: ")); Serial.println(this->keyboardMode ? "ON" : "OFF");
 MidiUSB.sendMIDI(event);
 break;
+}
 case 1:
 this->ditDuration = event.byte3 * 2 * MILLISECOND;
 if (this->keyer) {
