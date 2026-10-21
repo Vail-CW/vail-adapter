@@ -417,6 +417,9 @@ Keyer *GetKeyerByNumber(int n, Transmitter *output) {
     }
 
     Keyer *k = keyers[n];
+    if (k == NULL) {
+        return NULL; // 0 = passthrough, no keyer object
+    }
     k->SetOutput(output);
     return k;
 }
