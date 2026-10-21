@@ -5,6 +5,7 @@
 #include "keyers.h"
 #include "adapter.h"
 #include "polybuzzer.h"
+#include "morse_audio.h"
 
 // For SAMD21 software reset if needed by other parts of code
 #if defined(ARDUINO_ARCH_SAMD)
@@ -12,12 +13,14 @@
 #endif
 
 extern void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote);
+extern void savePaddleSwapModeToEEPROM(uint8_t paddleSwapMode);
 
 VailAdapter::VailAdapter(unsigned int PiezoPin) {
 this->buzzer = new PolyBuzzer(PiezoPin);
 this->buzzerEnabled = true;
 this->radioModeActive = false;
 this->radioKeyerMode = false;
+this->paddleSwapMode = PADDLE_SWAP_OFF;
 this->keyIsPressed = false;
 this->keyPressStartTime = 0;
 this->ditHoldStartTime = 0;
@@ -37,6 +40,16 @@ this->txRelays[1] = false; // dah
 this->lastPaddlePressed = PADDLE_DIT;
 this->ditKeyPressed = false;
 this->dahKeyPressed = false;
+this->midiNoteOn[0] = false;
+this->midiNoteOn[1] = false;
+this->midiNoteOn[2] = false;
+this->keyboardSimMode = false;
+this->ksksMatchLen = 0;
+this->firstKTime = 0;
+this->wordBoundaryPending = true;
+this->ksksArmed = false;
+this->ksksArmedTime = 0;
+this->onEnterKeyboardSimMode = nullptr;
 }
 
 bool VailAdapter::KeyboardMode() {
@@ -75,6 +88,35 @@ void VailAdapter::SetRadioKeyerMode(bool enabled) {
 this->radioKeyerMode = enabled;
 }
 
+uint8_t VailAdapter::getPaddleSwapMode() const {
+return this->paddleSwapMode;
+}
+
+void VailAdapter::SetPaddleSwapMode(uint8_t mode, bool announce) {
+if (mode > PADDLE_SWAP_TOUCH) mode = PADDLE_SWAP_OFF;
+if (this->paddleSwapMode == mode) {
+    return;
+}
+
+// Cleanly stop any in-flight transmission before changing input mapping
+this->ResetInputState();
+
+this->paddleSwapMode = mode;
+savePaddleSwapModeToEEPROM(this->paddleSwapMode);
+Serial.print(F("Paddle swap mode: ")); Serial.println(mode);
+
+if (announce) {
+    // Announce the new state in Morse: "INV" (all), "INV C" (touch only),
+    // "INV OFF" (off). Composed from shared pieces to save AVR SRAM.
+    playMorseWord("INV");
+    if (mode == PADDLE_SWAP_TOUCH) {
+        playMorseChar('C');
+    } else if (mode == PADDLE_SWAP_OFF) {
+        playMorseWord("OFF");
+    }
+}
+}
+
 void VailAdapter::ResetDitCounter() {
 this->ditIsHeld = false;
 this->ditHoldStartTime = 0;
@@ -85,6 +127,31 @@ this->capDahPressCount = 0;
 }
 
 void VailAdapter::ResetDahHoldCounter() {
+this->dahIsHeld = false;
+this->dahHoldStartTime = 0;
+}
+
+// Drop every piece of in-flight input state: keyer relays, host keys and
+// notes, hold timers. Called when the input path changes underneath the
+// keyer (paddle swap, TRS mode on or off) so nothing stale carries over.
+// A stale keyer relay makes the next press silent, and a stale dit hold
+// timer trips the five second sidetone mute while the key is not even down.
+void VailAdapter::ResetInputState() {
+if (this->keyer) {
+    this->keyer->Reset();
+    this->keyer->Release();
+}
+if (this->keyIsPressed) this->EndTx();
+this->ReleaseAllKeys();
+
+// Reset() and Release() put the keyer back to the hard coded 100 ms default
+// dit duration, so restore the real speed like ToggleRadioMode does. Without
+// this the adapter keys at 12 WPM until you set the speed again.
+if (this->keyer) this->keyer->SetDitDuration(this->ditDuration);
+
+this->keyPressStartTime = 0;
+this->ditIsHeld = false;
+this->ditHoldStartTime = 0;
 this->dahIsHeld = false;
 this->dahHoldStartTime = 0;
 }
@@ -108,6 +175,21 @@ if (down) { // Note On
 midiEventPacket_t event = {header, status_byte, key, velocity};
 MidiUSB.sendMIDI(event);
 MidiUSB.flush();
+if (key < 3) this->midiNoteOn[key] = down;
+}
+
+// Release whatever host-side output is currently held, in whichever mode it
+// was sent. Transmission end always goes through here so the release matches
+// the press, even when a different relay opened last than the one that closed
+// first (both paddles, or a key cable with tip and ring tied, closing
+// together). Releasing only the last relay's key left the other Ctrl key
+// held on the host, which macOS treats as a stuck right-click.
+void VailAdapter::releaseOutputKeys() {
+if (this->ditKeyPressed) this->keyboardKey(DIT_KEYBOARD_KEY, false);
+if (this->dahKeyPressed) this->keyboardKey(DAH_KEYBOARD_KEY, false);
+for (uint8_t n = 0; n < 3; n++) {
+    if (this->midiNoteOn[n]) this->midiKey(n, false);
+}
 }
 
 void VailAdapter::keyboardKey(uint8_t key, bool down) {
@@ -125,33 +207,23 @@ if (key == DAH_KEYBOARD_KEY) this->dahKeyPressed = false;
 }
 
 void VailAdapter::ReleaseAllKeys() {
-// Release all keyboard keys that might be stuck
-if (this->keyboardMode) {
-if (this->ditKeyPressed) {
-Keyboard.release(DIT_KEYBOARD_KEY);
-this->ditKeyPressed = false;
+// Release every host key or note this adapter may have left down. This runs
+// regardless of the current output mode so nothing is stranded when the mode
+// switches while something is held. releaseAll() clears the whole keyboard
+// report, so a Ctrl left down in keyboard mode always gets let go.
+Keyboard.releaseAll();
+for (uint8_t n = 0; n < 3; n++) {
+    if (this->midiNoteOn[n]) this->midiKey(n, false);
 }
-if (this->dahKeyPressed) {
-Keyboard.release(DAH_KEYBOARD_KEY);
-this->dahKeyPressed = false;
-}
-// Also send release for both keys as a safety measure
-Keyboard.release(DIT_KEYBOARD_KEY);
-Keyboard.release(DAH_KEYBOARD_KEY);
-}
-// Release MIDI notes if in MIDI mode
-if (!this->keyboardMode) {
-this->midiKey(0, false);
-this->midiKey(1, false);
-this->midiKey(2, false);
-}
+this->buzzer->NoTone(0);
 // Reset state tracking
 this->ditKeyPressed = false;
 this->dahKeyPressed = false;
 this->keyIsPressed = false;
+this->keyPressStartTime = 0;
 this->txRelays[0] = false;
 this->txRelays[1] = false;
-Serial.println("All keys released");
+Serial.println(F("All keys released"));
 }
 
 #ifdef HAS_RADIO_OUTPUT
@@ -218,6 +290,8 @@ void VailAdapter::Tx(int relay, bool closed) {
         }
 #endif
 
+        if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
+
         if (!this->radioModeActive) {
             // Send the appropriate key based on which relay is active
             if (this->keyboardMode) {
@@ -274,16 +348,10 @@ void VailAdapter::Tx(int relay, bool closed) {
         }
 #endif
 
+        if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
+
         if (!this->radioModeActive) {
-            // Release only the keys that were pressed
-            if (this->keyboardMode) {
-                if (this->ditKeyPressed) this->keyboardKey(DIT_KEYBOARD_KEY, false);
-                if (this->dahKeyPressed) this->keyboardKey(DAH_KEYBOARD_KEY, false);
-            } else {
-                // In MIDI mode, release the notes that were sent
-                if (this->txRelays[PADDLE_DIT]) this->midiKey(1, false);
-                if (this->txRelays[PADDLE_DAH]) this->midiKey(2, false);
-            }
+            this->releaseOutputKeys();
         }
     }
 }
@@ -321,6 +389,8 @@ if (this->radioModeActive) {
     return;  // Skip keyboard/MIDI output in radio mode
 }
 #endif
+
+if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
 
 if (!this->radioModeActive) {
     if (this->keyboardMode) {
@@ -363,7 +433,10 @@ if (this->radioModeActive) {
 }
 #endif
 
+if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
+
 if (!this->radioModeActive) {
+    // Only undo what BeginTx() did, other held keys are left alone
     if (this->keyboardMode) {
         this->keyboardKey(KEY_LEFT_CTRL, false);
     } else {
@@ -402,21 +475,21 @@ if (this->radioModeActive) {
     // In radio mode, output to hardware pins
     if (this->radioKeyerMode) {
         // Radio Keyer Mode: All keying on DIT pin only
-        Serial.println("BeginTx: Radio Keyer Mode - Setting DIT pin ACTIVE");
+        Serial.println(F("BeginTx: Radio Keyer Mode - Setting DIT pin ACTIVE"));
         radioDitState = true;
         setRadioDit(true);
     } else {
         // Normal Radio Mode: Route to appropriate pin
         if (relay == PADDLE_DIT) {
-            Serial.println("BeginTx: Radio Mode - Setting DIT pin ACTIVE (paddle=DIT)");
+            Serial.println(F("BeginTx: Radio Mode - Setting DIT pin ACTIVE (paddle=DIT)"));
             radioDitState = true;
             setRadioDit(true);
         } else if (relay == PADDLE_DAH) {
-            Serial.println("BeginTx: Radio Mode - Setting DAH pin ACTIVE (paddle=DAH)");
+            Serial.println(F("BeginTx: Radio Mode - Setting DAH pin ACTIVE (paddle=DAH)"));
             radioDahState = true;
             setRadioDah(true);
         } else {
-            Serial.println("BeginTx: Radio Mode - Setting DIT pin ACTIVE (straight key fallback)");
+            Serial.println(F("BeginTx: Radio Mode - Setting DIT pin ACTIVE (straight key fallback)"));
             radioDitState = true;
             setRadioDit(true); // straight key on DIT
         }
@@ -424,6 +497,8 @@ if (this->radioModeActive) {
     return;
 }
 #endif
+
+if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
 
 if (!this->radioModeActive) {
     if (this->keyboardMode) {
@@ -471,21 +546,21 @@ if (this->radioModeActive) {
     // In radio mode, output to hardware pins
     if (this->radioKeyerMode) {
         // Radio Keyer Mode: All keying on DIT pin only
-        Serial.println("EndTx: Radio Keyer Mode - Setting DIT pin INACTIVE");
+        Serial.println(F("EndTx: Radio Keyer Mode - Setting DIT pin INACTIVE"));
         radioDitState = false;
         setRadioDit(false);
     } else {
         // Normal Radio Mode: Route to appropriate pin
         if (relay == PADDLE_DIT) {
-            Serial.println("EndTx: Radio Mode - Setting DIT pin INACTIVE (paddle=DIT)");
+            Serial.println(F("EndTx: Radio Mode - Setting DIT pin INACTIVE (paddle=DIT)"));
             radioDitState = false;
             setRadioDit(false);
         } else if (relay == PADDLE_DAH) {
-            Serial.println("EndTx: Radio Mode - Setting DAH pin INACTIVE (paddle=DAH)");
+            Serial.println(F("EndTx: Radio Mode - Setting DAH pin INACTIVE (paddle=DAH)"));
             radioDahState = false;
             setRadioDah(false);
         } else {
-            Serial.println("EndTx: Radio Mode - Setting DIT pin INACTIVE (straight key fallback)");
+            Serial.println(F("EndTx: Radio Mode - Setting DIT pin INACTIVE (straight key fallback)"));
             radioDitState = false;
             setRadioDit(false); // straight key on DIT
         }
@@ -494,24 +569,12 @@ if (this->radioModeActive) {
 }
 #endif
 
+if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
+
 if (!this->radioModeActive) {
-    if (this->keyboardMode) {
-        if (relay == PADDLE_DIT) {
-            this->keyboardKey(DIT_KEYBOARD_KEY, false);
-        } else if (relay == PADDLE_DAH) {
-            this->keyboardKey(DAH_KEYBOARD_KEY, false);
-        } else {
-            this->keyboardKey(KEY_LEFT_CTRL, false); // fallback for straight key
-        }
-    } else {
-        if (relay == PADDLE_DIT) {
-            this->midiKey(1, false);
-        } else if (relay == PADDLE_DAH) {
-            this->midiKey(2, false);
-        } else {
-            this->midiKey(0, false); // fallback for straight key
-        }
-    }
+    // Every relay is open by the time we get here, so release everything
+    // that is held rather than only the key for the relay that opened last.
+    this->releaseOutputKeys();
 }
 }
 
@@ -522,7 +585,7 @@ this->buzzer->Note(1, 65); delay(100);
 this->buzzer->Note(1, 60); delay(100);
 this->buzzer->NoTone(1);
 this->buzzerEnabled = false;
-Serial.println("Buzzer Disabled");
+Serial.println(F("Buzzer Disabled"));
 }
 
 void VailAdapter::ToggleRadioMode() {
@@ -544,18 +607,18 @@ keyIsPressed = false;
 // Restore the keyer's dit duration after releasing
 if (this->keyer) {
     this->keyer->SetDitDuration(this->ditDuration);
-    Serial.print("Keyer dit duration restored to: "); Serial.println(this->ditDuration);
+    Serial.print(F("Keyer dit duration restored to: ")); Serial.println(this->ditDuration);
 }
 
 if (this->radioModeActive) {
-    Serial.println("Radio Mode Activated (Sidetone Disabled)");
+    Serial.println(F("Radio Mode Activated (Sidetone Disabled)"));
     this->buzzer->NoTone(0);
     this->buzzer->Note(1, 60); delay(100);
     this->buzzer->Note(1, 65); delay(100);
     this->buzzer->Note(1, 70); delay(100);
     this->buzzer->NoTone(1);
 } else {
-    Serial.println("Radio Mode Deactivated. Resetting controller...");
+    Serial.println(F("Radio Mode Deactivated. Resetting controller..."));
     this->buzzer->Note(1, 70); delay(100);
     this->buzzer->Note(1, 65); delay(100);
     this->buzzer->Note(1, 60); delay(100);
@@ -565,7 +628,7 @@ if (this->radioModeActive) {
     NVIC_SystemReset();
 }
 #else
-Serial.println("Radio output not configured. Radio mode unavailable.");
+Serial.println(F("Radio output not configured. Radio mode unavailable."));
 this->buzzer->Tone(1, 100); delay(200); this->buzzer->NoTone(1);
 #endif
 }
@@ -573,7 +636,7 @@ this->buzzer->Tone(1, 100); delay(200); this->buzzer->NoTone(1);
 void VailAdapter::ToggleRadioKeyerMode() {
 #ifdef HAS_RADIO_OUTPUT
 if (!this->radioModeActive) {
-    Serial.println("Cannot toggle Radio Keyer Mode: Not in Radio Mode");
+    Serial.println(F("Cannot toggle Radio Keyer Mode: Not in Radio Mode"));
     return;
 }
 
@@ -594,7 +657,7 @@ keyIsPressed = false;
 // Restore the keyer's dit duration after releasing
 if (this->keyer) {
     this->keyer->SetDitDuration(this->ditDuration);
-    Serial.print("Keyer dit duration restored to: "); Serial.println(this->ditDuration);
+    Serial.print(F("Keyer dit duration restored to: ")); Serial.println(this->ditDuration);
 }
 
 extern void saveSettingsToEEPROM(uint8_t keyerType, uint16_t ditDuration, uint8_t txNote);
@@ -602,7 +665,7 @@ extern void saveRadioKeyerModeToEEPROM(bool radioKeyerMode);
 saveRadioKeyerModeToEEPROM(this->radioKeyerMode);
 
 if (this->radioKeyerMode) {
-    Serial.println("Radio Keyer Mode Activated - Keyer output on DIT pin only");
+    Serial.println(F("Radio Keyer Mode Activated - Keyer output on DIT pin only"));
     // Play "RK" in morse: R = .-. K = -.-
     // R: dit-dah-dit
     this->buzzer->Note(1, this->txNote); delay(60);
@@ -619,7 +682,7 @@ if (this->radioKeyerMode) {
     this->buzzer->Note(1, this->txNote); delay(180);
     this->buzzer->NoTone(1);
 } else {
-    Serial.println("Radio Keyer Mode Deactivated - Back to normal Radio Mode");
+    Serial.println(F("Radio Keyer Mode Deactivated - Back to normal Radio Mode"));
     // Play "R" in morse: R = .-.
     // R: dit-dah-dit
     this->buzzer->Note(1, this->txNote); delay(60);
@@ -630,12 +693,22 @@ if (this->radioKeyerMode) {
     this->buzzer->NoTone(1);
 }
 #else
-Serial.println("Radio output not configured. Radio Keyer mode unavailable.");
+Serial.println(F("Radio output not configured. Radio Keyer mode unavailable."));
 #endif
 }
 
 void VailAdapter::ProcessPaddleInput(Paddle paddle, bool pressed, bool isCapacitive) {
 unsigned long currentTime = millis();
+
+// Apply paddle swap to dit/dah inputs per the configured scope:
+// ALL swaps both physical pins and capacitive touch pads, TOUCH swaps
+// capacitive touch pads only. Straight key input is intentionally unaffected.
+bool swapThisInput = (this->paddleSwapMode == PADDLE_SWAP_ALL) ||
+                     (this->paddleSwapMode == PADDLE_SWAP_TOUCH && isCapacitive);
+if (swapThisInput) {
+    if (paddle == PADDLE_DIT) paddle = PADDLE_DAH;
+    else if (paddle == PADDLE_DAH) paddle = PADDLE_DIT;
+}
 
 // Track dit paddle state for hold detection
 if (paddle == PADDLE_DIT) {
@@ -643,15 +716,23 @@ if (paddle == PADDLE_DIT) {
         // Dit just pressed - start timer
         this->ditHoldStartTime = currentTime;
         this->ditIsHeld = true;
-        Serial.println("Dit hold started");
+        Serial.println(F("Dit hold started"));
     } else if (!pressed && this->ditIsHeld) {
         // Dit released - reset timer
         unsigned long holdTime = currentTime - this->ditHoldStartTime;
-        Serial.print("Dit released after ");
+        Serial.print(F("Dit released after "));
         Serial.print(holdTime);
-        Serial.println("ms");
+        Serial.println(F("ms"));
         this->ditIsHeld = false;
     }
+}
+
+// A straight key release (TRS mode, the KEY pin, or the touch key) ends any
+// dit hold that began on the DIT pin before the input path changed. Otherwise
+// the hold timer keeps running with the key up and mutes the sidetone.
+if (paddle == PADDLE_STRAIGHT && !pressed && this->ditIsHeld) {
+    this->ditIsHeld = false;
+    this->ditHoldStartTime = 0;
 }
 
 // Track dah paddle state for hold detection in radio mode
@@ -660,13 +741,13 @@ if (paddle == PADDLE_DAH && isCapacitive && this->radioModeActive) {
         // Dah just pressed in radio mode - start timer
         this->dahHoldStartTime = currentTime;
         this->dahIsHeld = true;
-        Serial.println("Dah hold started (Radio Mode)");
+        Serial.println(F("Dah hold started (Radio Mode)"));
     } else if (!pressed && this->dahIsHeld) {
         // Dah released - reset timer
         unsigned long holdTime = currentTime - this->dahHoldStartTime;
-        Serial.print("Dah released after ");
+        Serial.print(F("Dah released after "));
         Serial.print(holdTime);
-        Serial.println("ms");
+        Serial.println(F("ms"));
         this->dahIsHeld = false;
     }
 }
@@ -719,20 +800,20 @@ if (this->radioModeActive) {
             }
         } else {
             // Normal Radio Mode: Passthrough to separate pins (let radio's keyer handle it)
-            Serial.print("Normal Radio Mode Passthrough - paddle=");
+            Serial.print(F("Normal Radio Mode Passthrough - paddle="));
             Serial.print(paddle == PADDLE_DIT ? "DIT" : "DAH");
-            Serial.print(", pressed=");
+            Serial.print(F(", pressed="));
             Serial.println(pressed);
 
             if (paddle == PADDLE_DIT) {
                 radioDitState = pressed;
                 setRadioDit(radioDitState);
-                Serial.print("  -> Set DIT pin to ");
+                Serial.print(F("  -> Set DIT pin to "));
                 Serial.println(pressed ? "ACTIVE" : "INACTIVE");
             } else if (paddle == PADDLE_DAH) {
                 radioDahState = pressed;
                 setRadioDah(radioDahState);
-                Serial.print("  -> Set DAH pin to ");
+                Serial.print(F("  -> Set DAH pin to "));
                 Serial.println(pressed ? "ACTIVE" : "INACTIVE");
             }
         }
@@ -751,22 +832,14 @@ if (this->keyer) {
 if (pressed) this->lastPaddlePressed = paddle; // Track last paddle pressed
 this->keyer->Key(paddle, pressed);
 } else {
-bool currentPaddleActivity = false;
+// Passthrough: raw paddle state only, the host does the keying and sidetone
 if (paddle == PADDLE_DIT) {
 if (this->keyboardMode) this->keyboardKey(DIT_KEYBOARD_KEY, pressed);
 else this->midiKey(1, pressed);
-if (pressed) currentPaddleActivity = true;
 } else if (paddle == PADDLE_DAH) {
 if (this->keyboardMode) this->keyboardKey(DAH_KEYBOARD_KEY, pressed);
 else this->midiKey(2, pressed);
-if (pressed) currentPaddleActivity = true;
 }
-
-            if (currentPaddleActivity) { 
-                if(!keyIsPressed) BeginTx(); 
-            } else { 
-                if(keyIsPressed) EndTx();
-            }
         }
     }
   }
@@ -777,24 +850,51 @@ uint16_t msg = (event.byte1 << 8) | (event.byte2 << 0);
 switch (event.byte1) {
 case 0xB0:
 switch (event.byte2) {
-case 0:
-this->keyboardMode = (event.byte3 > 0x3f);
-Serial.print("Keyboard mode: "); Serial.println(this->keyboardMode ? "ON" : "OFF");
+case 0: {
+bool newKeyboardMode = (event.byte3 > 0x3f);
+if (newKeyboardMode != this->keyboardMode) {
+// Let go of anything still held in the old mode before switching.
+// Otherwise a Ctrl pressed in keyboard mode never gets released.
+ReleaseAllKeys();
+}
+this->keyboardMode = newKeyboardMode;
+Serial.print(F("Keyboard mode: ")); Serial.println(this->keyboardMode ? "ON" : "OFF");
 MidiUSB.sendMIDI(event);
 break;
+}
 case 1:
 this->ditDuration = event.byte3 * 2 * MILLISECOND;
 if (this->keyer) {
 this->keyer->SetDitDuration(this->ditDuration);
 }
-Serial.print("Dit duration set to: "); Serial.println(this->ditDuration);
+Serial.print(F("Dit duration set to: ")); Serial.println(this->ditDuration);
 saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote);
 break;
 case 2:
 this->txNote = event.byte3;
-Serial.print("TX Note set to: "); Serial.println(this->txNote);
+Serial.print(F("TX Note set to: ")); Serial.println(this->txNote);
 
 saveSettingsToEEPROM(getCurrentKeyerType(), this->ditDuration, this->txNote);
+break;
+case 3:
+{
+    // CC3 - Paddle swap scope.
+    //   0..31   -> swap OFF
+    //   32..63  -> swap capacitive touch pads only
+    //   64..126 -> swap physical paddle pins AND capacitive touch pads
+    //   127     -> toggle between OFF and full swap (legacy behavior)
+    uint8_t desired;
+    if (event.byte3 == 127) {
+        desired = (this->paddleSwapMode == PADDLE_SWAP_OFF) ? PADDLE_SWAP_ALL : PADDLE_SWAP_OFF;
+    } else if (event.byte3 >= 64) {
+        desired = PADDLE_SWAP_ALL;
+    } else if (event.byte3 >= 32) {
+        desired = PADDLE_SWAP_TOUCH;
+    } else {
+        desired = PADDLE_SWAP_OFF;
+    }
+    this->SetPaddleSwapMode(desired, true);
+}
 break;
 }
 break;
@@ -809,9 +909,9 @@ ReleaseAllKeys();
 this->keyer = GetKeyerByNumber(event.byte2, this);
 if (this->keyer) {
 this->keyer->SetDitDuration(this->ditDuration);
-Serial.print("Keyer mode set to: "); Serial.println(event.byte2);
+Serial.print(F("Keyer mode set to: ")); Serial.println(event.byte2);
 } else {
-Serial.print("Keyer mode set to passthrough (or invalid): "); Serial.println(event.byte2);
+Serial.print(F("Keyer mode set to passthrough (or invalid): ")); Serial.println(event.byte2);
 }
 saveSettingsToEEPROM(event.byte2, this->ditDuration, this->txNote);
 break;
@@ -825,20 +925,32 @@ break;
 }
 
 void VailAdapter::Tick(unsigned long currentMillis) {
+// Keyboard Sim mode trailing guard: KSKS has matched and we're waiting to
+// confirm a word-gap of silence followed the final S (proving KSKS stood
+// alone). Activate once that gap elapses with the key up.
+if (this->ksksArmed && !this->keyIsPressed) {
+    unsigned long gap = (unsigned long)this->ditDuration * KSKS_TRAILING_GAP_DITS;
+    if (currentMillis - this->ksksArmedTime >= gap) {
+        Serial.println(F("KSKS: trailing gap satisfied -> activating Keyboard Sim mode"));
+        this->ksksArmed = false;
+        this->enterKeyboardSimMode();
+    }
+}
+
 // Check for dit hold during each tick
 if (this->ditIsHeld && this->buzzerEnabled) {
     unsigned long holdTime = currentMillis - this->ditHoldStartTime;
     if (holdTime >= DIT_HOLD_BUZZER_DISABLE_THRESHOLD) {
-        Serial.print("Dit held for ");
+        Serial.print(F("Dit held for "));
         Serial.print(holdTime);
-        Serial.println("ms - disabling buzzer");
+        Serial.println(F("ms - disabling buzzer"));
         this->DisableBuzzer();
         this->ditIsHeld = false; // Reset to prevent re-triggering
-    } else if (holdTime % 1000 == 0) {
+    } else if (holdTime > 0 && holdTime % 1000 == 0) {
         // Debug: show progress every second
-        Serial.print("Dit held for ");
+        Serial.print(F("Dit held for "));
         Serial.print(holdTime);
-        Serial.println("ms");
+        Serial.println(F("ms"));
     }
 }
 
@@ -847,9 +959,9 @@ if (this->ditIsHeld && this->buzzerEnabled) {
 if (this->dahIsHeld && this->radioModeActive) {
     unsigned long holdTime = currentMillis - this->dahHoldStartTime;
     if (holdTime >= DAH_HOLD_RADIO_KEYER_TOGGLE_THRESHOLD) {
-        Serial.print("Dah held for ");
+        Serial.print(F("Dah held for "));
         Serial.print(holdTime);
-        Serial.println("ms - toggling Radio Keyer Mode");
+        Serial.println(F("ms - toggling Radio Keyer Mode"));
         this->ToggleRadioKeyerMode();
         this->dahIsHeld = false; // Reset to prevent re-triggering
     }
@@ -865,5 +977,165 @@ this->DisableBuzzer();
 if (this->keyer) {
     this->keyer->Tick(currentMillis);
 }
+}
+
+// ============================================================================
+// Keyboard Sim Mode — KSKS detection (character layer) and keyboard output
+// ============================================================================
+
+// Fed every decoded character (before it is typed). Detects the "KSKS" prosign
+// keyed as its own word and arms activation. Matching happens on decoded
+// CHARACTERS — not the raw dit/dah element stream — and both ends are guarded
+// by a word-gap, so element runs inside ordinary words (e.g. the OLECU run
+// inside "molecule") cannot trigger it.
+void VailAdapter::checkForKSKS(char c) {
+    if (this->keyboardSimMode) return;        // Already active
+    if (c < 'A' || c > 'Z') return;            // Only letters take part
+
+    static const char KSKS_SEQ[4] = {'K', 'S', 'K', 'S'};
+    unsigned long now = millis();
+
+    // A letter arriving while armed means KSKS was NOT standalone — cancel.
+    if (this->ksksArmed) {
+        Serial.println(F("KSKS: letter after match -> not standalone, disarming"));
+        this->ksksArmed = false;
+    }
+
+    // Drop a stale in-progress sequence.
+    if (this->ksksMatchLen > 0 && (now - this->firstKTime) > KSKS_TIMEOUT) {
+        Serial.println(F("KSKS: sequence timed out, resetting"));
+        this->ksksMatchLen = 0;
+    }
+
+    // Did a word-gap (or fresh start) precede THIS letter? Consume it either way.
+    bool hadBoundary = this->wordBoundaryPending;
+    this->wordBoundaryPending = false;
+
+    if (this->ksksMatchLen == 0) {
+        // Leading guard: the first K must follow a word boundary.
+        if (c == 'K' && hadBoundary) {
+            this->ksksMatchLen = 1;
+            this->firstKTime = now;
+            Serial.println(F("KSKS: first K after gap -> sequence started"));
+        }
+        return;
+    }
+
+    if (c == KSKS_SEQ[this->ksksMatchLen]) {
+        this->ksksMatchLen++;
+        Serial.print(F("KSKS: matched ")); Serial.print(c);
+        Serial.print(F(" (")); Serial.print(this->ksksMatchLen); Serial.println(F("/4)"));
+        if (this->ksksMatchLen >= 4) {
+            // Full KSKS seen. Arm and wait for the trailing word-gap (see Tick()).
+            this->ksksMatchLen = 0;
+            this->ksksArmed = true;
+            this->ksksArmedTime = now;
+            Serial.println(F("KSKS: full match -> armed, awaiting trailing gap"));
+        }
+    } else {
+        // Pattern broken. Reset; this letter can't restart (boundary consumed).
+        Serial.println(F("KSKS: sequence broken, resetting"));
+        this->ksksMatchLen = 0;
+    }
+}
+
+// Called by the decoder every time it measures a word-length gap, whether or
+// not a space character is typed for it. Marks that the next decoded letter
+// begins a fresh word, which is the leading guard for a starting K.
+void VailAdapter::notifyWordBoundary() {
+    this->wordBoundaryPending = true;
+}
+
+void VailAdapter::enterKeyboardSimMode() {
+    // Don't set keyboardSimMode = true yet! If we did, any characters decoded
+    // during the confirmation tones would be typed to the host. Use a local
+    // guard against re-entry instead.
+    static bool entering = false;
+    if (entering || this->keyboardSimMode) return;
+    entering = true;
+
+    // Release any held keys and reset key/hold state.
+    ReleaseAllKeys();
+    this->keyIsPressed = false;
+    this->keyPressStartTime = 0;
+    this->ditIsHeld = false;
+    this->ditHoldStartTime = 0;
+
+    // Clear KSKS detection state.
+    this->ksksMatchLen = 0;
+    this->firstKTime = 0;
+    this->ksksArmed = false;
+    this->ksksArmedTime = 0;
+    this->wordBoundaryPending = true;
+
+    Serial.println(F("=== KEYBOARD SIM MODE ACTIVATING ==="));
+
+    // Ascending chime, then "KS" in Morse as confirmation.
+    this->buzzer->Note(1, 60); delay(80);   // C4
+    this->buzzer->Note(1, 64); delay(80);   // E4
+    this->buzzer->Note(1, 67); delay(80);   // G4
+    this->buzzer->Note(1, 72); delay(120);  // C5
+    this->buzzer->NoTone(1);
+    delay(200);
+    // K = -.-
+    this->buzzer->Note(1, this->txNote); delay(180);
+    this->buzzer->NoTone(1); delay(60);
+    this->buzzer->Note(1, this->txNote); delay(60);
+    this->buzzer->NoTone(1); delay(60);
+    this->buzzer->Note(1, this->txNote); delay(180);
+    this->buzzer->NoTone(1); delay(180);
+    // S = ...
+    this->buzzer->Note(1, this->txNote); delay(60);
+    this->buzzer->NoTone(1); delay(60);
+    this->buzzer->Note(1, this->txNote); delay(60);
+    this->buzzer->NoTone(1); delay(60);
+    this->buzzer->Note(1, this->txNote); delay(60);
+    this->buzzer->NoTone(1);
+
+    // Reset the decoder AFTER the tones so partial elements that were in flight
+    // don't get typed out as the first character.
+    if (this->onEnterKeyboardSimMode) {
+        this->onEnterKeyboardSimMode();
+    }
+
+    // NOW enable typing — decoder is reset, no stray characters will leak.
+    this->keyboardSimMode = true;
+    entering = false;
+    Serial.println(F("=== KEYBOARD SIM MODE ACTIVATED ==="));
+}
+
+void VailAdapter::outputKeyboardChar(char c) {
+    if (!this->keyboardSimMode) return;
+
+    if (c >= 'A' && c <= 'Z') {
+        Keyboard.press(c + 32);   // Type lowercase
+        Keyboard.release(c + 32);
+        Serial.print(F("KB SIM: '")); Serial.print((char)(c + 32)); Serial.println(F("'"));
+    } else {
+        Keyboard.press(c);        // Numbers and punctuation as-is
+        Keyboard.release(c);
+        Serial.print(F("KB SIM: '")); Serial.print(c); Serial.println(F("'"));
+    }
+}
+
+void VailAdapter::outputKeyboardBackspace() {
+    if (!this->keyboardSimMode) return;
+    Keyboard.press(KEY_BACKSPACE);
+    Keyboard.release(KEY_BACKSPACE);
+    Serial.println(F("KB SIM: [BACKSPACE]"));
+}
+
+void VailAdapter::outputKeyboardEnter() {
+    if (!this->keyboardSimMode) return;
+    Keyboard.press(KEY_RETURN);
+    Keyboard.release(KEY_RETURN);
+    Serial.println(F("KB SIM: [ENTER]"));
+}
+
+void VailAdapter::outputKeyboardSpace() {
+    if (!this->keyboardSimMode) return;
+    Keyboard.press(' ');
+    Keyboard.release(' ');
+    Serial.println(F("KB SIM: [SPACE]"));
 }
 

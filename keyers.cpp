@@ -65,6 +65,12 @@ public:
         if (this->output) {
             this->output->EndTx();
         }
+        // Forget any relay that was closed when the reset happened. A relay
+        // left marked closed makes the next real press a no-op (no sidetone,
+        // no host key) until a full press and release resyncs it.
+        this->txRelays[0] = false;
+        this->txRelays[1] = false;
+        this->currentTransmittingRelay = -1;
         this->ditDuration = 100;
     }
 
@@ -99,8 +105,12 @@ public:
                 this->currentTransmittingRelay = relay;
                 this->output->BeginTx(relay);
             } else {
+                // End on the relay we started on. With both paddles
+                // overlapping, the last one released isn't always the one
+                // that began the transmission.
+                int endRelay = (this->currentTransmittingRelay >= 0) ? this->currentTransmittingRelay : relay;
                 this->currentTransmittingRelay = -1;
-                this->output->EndTx(relay);
+                this->output->EndTx(endRelay);
             }
         }
     }
@@ -417,13 +427,16 @@ Keyer *GetKeyerByNumber(int n, Transmitter *output) {
     }
 
     Keyer *k = keyers[n];
+    if (k == NULL) {
+        return NULL; // 0 = passthrough, no keyer object
+    }
     k->SetOutput(output);
     return k;
 }
 
 int getKeyerNumber(Keyer* k) {
     if (k == NULL) {
-        return 1; // Default to straight key if NULL
+        return 0; // Passthrough
     }
     
     for (int i = 1; i < len(keyers); i++) {

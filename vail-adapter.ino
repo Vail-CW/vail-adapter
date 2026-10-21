@@ -14,13 +14,19 @@
 #include "settings_eeprom.h"
 #include "menu_handler.h"
 #include "equal_temperament.h"
+#include "morse_decoder.h"
 
+// ---- Mono (TS) plug detection ----
+// A mono straight key plug shorts the ring to the sleeve, so the DAH pin reads
+// pressed for as long as the plug is in. In Straight Key mode that would be a
+// constant key-down, so the firmware switches to TRS mode and reads the key
+// from the DIT pin only. See updateTrsDetection() for the rules.
 bool trs = false;
-unsigned long dahGroundedStartTime = 0;  // Track how long DAH has been grounded
-bool dahWasGroundedLastCheck = false;    // Previous state for edge detection
-unsigned long lastTrsCheckTime = 0;      // Last time we checked for TRS
-const unsigned long TRS_DETECTION_THRESHOLD = 1000;  // 1 second of continuous grounding = TRS cable
-const unsigned long TRS_CHECK_INTERVAL = 500;        // Check every 500ms
+uint8_t ditReleasesWhileDahLow = 0;   // Complete DIT presses seen with DAH grounded throughout
+unsigned long lastDitEdgeTime = 0;    // Last DIT press or release
+const uint8_t TRS_KEYED_CYCLES = 2;              // DIT presses with DAH grounded that prove a mono plug
+const unsigned long TRS_IDLE_THRESHOLD = 3000;   // DAH grounded this long with DIT idle and open
+const unsigned long TRS_UNPLUG_THRESHOLD = 1000; // DAH open this long ends TRS mode
 
 Bounce dit = Bounce();
 Bounce dah = Bounce();
@@ -32,6 +38,60 @@ TouchBounce qt_key = TouchBounce();
 #endif
 
 VailAdapter adapter = VailAdapter(PIEZO_PIN);
+
+// ---- Keyboard Sim mode: Morse decoder + USB keyboard output ----
+MorseDecoder morseDecoder;
+
+// Decoder timing-capture state
+bool lastDecoderKeyState = false;
+unsigned long lastDecoderEventTime = 0;
+
+void onDecodedChar(char c) {
+  // Detection runs whether or not we're already in sim mode.
+  adapter.checkForKSKS(c);
+  if (adapter.isKeyboardSimMode()) {
+    adapter.outputKeyboardChar(c);
+  }
+}
+
+void onDecodedBackspace() {
+  if (adapter.isKeyboardSimMode()) adapter.outputKeyboardBackspace();
+}
+
+void onDecodedEnter() {
+  if (adapter.isKeyboardSimMode()) adapter.outputKeyboardEnter();
+}
+
+void onDecodedSpace() {
+  if (adapter.isKeyboardSimMode()) adapter.outputKeyboardSpace();
+}
+
+void onDecodedWordGap() {
+  // A word-length silence was measured. This fires whether or not a space
+  // character is typed for it, so KSKS can start after any real pause, not
+  // only after pauses the decoder chose to turn into a space.
+  adapter.notifyWordBoundary();
+}
+
+void onDecodedError() {
+  if (adapter.isKeyboardSimMode()) playInvalidCodeTone();
+}
+
+void onEnterKeyboardSimMode() {
+  // Reset the decoder so in-flight elements aren't typed as the first character.
+  morseDecoder.reset();
+  bool usingKeyer = (adapter.getCurrentKeyerType() > 1);
+  bool currentKeyState = false;
+  if (usingKeyer) {
+    currentKeyState = adapter.isTransmitting();
+  } else {
+    dit.update();
+    dah.update();
+    if (!dit.read() || !dah.read()) currentKeyState = true;
+  }
+  lastDecoderKeyState = currentKeyState;
+  lastDecoderEventTime = 0;  // Prevents a bogus timing on the next transition
+}
 
 #ifdef BUTTON_PIN
 ButtonDebouncer buttonDebouncer;
@@ -107,6 +167,7 @@ void setup() {
 
   loadSettingsFromEEPROM(adapter);
   loadRadioKeyerModeFromEEPROM(adapter);
+  loadPaddleSwapModeFromEEPROM(adapter);
 
 #ifdef BUTTON_PIN
   loadMemoriesFromEEPROM(memorySlots);
@@ -122,9 +183,21 @@ void setup() {
   Serial.print("Buzzer initially: "); Serial.println(adapter.isBuzzerEnabled() ? "ON" : "OFF");
   Serial.print("Radio Mode initially: "); Serial.println(adapter.isRadioModeActive() ? "ON" : "OFF");
   Serial.print("Radio Keyer Mode initially: "); Serial.println(adapter.isRadioKeyerMode() ? "ON" : "OFF");
+  Serial.print(F("Paddle Swap mode initially: "));
+  Serial.println(adapter.getPaddleSwapMode());
 
   Keyboard.begin();
   MidiUSB.flush();
+
+  // Keyboard Sim mode: initialise the Morse decoder and wire its callbacks
+  morseDecoder.begin(adapter.getDitDuration());
+  morseDecoder.setCharacterCallback(onDecodedChar);
+  morseDecoder.setBackspaceCallback(onDecodedBackspace);
+  morseDecoder.setEnterCallback(onDecodedEnter);
+  morseDecoder.setSpaceCallback(onDecodedSpace);
+  morseDecoder.setWordGapCallback(onDecodedWordGap);
+  morseDecoder.setErrorCallback(onDecodedError);
+  adapter.setEnterKeyboardSimModeCallback(onEnterKeyboardSimMode);
 
   // Ensure clean keyboard state on startup
   adapter.ReleaseAllKeys();
@@ -151,6 +224,62 @@ void flushBounceState() {
   Serial.println("Flushed Bounce state for dit/dah/key inputs");
 }
 
+// Record a debounced DIT edge for TRS detection. A release that happens while
+// DAH is still grounded counts toward the keyed rule.
+void noteDitEdge(unsigned long now) {
+  lastDitEdgeTime = now;
+  if (dit.read() == HIGH && dah.read() == LOW) {
+    if (ditReleasesWhileDahLow < 255) ditReleasesWhileDahLow++;
+  }
+}
+
+void setTrsMode(bool enabled, const __FlashStringHelper* why) {
+  trs = enabled;
+  ditReleasesWhileDahLow = 0;
+  // Whatever the keyer thought was closed on the old input path is now
+  // meaningless. Drop it so the next press starts clean.
+  adapter.ResetInputState();
+  Serial.print(enabled ? F("TRS mode on: ") : F("TRS mode off: "));
+  Serial.println(why);
+  if (enabled) Serial.println(F("Straight key input via DIT pin, DAH pin ignored."));
+}
+
+// Decide whether a mono plug is present. Only runs in Straight Key mode, and
+// only on the physical pins. Two rules can turn TRS mode on, and neither can
+// be satisfied by a person working a paddle or a key cable with tip and ring
+// tied together:
+//   1. DAH stays grounded across TRS_KEYED_CYCLES complete DIT presses. A real
+//      DAH lever, or a tied cable, opens the pin between presses.
+//   2. DAH stays grounded for TRS_IDLE_THRESHOLD with no DIT activity at all
+//      while the DIT pin is open. Someone holding a DAH lever that long in
+//      Straight Key mode is already sending a constant tone, so cutting it is
+//      harmless, and TRS mode drops again once the lever is released.
+// Both rules also require the DIT pin to be open at the moment of the switch,
+// so the input path never changes in the middle of an element. TRS mode ends
+// when DAH has read open for TRS_UNPLUG_THRESHOLD, again with DIT open.
+void updateTrsDetection(unsigned long now) {
+  bool dahLow = (dah.read() == LOW);
+  bool ditOpen = (dit.read() == HIGH);
+
+  if (!dahLow) ditReleasesWhileDahLow = 0;
+
+  if (!trs) {
+    if (adapter.getCurrentKeyerType() != 1) {
+      ditReleasesWhileDahLow = 0;
+      return;
+    }
+    if (!dahLow || !ditOpen) return;
+    if (ditReleasesWhileDahLow >= TRS_KEYED_CYCLES) {
+      setTrsMode(true, F("DAH stayed grounded across DIT presses"));
+    } else if (dah.duration() >= TRS_IDLE_THRESHOLD &&
+               (now - lastDitEdgeTime) >= TRS_IDLE_THRESHOLD) {
+      setTrsMode(true, F("DAH grounded with no DIT activity"));
+    }
+  } else if (!dahLow && ditOpen && dah.duration() >= TRS_UNPLUG_THRESHOLD) {
+    setTrsMode(false, F("DAH no longer grounded"));
+  }
+}
+
 void setLED() {
 #ifndef NO_LED
   bool finalLedState = false;
@@ -172,60 +301,6 @@ void loop() {
 
   setLED();
   adapter.Tick(currentTime);
-
-  // Check for TRS cable hot-plug detection (every 500ms)
-  // ONLY active when already in Straight Key mode (keyer type 1)
-  // This requires user to manually switch to Straight Key mode before hot-plugging
-  if (currentTime - lastTrsCheckTime >= TRS_CHECK_INTERVAL) {
-    lastTrsCheckTime = currentTime;
-
-    // Only check for TRS if we're in Straight Key mode (keyer type 1)
-    bool inStraightKeyMode = (adapter.getCurrentKeyerType() == 1);
-
-    if (inStraightKeyMode && !trs) {
-      // Check if DAH pin is currently grounded (physical pin only, not capacitive)
-      bool dahIsGrounded = (digitalRead(DAH_PIN) == LOW);
-
-      if (dahIsGrounded) {
-        if (!dahWasGroundedLastCheck) {
-          // DAH just became grounded - start timer
-          dahGroundedStartTime = currentTime;
-          dahWasGroundedLastCheck = true;
-        } else {
-          // DAH has been continuously grounded - check duration
-          unsigned long groundedDuration = currentTime - dahGroundedStartTime;
-          if (groundedDuration >= TRS_DETECTION_THRESHOLD) {
-            // TRS cable detected! DAH has been continuously grounded for 1+ second
-            trs = true;
-            Serial.println("TRS CABLE DETECTED (hot-plug): DAH pin grounded while in Straight Key mode");
-            Serial.println("Enabling TRS mode: DIT pin will be used for straight key input, DAH pin ignored");
-
-            // Flush bounce state to clear any pending transitions
-            flushBounceState();
-
-            Serial.println("TRS mode active. Straight key input via DIT pin.");
-          }
-        }
-      } else {
-        dahWasGroundedLastCheck = false;
-        dahGroundedStartTime = 0;
-      }
-    } else if (trs) {
-      // If we're in TRS mode, check if cable was unplugged
-      bool dahIsGrounded = (digitalRead(DAH_PIN) == LOW);
-      if (!dahIsGrounded) {
-        // DAH is no longer grounded - cable unplugged
-        Serial.println("TRS cable unplugged (DAH no longer grounded)");
-        trs = false;
-        dahWasGroundedLastCheck = false;
-        dahGroundedStartTime = 0;
-      }
-    } else {
-      // Not in straight key mode and not in TRS mode - reset detection state
-      dahWasGroundedLastCheck = false;
-      dahGroundedStartTime = 0;
-    }
-  }
 
 #ifdef BUTTON_PIN
   MenuHandlerState& menuState = getMenuState();
@@ -345,6 +420,7 @@ void loop() {
   } else {
     // Normal paddle mode: process both DIT and DAH separately
     if (dit.update()) {
+      noteDitEdge(currentTime);
       adapter.ProcessPaddleInput(PADDLE_DIT, !dit.read(), false);
 #ifdef BUTTON_PIN
       // Reset activity timer on CW key activity in setting modes
@@ -363,6 +439,9 @@ void loop() {
 #endif
     }
   }
+
+  // Mono plug hot-plug detection, using the debounced pin states from above
+  updateTrsDetection(currentTime);
 
 #ifndef NO_CAPACITIVE_TOUCH
 #ifdef QT_KEY_PIN
@@ -392,4 +471,60 @@ void loop() {
 #endif
   }
 #endif
+
+  // ========================================================================
+  // Keyboard Sim mode: feed keyed Morse timing into the decoder.
+  // For iambic keyers we use the keyer's output timing (the user holds paddles
+  // while the keyer times the elements); for straight key we use raw input.
+  // Skip radio mode and memory record/playback so they aren't decoded/typed.
+  // ========================================================================
+  bool decoderActive = !adapter.isRadioModeActive();
+#ifdef BUTTON_PIN
+  decoderActive = decoderActive && !recordingState.isRecording && !playbackState.isPlaying;
+#endif
+  if (decoderActive) {
+    bool keyIsDown = false;
+    bool usingKeyer = (adapter.getCurrentKeyerType() > 1);
+    if (usingKeyer) {
+      keyIsDown = adapter.isTransmitting();
+    } else {
+      if (!dit.read() || !dah.read()) keyIsDown = true;
+#ifndef TRRS_TRINKEY
+      if (!key.read()) keyIsDown = true;
+#endif
+#ifndef NO_CAPACITIVE_TOUCH
+      if (qt_dit.read() || qt_dah.read()) keyIsDown = true;
+#ifdef QT_KEY_PIN
+      if (qt_key.read()) keyIsDown = true;
+#endif
+#endif
+    }
+
+    morseDecoder.setKeyDown(keyIsDown);
+
+    if (keyIsDown != lastDecoderKeyState) {
+      unsigned long now = millis();
+      if (lastDecoderEventTime > 0) {
+        unsigned long elapsed = now - lastDecoderEventTime;
+        // Cap the gap so a long pause cannot wrap the 16-bit timing value and
+        // reach the decoder looking like a very long tone. That was putting a
+        // phantom dah in front of the first character after a pause.
+        if (elapsed > 30000) elapsed = 30000;
+        int16_t duration = (int16_t)elapsed;
+        if (keyIsDown) {
+          morseDecoder.addTiming(-duration);  // Silence that just ended
+        } else {
+          morseDecoder.addTiming(duration);   // Tone that just ended
+        }
+      }
+      lastDecoderEventTime = now;
+      lastDecoderKeyState = keyIsDown;
+    }
+
+    morseDecoder.tick(currentTime);
+  } else {
+    // Keep edge state clean so we don't emit a bogus timing when we resume.
+    lastDecoderKeyState = false;
+    lastDecoderEventTime = 0;
+  }
 }

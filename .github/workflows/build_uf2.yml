@@ -162,12 +162,24 @@ jobs:
           set -e
           mkdir -p release_assets
           # Stamp a short, digits-only version code onto each short board code so
-          # the asset name stays DOS 8.3-safe (<=8 chars, single dot). The code is
-          # major.minor with the dot removed, e.g. v5.0 -> 50, v5.2.0-beta.1 -> 52:
-          #   xb2.uf2 -> xb2_50.uf2
-          # Embedding the raw tag (v5.0) would add a second dot and break 8.3.
-          VERCODE="$(printf '%s' "$TAG" | sed -E 's/^[vV]?([0-9]+)\.([0-9]+).*/\1\2/')"
-          # Fallback for tags without a major.minor: strip to alphanumerics.
+          # the asset name stays DOS 8.3-safe (<=8 chars, single dot), e.g.
+          #   xb2.uf2 -> xb2_53.uf2
+          # Two supported tag styles, both yielding major+minor (patch dropped):
+          #   - dotted SemVer:   v5.0 / v5.2.0-beta.1   -> 50 / 52
+          #   - dot-free digits: v530-ksks-beta1        -> 53  (530 minus patch)
+          # Embedding the raw tag would add extra dots / overrun 8.3.
+          # 1) Dotted form: take major.minor, drop the dot.
+          VERCODE="$(printf '%s' "$TAG" | sed -nE 's/^[vV]?([0-9]+)\.([0-9]+).*/\1\2/p')"
+          # 2) Dot-free form: take the leading digit run; if >=3 digits, drop the
+          #    trailing patch digit (v530 -> 53, v5100 -> 510).
+          if [ -z "$VERCODE" ]; then
+            DIGITS="$(printf '%s' "$TAG" | sed -nE 's/^[vV]?([0-9]+).*/\1/p')"
+            case "$DIGITS" in
+              [0-9][0-9][0-9]*) VERCODE="${DIGITS%?}" ;;
+              *)                VERCODE="$DIGITS" ;;
+            esac
+          fi
+          # 3) Last-resort fallback: strip the tag to alphanumerics.
           case "$VERCODE" in *[!0-9A-Za-z]*|'') VERCODE="$(printf '%s' "$TAG" | tr -cd '0-9A-Za-z')";; esac
           echo "Version code for $TAG: $VERCODE"
           # Artifacts download into per-name subdirs; flatten and stamp.

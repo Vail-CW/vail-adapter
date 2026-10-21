@@ -40,10 +40,15 @@
 
 // EEPROM Memory Map
 // -----------------
-// Addresses 0-5: Existing settings (see config.h)
-// Address 6: Start of CW memory storage
+// Addresses 0-6: Existing settings (see config.h)
+// Address 7: Start of CW memory storage
+//
+// NOTE: This start address moved from 6 to 7 when the paddle-swap flag
+// (EEPROM_PADDLE_SWAP_MODE_ADDR = 6) was added. On first boot after that
+// firmware bump, previously-recorded CW memories will read as invalid
+// counts and be auto-cleared by loadMemoryFromEEPROM().
 
-#define EEPROM_MEMORY_START_ADDR 6
+#define EEPROM_MEMORY_START_ADDR 7
 
 // Memory slot configuration (can be overridden by config.h for constrained targets)
 #ifndef MAX_MEMORY_SLOTS
@@ -70,7 +75,7 @@
 #define EEPROM_MEMORY_2_ADDR (EEPROM_MEMORY_1_ADDR + MEMORY_SLOT_SIZE_BYTES)
 #define EEPROM_MEMORY_3_ADDR (EEPROM_MEMORY_2_ADDR + MEMORY_SLOT_SIZE_BYTES)
 
-// Total EEPROM usage: 6 (settings) + 3x402 (memories) = 1212 bytes.
+// Total EEPROM usage: 7 (settings) + 3x402 (memories) = 1213 bytes.
 // The SAMD21 has no real EEPROM, FlashStorage_SAMD fakes it in flash and the
 // buffer is sized from this map in settings_eeprom.cpp. Grow the map and that
 // buffer grows with it, so do not assume there is room to spare here.
