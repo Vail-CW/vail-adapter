@@ -427,13 +427,16 @@ Keyer *GetKeyerByNumber(int n, Transmitter *output) {
     }
 
     Keyer *k = keyers[n];
+    if (k == NULL) {
+        return NULL; // 0 = passthrough, no keyer object
+    }
     k->SetOutput(output);
     return k;
 }
 
 int getKeyerNumber(Keyer* k) {
     if (k == NULL) {
-        return 1; // Default to straight key if NULL
+        return 0; // Passthrough
     }
     
     for (int i = 1; i < len(keyers); i++) {

@@ -357,17 +357,6 @@ void VailAdapter::Tx(int relay, bool closed) {
 }
 
 void VailAdapter::BeginTx() {
-beginStraightTx(true);
-}
-
-void VailAdapter::EndTx() {
-endStraightTx(true);
-}
-
-// sendKeyboardKey is false for passthrough, where the paddle has already
-// pressed its own Ctrl. Sending Left Ctrl too would turn every dah into
-// both Ctrls at once.
-void VailAdapter::beginStraightTx(bool sendKeyboardKey) {
 if (!keyIsPressed) {
 keyIsPressed = true;
 if (!this->radioModeActive) {
@@ -408,14 +397,14 @@ if (!this->radioModeActive) {
         // For keyer mode, we need to determine which key to send
         // Since keyers don't tell us which paddle, we'll default to left ctrl
         // This is the problem - keyers always call BeginTx() without relay info
-        if (sendKeyboardKey) this->keyboardKey(KEY_LEFT_CTRL, true);
+        this->keyboardKey(KEY_LEFT_CTRL, true);
     } else {
         this->midiKey(0, true);
     }
 }
 }
 
-void VailAdapter::endStraightTx(bool sendKeyboardKey) {
+void VailAdapter::EndTx() {
 if (keyIsPressed) {
 keyIsPressed = false;
 if (!this->radioModeActive) {
@@ -447,10 +436,9 @@ if (this->radioModeActive) {
 if (this->keyboardSimMode) return;  // Sim mode: decoder types via host keyboard
 
 if (!this->radioModeActive) {
-    // Only undo what BeginTx() did. In passthrough mode the other paddle's
-    // key or note may still be legitimately held, so leave it alone here.
+    // Only undo what BeginTx() did, other held keys are left alone
     if (this->keyboardMode) {
-        if (sendKeyboardKey) this->keyboardKey(KEY_LEFT_CTRL, false);
+        this->keyboardKey(KEY_LEFT_CTRL, false);
     } else {
         this->midiKey(0, false);
     }
@@ -844,22 +832,14 @@ if (this->keyer) {
 if (pressed) this->lastPaddlePressed = paddle; // Track last paddle pressed
 this->keyer->Key(paddle, pressed);
 } else {
-bool currentPaddleActivity = false;
+// Passthrough: raw paddle state only, the host does the keying and sidetone
 if (paddle == PADDLE_DIT) {
 if (this->keyboardMode) this->keyboardKey(DIT_KEYBOARD_KEY, pressed);
 else this->midiKey(1, pressed);
-if (pressed) currentPaddleActivity = true;
 } else if (paddle == PADDLE_DAH) {
 if (this->keyboardMode) this->keyboardKey(DAH_KEYBOARD_KEY, pressed);
 else this->midiKey(2, pressed);
-if (pressed) currentPaddleActivity = true;
 }
-
-            if (currentPaddleActivity) {
-                if(!keyIsPressed) beginStraightTx(false);
-            } else {
-                if(keyIsPressed) endStraightTx(false);
-            }
         }
     }
   }
