@@ -426,7 +426,7 @@ Keyer *GetKeyerByNumber(int n, Transmitter *output) {
 
 int getKeyerNumber(Keyer* k) {
     if (k == NULL) {
-        return 1; // Default to straight key if NULL
+        return 0; // Passthrough
     }
     
     for (int i = 1; i < len(keyers); i++) {
