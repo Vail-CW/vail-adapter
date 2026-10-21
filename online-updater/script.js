@@ -47,6 +47,27 @@ const adapterReleases = {
         return m ? parseFloat(m[1]) : 0;
     },
 
+    // Full version compare. parseVersion() only keeps major.minor, so it can't
+    // tell v5.1.0-beta.4 from v5.1.0. A pre-release sorts before the release
+    // with the same numbers.
+    compareVersions(a, b) {
+        const parse = tag => {
+            const s = String(tag || '');
+            const m = s.match(/(\d+)(?:\.(\d+))?(?:\.(\d+))?/);
+            if (!m) return { nums: [0, 0, 0], pre: false };
+            return {
+                nums: [m[1], m[2], m[3]].map(n => parseInt(n || '0', 10)),
+                pre: s.slice(m.index + m[0].length).startsWith('-'),
+            };
+        };
+        const va = parse(a), vb = parse(b);
+        for (let i = 0; i < 3; i++) {
+            if (va.nums[i] !== vb.nums[i]) return va.nums[i] - vb.nums[i];
+        }
+        if (va.pre !== vb.pre) return va.pre ? -1 : 1;
+        return 0;
+    },
+
     eligible(release) {
         return !release.draft &&
             this.hasFirmware(release) &&
@@ -63,6 +84,11 @@ const adapterReleases = {
             this.stable = all.filter(r => !r.prerelease && this.eligible(r));
             const pre = all.filter(r => r.prerelease && this.eligible(r));
             this.testRelease = pre.length ? pre[0] : null;
+            // Once a test build has shipped as stable there's nothing left to test
+            if (this.testRelease && this.stable.length &&
+                this.compareVersions(this.testRelease.tag_name, this.stable[0].tag_name) <= 0) {
+                this.testRelease = null;
+            }
             this.populate();
             this.select(this.stable[0] || null);
         } catch (err) {
