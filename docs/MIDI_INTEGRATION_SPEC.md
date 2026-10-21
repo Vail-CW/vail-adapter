@@ -81,7 +81,7 @@ The Vail Adapter responds to the following MIDI message types:
 
 - **Message**: `C0 xx`
 - **Keyer Types**:
-  - `00`: Passthrough (manual control — routes paddle/key directly; in MIDI mode sends notes C#/D for dit/dah, C for a straight key)
+  - `00`: Passthrough. The adapter does no keying of its own. In MIDI mode it sends note 1 (C#) for the dit paddle and note 2 (D) for the dah paddle, raw, for as long as each paddle is held, and plays no sidetone for them. A straight key still sends note 0 (C) with sidetone. See [Passthrough mode](#passthrough-mode) below.
   - `01`: Straight Key (cootie)
   - `02`: Bug (semi-automatic)
   - `03`: Electric Bug
@@ -93,6 +93,7 @@ The Vail Adapter responds to the following MIDI message types:
   - `09`: Keyahead
 - **Default**: 8 (Iambic B) — the value written when the EEPROM is first initialized
 - **Invalid values**: numbers outside `00-09` fall back to passthrough (0)
+- **Persistence**: Saved to EEPROM, including passthrough, so the adapter comes back up in the same keyer type after a replug
 
 ### Note On/Off Messages (0x9n/0x8n) — received by the adapter
 **Purpose**: Manual sidetone generation (works like a standard MIDI synthesizer)
@@ -101,6 +102,8 @@ The Vail Adapter responds to the following MIDI message types:
 - **Note Off**: `80 xx yy` (stop playing note `xx`)
 - **Range**: 0-127 (standard MIDI notes)
 - **Behavior**: Drives the built-in buzzer only — it does not affect keyer logic. No tone is produced while the buzzer is disabled or while radio mode is active.
+- **Stopping a note**: Always use `80 xx yy`. The velocity is ignored, so `90 xx 00` starts the note instead of stopping it.
+- **Typical use**: An app running the adapter in passthrough can send these back, timed to its own keyed output, so the sidetone comes out of the adapter's buzzer.
 
 ## MIDI Output — notes the adapter sends
 
@@ -117,6 +120,25 @@ In practice, set the keyer to **Passthrough (PC 0)** when you want the host to
 receive distinct dit (`1`/C#) and dah (`2`/D) events and do its own timing — this
 is how the Vail web repeater drives the adapter. With any onboard keyer (PC 1-9),
 the adapter performs the timing itself and emits note `0` (C) for each element.
+
+## Passthrough mode
+
+In passthrough (`C0 00`) the adapter just reports the paddles and the host does
+all of the timing.
+
+| Paddle | Pressed | Released |
+|---|---|---|
+| Dit | `90 01 7F` | `80 01 00` |
+| Dah | `90 02 7F` | `80 02 00` |
+
+The adapter doesn't know what the host ends up sending, so it plays no sidetone
+for the paddles in this mode. The host has two ways to give the operator a tone:
+
+1. **Play it on the computer.** Generate the tone in the app while it's keying. This is what Vail web does.
+2. **Play it on the adapter.** Send `90 nn 7F` when the app's keyed output goes down and `80 nn 00` when it comes back up, where `nn` is the pitch as a MIDI note (`45`, which is 69, for 440 Hz). See the Note On/Off section above.
+
+In Keyboard mode, passthrough sends Left Ctrl for the dit paddle and Right Ctrl
+for the dah paddle instead of notes.
 
 ## Integration Example
 
@@ -139,9 +161,10 @@ C0 00
 ### Implementation Notes
 
 1. **Mode switching**: The mode is set exclusively by CC0 (`00-3F` = MIDI, `40-7F` = Keyboard). The adapter does **not** auto-switch on other messages.
-2. **Settings persistence**: Keyer type, dit duration, and sidetone note are saved to EEPROM and restored on power-up. (Output mode from CC0 is **not** persisted — the adapter always boots in Keyboard mode.)
+2. **Settings persistence**: Keyer type, dit duration, sidetone note, and paddle swap are saved to EEPROM and restored on power-up. (Output mode from CC0 is **not** persisted — the adapter always boots in Keyboard mode.)
 3. **Real-time response**: All MIDI commands take effect immediately.
 4. **Keyboard-mode output**: In Keyboard mode, dit sends Left Ctrl and dah sends Right Ctrl as USB HID key events.
+5. **Keyboard Sim mode**: Keying the prosign KSKS as its own word puts the adapter in Keyboard Sim mode. It then decodes the operator's Morse and types the letters over USB instead of sending Ctrl keys or notes. BT is a space, BK is Enter, and 8 or more dits is a backspace. It stays on until the adapter is unplugged. This is turned on from the key, not over MIDI.
 
 ## Technical Specifications
 
