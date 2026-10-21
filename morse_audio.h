@@ -21,6 +21,7 @@ void playVAIL(uint8_t noteNumber);
 // Audio feedback tones
 void playAdjustmentBeep(bool isIncrease);
 void playErrorTone();
+void playInvalidCodeTone();
 void playDescendingTones();
 void playRecordingCountdown();
 void playMemoryClearedAnnouncement(uint8_t slotNumber);

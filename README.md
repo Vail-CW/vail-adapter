@@ -19,7 +19,10 @@ Here is a short video that shows what it can do: [Vail Adapter benefits](https:/
 * Plays the received signal on the adapter so you can keep the computer quiet
 * Stores CW memories: three slots, about 25 seconds each on SAMD21, and about 12 seconds each on the Arduino Micro
 * Can key a radio directly through the optional radio output on the Advanced PCB
-* Can be set up over MIDI for speed, tone, keyer type, and mode (see [MIDI integration](#midi-integration))
+* Can be set up over MIDI for speed, tone, keyer type, paddle swap, and mode (see [MIDI integration](#midi-integration))
+* Can swap dit and dah over MIDI, for everything or just the touch pads
+* Has a passthrough mode, so an app can get the raw dit and dah paddles over MIDI and do its own keying
+* Has a Keyboard Sim mode that decodes your Morse and types it like a keyboard. Key KSKS as its own word to turn it on, and unplug to turn it off
 * Gets free firmware updates for life
 
 ## Where to get one
