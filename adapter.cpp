@@ -751,22 +751,14 @@ if (this->keyer) {
 if (pressed) this->lastPaddlePressed = paddle; // Track last paddle pressed
 this->keyer->Key(paddle, pressed);
 } else {
-bool currentPaddleActivity = false;
+// Passthrough: raw paddle state only, the host does the keying and sidetone
 if (paddle == PADDLE_DIT) {
 if (this->keyboardMode) this->keyboardKey(DIT_KEYBOARD_KEY, pressed);
 else this->midiKey(1, pressed);
-if (pressed) currentPaddleActivity = true;
 } else if (paddle == PADDLE_DAH) {
 if (this->keyboardMode) this->keyboardKey(DAH_KEYBOARD_KEY, pressed);
 else this->midiKey(2, pressed);
-if (pressed) currentPaddleActivity = true;
 }
-
-            if (currentPaddleActivity) { 
-                if(!keyIsPressed) BeginTx(); 
-            } else { 
-                if(keyIsPressed) EndTx();
-            }
         }
     }
   }
