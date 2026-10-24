@@ -5,6 +5,44 @@
 // Deploy the Cloudflare Worker in tools/firmware-proxy/ and set this URL
 const FIRMWARE_PROXY_URL = 'https://vail-firmware-proxy.brett-hollifield.workers.dev';
 
+// The Summit is built with USBMode=hwcdc, so it talks over the ESP32-S3's
+// built-in USB-Serial-JTAG port: Espressif 303A:1001, the same device whether
+// the firmware is running or the chip is sitting in its ROM bootloader. That
+// port ignores the old 1200 baud trick, and esptool-js already knows how to
+// reset it into the bootloader (it checks for PID 0x1001 itself), so for
+// current firmware all we do is pick the port and hand it over.
+//
+// Adafruit 239A shows up for a factory-fresh Feather or old firmware that ran
+// its own USB stack. Those do need the 1200 baud restart, and come back as a
+// different USB device, which the browser makes the user pick again.
+const ESPRESSIF_VID = 0x303A;
+const ADAFRUIT_VID = 0x239A;
+const USB_JTAG_SERIAL_PID = 0x1001;
+const SUMMIT_PORT_FILTERS = [{ usbVendorId: ESPRESSIF_VID }, { usbVendorId: ADAFRUIT_VID }];
+
+function summitPortKind(port) {
+    try {
+        const info = port.getInfo();
+        if (info.usbVendorId === ESPRESSIF_VID) {
+            return info.usbProductId === USB_JTAG_SERIAL_PID ? 'jtag' : 'rom';
+        }
+        if (info.usbVendorId === ADAFRUIT_VID) return 'tinyusb';
+    } catch (_) {}
+    return 'unknown';
+}
+
+function summitPortLabel(port) {
+    try {
+        const i = port.getInfo();
+        if (i && i.usbVendorId) {
+            return `USB ${i.usbVendorId.toString(16).padStart(4, '0')}:${(i.usbProductId || 0).toString(16).padStart(4, '0')}`;
+        }
+    } catch (_) {}
+    return 'serial device';
+}
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 class ESP32Flasher {
     constructor() {
         this.port = null;
@@ -14,8 +52,7 @@ class ESP32Flasher {
         this.connected = false;
         this.chipName = null;
         this.esptoolModule = null;
-        this.bootloaderModeReady = false;
-        this.manualBootloaderMode = false;
+        this.state = 'idle';
 
         // Releases data
         this.releases = [];        // Stable releases (>= v0.51)
@@ -264,288 +301,6 @@ class ESP32Flasher {
         return html;
     }
 
-    // Direct connect - for manual bootloader mode, skips auto-reset
-    async directConnect() {
-        this.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        this.log("MANUAL BOOTLOADER MODE");
-        this.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        this.log("");
-        this.log("You indicated your device is in bootloader mode.");
-        this.log("Select your device when prompted - it should show as");
-        this.log("'USB JTAG/Serial' (not 'TinyUSB CDC').");
-        this.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-        this.manualBootloaderMode = true;
-        this.bootloaderModeReady = true;
-        this.device = null; // Force new device selection
-
-        // Connect to device (shows flash options after connection)
-        return await this.connect();
-    }
-
-    // Try alternative reset using DTR/RTS signals
-    async alternativeReset() {
-        if (!("serial" in navigator)) {
-            this.log("Error: Web Serial API not supported.");
-            return false;
-        }
-
-        this.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        this.log("ALTERNATIVE RESET (DTR/RTS Method)");
-        this.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        this.log("");
-        this.log("This uses hardware flow control signals to trigger a reset.");
-        this.log("This method works with some devices that don't respond to 1200 baud.");
-        this.log("");
-
-        try {
-            // Get current ports before reset
-            const originalPorts = await navigator.serial.getPorts();
-
-            this.log("Select your device...");
-            const device = await navigator.serial.requestPort();
-
-            // Close if already open
-            if (device.readable || device.writable) {
-                try {
-                    await device.close();
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                } catch (e) {
-                    this.log(`Note: ${e.message}`);
-                }
-            }
-
-            this.log("Opening port at 115200 baud...");
-
-            try {
-                await device.open({ baudRate: 115200 });
-            } catch (openErr) {
-                this.log(`Error opening port: ${openErr.message}`);
-                this.log("");
-                this.log("⚠️ The port could not be opened. This usually means:");
-                this.log("   1. Another application has the port open");
-                this.log("   2. There's a Windows driver issue");
-                this.log("");
-                this.log("Try these fixes:");
-                this.log("   • Close Arduino IDE, PuTTY, or any serial terminal");
-                this.log("   • Open Device Manager, find the COM port, right-click");
-                this.log("     and select 'Disable device', wait 2 seconds,");
-                this.log("     then 'Enable device'");
-                this.log("   • Try a different USB port");
-                this.log("   • Unplug and replug the device");
-                this.log("");
-                this.log("If none of these work, try 'Direct Connect' - it may be able");
-                this.log("to connect even if this reset method fails.");
-                return false;
-            }
-
-            this.log("Sending DTR/RTS reset sequence...");
-
-            // esptool-style reset sequence: toggle DTR and RTS to reset into bootloader
-            // This simulates holding BOOT and pressing RESET
-            try {
-                // Classic esptool reset sequence
-                await device.setSignals({ dataTerminalReady: false, requestToSend: true });
-                await new Promise(resolve => setTimeout(resolve, 100));
-                await device.setSignals({ dataTerminalReady: true, requestToSend: false });
-                await new Promise(resolve => setTimeout(resolve, 50));
-                await device.setSignals({ dataTerminalReady: false, requestToSend: false });
-                await new Promise(resolve => setTimeout(resolve, 50));
-
-                this.log("Reset signals sent, closing port...");
-                await device.close();
-
-                // Wait for device to re-enumerate
-                this.log("Waiting for device to reconnect...");
-                this.device = await this.waitForNewPort(originalPorts, 8000);
-
-                if (this.device) {
-                    this.log("✓ Device reconnected!");
-                    this.bootloaderModeReady = true;
-                    const ebBtn = document.getElementById('enterBootloaderButton');
-                    if (ebBtn) ebBtn.style.display = 'none';
-                    const dcBtn2 = document.getElementById('directConnectButton');
-                    if (dcBtn2) dcBtn2.style.display = 'none';
-                    const arBtn = document.getElementById('alternativeResetButton');
-                    if (arBtn) arBtn.style.display = 'none';
-                    const cBtn = document.getElementById('connectButton');
-                    if (cBtn) cBtn.style.display = 'inline-block';
-                    return true;
-                } else {
-                    this.log("Device did not reconnect as a new port.");
-                    this.log("Try 'Direct Connect' to connect to the existing port.");
-
-                    // Show direct connect as the next option
-                    const dcBtn = document.getElementById('directConnectButton');
-                    if (dcBtn) dcBtn.style.display = 'inline-block';
-                    return false;
-                }
-
-            } catch (sigErr) {
-                this.log(`Signal error: ${sigErr.message}`);
-                this.log("DTR/RTS signals may not be supported on this device.");
-                try { await device.close(); } catch (e) {}
-
-                // Suggest direct connect
-                this.log("");
-                this.log("Try 'Direct Connect' as an alternative.");
-                const dcBtn = document.getElementById('directConnectButton');
-                if (dcBtn) dcBtn.style.display = 'inline-block';
-                return false;
-            }
-
-        } catch (err) {
-            this.log(`Error: ${err.message}`);
-            if (err.name === 'NotFoundError') {
-                this.log("No device selected");
-            }
-            return false;
-        }
-    }
-
-    async waitForNewPort(originalPorts, maxWaitMs = 10000) {
-        const startTime = Date.now();
-        this.log("Waiting for device to reconnect in bootloader mode...");
-
-        while (Date.now() - startTime < maxWaitMs) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-            const currentPorts = await navigator.serial.getPorts();
-
-            // Find new port that wasn't in original list
-            const newPort = currentPorts.find(port => !originalPorts.includes(port));
-            if (newPort) {
-                this.log("✓ New port detected (device in bootloader mode)");
-                return newPort;
-            }
-        }
-
-        this.log("⚠️ New port not detected within timeout");
-        return null;
-    }
-
-    async enterBootloaderMode() {
-        if (!("serial" in navigator)) {
-            this.log("Error: Web Serial API not supported. Please use Chrome, Edge, or Opera.");
-            alert("Web Serial API not supported. Please use Chrome, Edge, or Opera browser.");
-            return false;
-        }
-
-        try {
-            // First, close all previously granted ports
-            const ports = await navigator.serial.getPorts();
-            this.log(`Found ${ports.length} previously granted port(s)`);
-            for (const port of ports) {
-                if (port.readable || port.writable) {
-                    this.log("Closing a previously open port...");
-                    try {
-                        await port.close();
-                    } catch (e) {
-                        this.log(`Note: ${e.message}`);
-                    }
-                }
-            }
-
-            this.log("Select your Vail Summit device");
-            const originalPorts = await navigator.serial.getPorts();
-
-            // Select the device in normal mode
-            const normalDevice = await navigator.serial.requestPort();
-
-            // Check if this specific port is already open
-            if (normalDevice.readable || normalDevice.writable) {
-                this.log("Port is already open, closing it first...");
-                try {
-                    await normalDevice.close();
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                } catch (e) {
-                    this.log(`Note: ${e.message}`);
-                }
-            }
-
-            this.log("Performing 1200-bps touch reset to enter bootloader mode...");
-
-            try {
-                await normalDevice.open({ baudRate: 1200 });
-                await new Promise(resolve => setTimeout(resolve, 100));
-                await normalDevice.close();
-                this.log("✓ Reset signal sent");
-            } catch (openErr) {
-                this.log(`Error: ${openErr.message}`);
-                this.log("");
-                this.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                this.log("⚠️ COULD NOT ACCESS COM PORT");
-                this.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-                this.log("");
-                this.log("This can happen when:");
-                this.log("• Another program has the port open (Arduino IDE, PuTTY, etc.)");
-                this.log("• Windows driver conflict with the device");
-                this.log("• Device uses TinyUSB which may not support auto-reset");
-                this.log("");
-                this.log("TRY MANUAL BOOTLOADER ENTRY:");
-                this.log("");
-                this.log("1. Hold down the BOOT button on your Summit");
-                this.log("2. While holding BOOT, press and release RESET");
-                this.log("3. Release the BOOT button");
-                this.log("4. Click 'I'm in Bootloader Mode - Connect Now' below");
-                this.log("");
-                this.log("Alternative: Check Windows Device Manager:");
-                this.log("   - Find your COM port, right-click → Disable device");
-                this.log("   - Wait 2 seconds, then right-click → Enable device");
-                this.log("   - Try the auto flash again");
-                this.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-                // Open the manual fallback section
-                const manualFallback = document.querySelector('.manual-fallback');
-                if (manualFallback) {
-                    manualFallback.open = true;
-                }
-
-                throw new Error("Port access failed - try manual bootloader entry");
-            }
-
-            // Wait for new port to appear
-            this.device = await this.waitForNewPort(originalPorts);
-
-            if (!this.device) {
-                this.log("⚠️ Device did not reconnect automatically");
-                this.log("Try manually entering bootloader mode:");
-                this.log("1. Hold BOOT button");
-                this.log("2. Press and release RESET");
-                this.log("3. Release BOOT");
-                this.log("4. Click 'Connect and Flash' below");
-
-                // Still allow proceeding with manual selection
-                this.bootloaderModeReady = true;
-                document.getElementById('enterBootloaderButton').style.display = 'none';
-                document.getElementById('connectButton').style.display = 'inline-block';
-                return true;
-            }
-
-            this.log("✓ Device ready in bootloader mode");
-            this.bootloaderModeReady = true;
-
-            // Connect to device (shows flash options after connection)
-            this.log("");
-            this.log("Proceeding to connect...");
-            await this.connect();
-
-            return true;
-
-        } catch (err) {
-            this.log(`Error: ${err.message}`);
-
-            if (err.name === 'NotFoundError') {
-                this.log("No device selected");
-                return false;
-            }
-
-            // Allow manual retry
-            this.log("Click button again to retry, or enter bootloader mode manually");
-            return false;
-        }
-    }
-
     log(message) {
         console.log(message);
         const logArea = document.getElementById('espFlashLog');
@@ -576,92 +331,197 @@ class ESP32Flasher {
         }
     }
 
-    async connect() {
-        if (!("serial" in navigator)) {
-            this.log("Error: Web Serial API not supported. Please use Chrome, Edge, or Opera.");
-            alert("Web Serial API not supported. Please use Chrome, Edge, or Opera browser.");
-            return false;
+    // ---------------------------------------------------------------
+    // Screen state. Every button's visibility goes through here, so the
+    // page can never show Connect and Flash Firmware at the same time.
+    //   idle        nothing connected, Connect visible
+    //   connecting  picker open or esptool talking to the chip
+    //   reselect    old-style board restarted into install mode, pick again
+    //   connected   install options visible
+    //   busy        flashing or erasing, everything locked
+    // ---------------------------------------------------------------
+    setState(state, message, tone) {
+        this.state = state;
+        const live = state === 'connected' || state === 'busy';
+
+        const show = (id, on) => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = on ? 'inline-block' : 'none';
+        };
+        const enable = (id, on) => {
+            const el = document.getElementById(id);
+            if (el) el.disabled = !on;
+        };
+
+        show('enterBootloaderButton', !live);
+        ['programButton', 'eraseAndFlashButton', 'eraseButton', 'disconnectButton'].forEach(id => {
+            show(id, live);
+            enable(id, state === 'connected');
+        });
+
+        const hero = document.getElementById('enterBootloaderButton');
+        if (hero) {
+            hero.disabled = state === 'connecting';
+            hero.textContent = state === 'connecting' ? 'Connecting\u2026'
+                : state === 'reselect' ? 'Connect again'
+                : 'Connect to Summit';
+        }
+        ['directConnectButton', 'summitManualPortButton'].forEach(id => enable(id, !live && state !== 'connecting'));
+
+        if (message !== undefined) this.hint(message, tone);
+    }
+
+    // The one line people actually read. The log stays for troubleshooting.
+    hint(text, tone) {
+        const el = document.getElementById('espHint');
+        if (!el) return;
+        el.style.display = text ? '' : 'none';
+        el.textContent = text || '';
+        el.classList.toggle('ok', tone === 'ok');
+        el.classList.toggle('err', tone === 'err');
+    }
+
+    // Reuse a Summit this browser already has permission for, otherwise open
+    // a picker filtered to Espressif and Adafruit USB devices so Bluetooth COM
+    // ports and other boards stay out of the list. showAll skips both.
+    async pickPort({ showAll = false } = {}) {
+        if (!showAll) {
+            const granted = await navigator.serial.getPorts();
+            const known = granted.find(p => summitPortKind(p) === 'jtag') ||
+                          granted.find(p => summitPortKind(p) === 'rom');
+            if (known) {
+                this.log(`Reusing remembered Summit (${summitPortLabel(known)})`);
+                return known;
+            }
         }
 
+        this.hint(showAll
+            ? 'Pick your Summit from the full list of serial ports.'
+            : 'Pick your Summit in the popup. It shows up as "USB JTAG/serial debug unit".');
         try {
-            // Disconnect any existing connections first
-            if (this.transport) {
-                this.log("Closing existing connection...");
-                await this.disconnect();
-                await new Promise(resolve => setTimeout(resolve, 500));
+            return showAll
+                ? await navigator.serial.requestPort()
+                : await navigator.serial.requestPort({ filters: SUMMIT_PORT_FILTERS });
+        } catch (err) {
+            if (err.name === 'NotFoundError') return null;   // closed the picker
+            throw err;
+        }
+    }
+
+    // Older firmware with its own USB stack only restarts into the bootloader
+    // when the port is opened at 1200 baud and closed again.
+    async touch1200(port) {
+        try {
+            if (port.readable || port.writable) await port.close();
+            await port.open({ baudRate: 1200 });
+            await sleep(100);
+            await port.close();
+            this.log('Sent 1200 baud restart');
+        } catch (e) {
+            this.log(`1200 baud restart note: ${e.message}`);
+        }
+    }
+
+    friendlyConnectError(err) {
+        const msg = (err && err.message) || '';
+        if (/open|in use|access|busy/i.test(msg) || (err && err.name === 'NetworkError')) {
+            return 'The port is in use by another program. Close Arduino IDE or any serial monitor, then click Connect again.';
+        }
+        if (/timed out|no serial data|failed to connect|wrong boot mode/i.test(msg)) {
+            return 'The Summit did not answer. Hold BOOT, tap RESET, let go of BOOT, then click Connect again.';
+        }
+        return `Could not connect: ${msg}. Unplug the Summit, plug it back in, and click Connect again.`;
+    }
+
+    // Main entry point for every connect button on the page.
+    async connectToSummit({ showAll = false } = {}) {
+        if (!("serial" in navigator)) {
+            this.setState('idle', 'This browser cannot talk to USB devices. Use Chrome, Edge, or Opera on a computer.', 'err');
+            return false;
+        }
+        if (this.state === 'connecting' || this.state === 'busy') return false;
+
+        this.setState('connecting', 'Looking for your Summit\u2026');
+        try {
+            if (this.transport) await this.disconnect({ quiet: true });
+
+            const port = await this.pickPort({ showAll });
+            if (!port) {
+                this.setState('idle', 'No Summit picked. If it was not in the list, check the cable (some only charge), or use "Pick port manually" under Advanced options.');
+                return false;
             }
 
-            // Load esptool module if not already loaded
-            if (!this.esptoolModule) {
-                this.log("Loading esptool-js library...");
-                this.esptoolModule = await import('https://unpkg.com/esptool-js@0.4.1/bundle.js');
-                this.log("Esptool-js loaded successfully");
+            const kind = summitPortKind(port);
+            this.log(`Port selected (${summitPortLabel(port)}, ${kind})`);
+
+            if (kind === 'tinyusb') {
+                await this.touch1200(port);
+                this.setState('reselect',
+                    'Your Summit is restarting into install mode. Click Connect again and pick "USB JTAG/serial debug unit".');
+                return false;
             }
 
-            // If we don't have a device from enterBootloaderMode, prompt for one
-            if (!this.device) {
-                this.log("Requesting device selection...");
-                this.device = await navigator.serial.requestPort();
-            } else {
-                this.log("Using previously detected device in bootloader mode");
-            }
+            this.hint('Connecting to your Summit\u2026');
+            await this.connect(port);
 
-            // Check if port is already open and close it
-            if (this.device.readable || this.device.writable) {
-                this.log("Port is already open, closing it first...");
-                try {
-                    await this.device.close();
-                    this.log("Port closed, waiting...");
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                } catch (e) {
-                    this.log(`Error closing port: ${e.message}`);
-                }
-            }
-
-            // Initialize transport - this will open the port
-            this.log("Initializing transport (opening port at 115200 baud)...");
-            this.transport = new this.esptoolModule.Transport(this.device, true);
-
-            this.log("Creating ESPLoader...");
-            this.esploader = new this.esptoolModule.ESPLoader({
-                transport: this.transport,
-                baudrate: 115200,
-                romBaudrate: 115200,
-                terminal: {
-                    clean: () => {},
-                    writeLine: (data) => this.log(data),
-                    write: (data) => this.log(data)
-                },
-                enableTracing: false
-            });
-
-            this.log("Connecting to ESP32 in bootloader mode...");
-            this.chipName = await this.esploader.main();
-            this.log(`✓ Connected to ${this.chipName}`);
-
-            this.connected = true;
-
-            // Log which version is being flashed
-            if (this.selectedRelease) {
-                const label = this.selectedRelease.name || this.selectedRelease.tag_name;
-                this.log(`Selected firmware: ${label}${this.selectedRelease.prerelease ? ' (Test Release)' : ''}`);
-            }
-
-            // Update UI
-            document.getElementById('connectButton').style.display = 'none';
-            document.getElementById('disconnectButton').style.display = 'inline-block';
-            document.getElementById('programButton').style.display = 'inline-block';
-            document.getElementById('eraseAndFlashButton').style.display = 'inline-block';
-            document.getElementById('eraseButton').style.display = 'inline-block';
-
+            const v = this.selectedRelease
+                ? (this.selectedRelease.name || this.selectedRelease.tag_name)
+                : 'the selected version';
+            this.setState('connected', `Connected. Click Flash Firmware to install ${v}.`, 'ok');
             return true;
-
         } catch (err) {
             this.log(`Connection error: ${err.message}`);
-            alert(`Failed to connect: ${err.message}\n\nTry:\n1. Click 'Step 1' again to retry\n2. Manually enter bootloader mode (hold BOOT, press RESET)\n3. Make sure no other programs are using the port`);
-            await this.disconnect();
+            await this.disconnect({ quiet: true });
+            this.setState('idle', this.friendlyConnectError(err), 'err');
             return false;
         }
+    }
+
+    // Open the port and get esptool talking to the chip. esptool resets the
+    // board into its bootloader on its own, so there is no separate step.
+    async connect(port) {
+        if (!this.esptoolModule) {
+            this.log("Loading esptool-js library...");
+            this.esptoolModule = await import('https://unpkg.com/esptool-js@0.4.1/bundle.js');
+        }
+
+        this.device = port;
+        if (this.device.readable || this.device.writable) {
+            try { await this.device.close(); await sleep(500); } catch (e) { this.log(`Note: ${e.message}`); }
+        }
+
+        this.log("Opening port at 115200 baud...");
+        this.transport = new this.esptoolModule.Transport(this.device, true);
+        this.esploader = new this.esptoolModule.ESPLoader({
+            transport: this.transport,
+            baudrate: 115200,
+            romBaudrate: 115200,
+            terminal: {
+                clean: () => {},
+                writeLine: (data) => this.log(data),
+                write: (data) => this.log(data)
+            },
+            enableTracing: false
+        });
+
+        this.log("Connecting to the chip...");
+        this.chipName = await this.esploader.main();
+        this.log(`Connected to ${this.chipName}`);
+        this.connected = true;
+
+        if (this.selectedRelease) {
+            const label = this.selectedRelease.name || this.selectedRelease.tag_name;
+            this.log(`Selected firmware: ${label}${this.selectedRelease.prerelease ? ' (Test Release)' : ''}`);
+        }
+    }
+
+    // After a successful write the chip has reset into the new firmware, so
+    // the bootloader session is gone. Drop it and say what happens next.
+    async finishAfterFlash() {
+        await this.disconnect({ quiet: true });
+        this.setState('idle',
+            'Done. Your Summit is restarting with the new firmware. If the screen stays dark, unplug it and plug it back in.',
+            'ok');
     }
 
     async loadFirmwareFile(url, displayName) {
@@ -767,11 +627,12 @@ class ESP32Flasher {
                 this.log("⚠️ Automatic reset may not work - please press RESET button on device");
             }
 
-            alert("Firmware flashed successfully!\n\nPlease unplug and replug your Vail Summit to complete the update.");
+            await this.finishAfterFlash();
 
         } catch (err) {
             this.log(`❌ Flash error: ${err.message}`);
-            alert(`Flashing failed: ${err.message}`);
+            await this.disconnect({ quiet: true });
+            this.setState('idle', `Flashing failed: ${err.message}. Click Connect and try again, or use Full Erase & Flash.`, 'err');
         }
     }
 
@@ -793,11 +654,11 @@ class ESP32Flasher {
 
             this.updateProgress(100, "Erase complete!");
             this.log("✅ Flash erased successfully");
-            alert("Flash erased successfully!");
+            this.setState('connected', 'Erased. Click Flash Firmware to install.', 'ok');
 
         } catch (err) {
             this.log(`❌ Erase error: ${err.message}`);
-            alert(`Erase failed: ${err.message}`);
+            this.setState('connected', `Erase failed: ${err.message}`, 'err');
         }
     }
 
@@ -844,11 +705,12 @@ class ESP32Flasher {
             this.log("The USB configuration has been completely reset.");
             this.log("Future updates via web serial should now work properly.");
 
-            alert("Full erase and flash complete!\n\nPlease unplug and replug your device.\n\nThe USB has been completely reset - future updates should work better.");
+            await this.finishAfterFlash();
 
         } catch (err) {
             this.log(`❌ Error: ${err.message}`);
-            alert(`Operation failed: ${err.message}`);
+            await this.disconnect({ quiet: true });
+            this.setState('idle', `Full erase & flash failed: ${err.message}. Click Connect and try again.`, 'err');
         }
     }
 
@@ -910,28 +772,21 @@ class ESP32Flasher {
         }
     }
 
-    async disconnect() {
+    async disconnect({ quiet = false } = {}) {
         this.log("Disconnecting...");
 
         if (this.transport) {
-            try {
-                await this.transport.disconnect();
-            } catch (err) {
-                this.log(`Transport disconnect error: ${err.message}`);
-            }
+            try { await this.transport.disconnect(); }
+            catch (err) { this.log(`Transport disconnect error: ${err.message}`); }
             this.transport = null;
         }
 
+        // Close, but keep the browser's permission. Forgetting the port meant
+        // every visit started with a fresh picker; keeping it lets the next
+        // Connect find the Summit without asking.
         if (this.device) {
             try {
-                // Close the port if it's open
-                if (this.device.readable || this.device.writable) {
-                    await this.device.close();
-                }
-                // Forget the device to fully release it
-                if (this.device.forget) {
-                    await this.device.forget();
-                }
+                if (this.device.readable || this.device.writable) await this.device.close();
             } catch (err) {
                 this.log(`Device close error: ${err.message}`);
             }
@@ -940,20 +795,7 @@ class ESP32Flasher {
 
         this.connected = false;
         this.esploader = null;
-
-        // Reset UI
-        const connectBtn = document.getElementById('connectButton');
-        const disconnectBtn = document.getElementById('disconnectButton');
-        const programBtn = document.getElementById('programButton');
-        const eraseAndFlashBtn = document.getElementById('eraseAndFlashButton');
-        const eraseBtn = document.getElementById('eraseButton');
-
-        if (connectBtn) connectBtn.style.display = 'inline-block';
-        if (disconnectBtn) disconnectBtn.style.display = 'none';
-        if (programBtn) programBtn.style.display = 'none';
-        if (eraseAndFlashBtn) eraseAndFlashBtn.style.display = 'none';
-        if (eraseBtn) eraseBtn.style.display = 'none';
-
+        if (!quiet) this.setState('idle', '');
         this.log("Disconnected");
     }
 }
@@ -965,120 +807,42 @@ function initializeESPFlasher() {
     if (!espFlasher) {
         espFlasher = new ESP32Flasher();
     }
+    // Reachable from the console, which helps when someone reports a problem.
+    window.espFlasher = espFlasher;
 
-    // Main Connect & Flash button
-    const enterBootloaderButton = document.getElementById('enterBootloaderButton');
-    if (enterBootloaderButton && !enterBootloaderButton.dataset.listenerAttached) {
-        enterBootloaderButton.dataset.listenerAttached = 'true';
-        console.log('ESP Flasher: Attaching click listener to main flash button');
-        enterBootloaderButton.addEventListener('click', async () => {
-            console.log('ESP Flasher: Connect & Flash button clicked!');
-            enterBootloaderButton.disabled = true;
-            enterBootloaderButton.textContent = 'Connecting...';
+    const wire = (id, handler) => {
+        const el = document.getElementById(id);
+        if (!el || el.dataset.listenerAttached) return;
+        el.dataset.listenerAttached = 'true';
+        el.addEventListener('click', handler);
+    };
 
-            const success = await espFlasher.enterBootloaderMode();
-
-            enterBootloaderButton.disabled = false;
-            enterBootloaderButton.textContent = '🔌 Connect to Summit';
-        });
-    }
-
-    // Direct Connect button - for manual bootloader mode
-    const directConnectButton = document.getElementById('directConnectButton');
-    if (directConnectButton && !directConnectButton.dataset.listenerAttached) {
-        directConnectButton.dataset.listenerAttached = 'true';
-        console.log('ESP Flasher: Attaching click listener to direct connect button');
-        directConnectButton.addEventListener('click', async () => {
-            console.log('ESP Flasher: Direct connect button clicked!');
-            directConnectButton.disabled = true;
-            directConnectButton.textContent = 'Connecting...';
-            await espFlasher.directConnect();
-            directConnectButton.disabled = false;
-            directConnectButton.textContent = "I'm in Bootloader Mode - Connect";
-        });
-    }
-
-    // Connect button (used internally after bootloader entry)
-    const connectButton = document.getElementById('connectButton');
-    if (connectButton && !connectButton.dataset.listenerAttached) {
-        connectButton.dataset.listenerAttached = 'true';
-        console.log('ESP Flasher: Attaching click listener to connect button');
-        connectButton.addEventListener('click', async () => {
-            console.log('ESP Flasher: Connect button clicked!');
-            connectButton.disabled = true;
-            connectButton.textContent = 'Connecting...';
-
-            const success = await espFlasher.connect();
-
-            connectButton.disabled = false;
-            if (!success) {
-                connectButton.textContent = 'Step 2: Connect in Bootloader Mode';
+    // Flash and erase lock the page while they run, then put it back to
+    // whatever state the operation left behind.
+    const busy = async (id, label, fn) => {
+        const el = document.getElementById(id);
+        const original = el ? el.textContent : '';
+        espFlasher.setState('busy', 'Working on it. Keep the Summit plugged in until this finishes.');
+        if (el) el.textContent = label;
+        try {
+            await fn();
+        } finally {
+            if (el) el.textContent = original;
+            if (espFlasher.state === 'busy') {
+                espFlasher.setState(espFlasher.connected ? 'connected' : 'idle');
             }
-        });
-    } else if (!connectButton) {
-        console.error('ESP Flasher: Connect button not found!');
-    } else {
-        console.log('ESP Flasher: Listener already attached');
-    }
+        }
+    };
 
-    // Disconnect button
-    const disconnectButton = document.getElementById('disconnectButton');
-    if (disconnectButton && !disconnectButton.dataset.listenerAttached) {
-        disconnectButton.dataset.listenerAttached = 'true';
-        disconnectButton.addEventListener('click', async () => {
-            disconnectButton.disabled = true;
-            await espFlasher.disconnect();
-            disconnectButton.disabled = false;
-        });
-    }
+    wire('enterBootloaderButton', () => espFlasher.connectToSummit());
+    wire('directConnectButton', () => espFlasher.connectToSummit());
+    wire('summitManualPortButton', () => espFlasher.connectToSummit({ showAll: true }));
+    wire('disconnectButton', () => espFlasher.disconnect());
+    wire('programButton', () => busy('programButton', 'Flashing\u2026', () => espFlasher.flashFirmware()));
+    wire('eraseButton', () => busy('eraseButton', 'Erasing\u2026', () => espFlasher.eraseFlash()));
+    wire('eraseAndFlashButton', () => busy('eraseAndFlashButton', 'Erasing & flashing\u2026', () => espFlasher.eraseAndFlash()));
 
-    // Program button
-    const programButton = document.getElementById('programButton');
-    if (programButton && !programButton.dataset.listenerAttached) {
-        programButton.dataset.listenerAttached = 'true';
-        programButton.addEventListener('click', async () => {
-            programButton.disabled = true;
-            const originalText = programButton.textContent;
-            programButton.textContent = 'Flashing...';
-
-            await espFlasher.flashFirmware();
-
-            programButton.disabled = false;
-            programButton.textContent = originalText;
-        });
-    }
-
-    // Erase button
-    const eraseButton = document.getElementById('eraseButton');
-    if (eraseButton && !eraseButton.dataset.listenerAttached) {
-        eraseButton.dataset.listenerAttached = 'true';
-        eraseButton.addEventListener('click', async () => {
-            eraseButton.disabled = true;
-            const originalText = eraseButton.textContent;
-            eraseButton.textContent = 'Erasing...';
-
-            await espFlasher.eraseFlash();
-
-            eraseButton.disabled = false;
-            eraseButton.textContent = originalText;
-        });
-    }
-
-    // Erase and Flash button - recommended for USB issues
-    const eraseAndFlashButton = document.getElementById('eraseAndFlashButton');
-    if (eraseAndFlashButton && !eraseAndFlashButton.dataset.listenerAttached) {
-        eraseAndFlashButton.dataset.listenerAttached = 'true';
-        eraseAndFlashButton.addEventListener('click', async () => {
-            eraseAndFlashButton.disabled = true;
-            const originalText = eraseAndFlashButton.textContent;
-            eraseAndFlashButton.textContent = 'Erasing & Flashing...';
-
-            await espFlasher.eraseAndFlash();
-
-            eraseAndFlashButton.disabled = false;
-            eraseAndFlashButton.textContent = originalText;
-        });
-    }
+    espFlasher.setState(espFlasher.connected ? 'connected' : 'idle');
 }
 
 // Export for use by main script
