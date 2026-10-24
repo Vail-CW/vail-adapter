@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2026-07-04.6">
+    <link rel="stylesheet" href="style.css?v=2026-10-24.1">
 </head>
 <body>
 <nav>
@@ -276,12 +276,12 @@
                 <p class="flash-hero-text">Plug in your Summit with a USB-C data cable, then connect. The flasher puts it in bootloader mode automatically and shows the install options.</p>
                 <div class="esp-buttons">
                     <button id="enterBootloaderButton" class="btn-hero">Connect to Summit</button>
-                    <button id="connectButton" class="btn-primary" style="display: none;">Connect and Flash</button>
                     <button id="programButton" class="btn-download" style="display: none;">Flash Firmware</button>
                     <button id="eraseAndFlashButton" class="btn-warning" style="display: none;">Full Erase &amp; Flash (fixes USB issues)</button>
                     <button id="eraseButton" class="btn-secondary" style="display: none;">Erase Only</button>
                     <button id="disconnectButton" class="btn-secondary" style="display: none;">Disconnect</button>
                 </div>
+                <div class="flash-hint" id="espHint" role="status" aria-live="polite" style="display: none;"></div>
 
                 <div class="progress-container" id="progressContainer" style="display: none;">
                     <div class="progress-label" id="progressLabel">Preparing...</div>
@@ -301,11 +301,13 @@
                             <li>Hold down the <strong>BOOT</strong> button on your Summit</li>
                             <li>While holding BOOT, press and release <strong>RESET</strong></li>
                             <li>Release the <strong>BOOT</strong> button</li>
-                            <li>The device now shows up as "USB JTAG/Serial" instead of "TinyUSB CDC"</li>
+                            <li>It shows up as "USB JTAG/serial debug unit"</li>
                         </ol>
                         <button id="directConnectButton" class="btn-warning btn-sm">I'm in bootloader mode, connect</button>
+                        <button id="summitManualPortButton" class="btn-secondary btn-sm">Pick port manually &amp; connect</button>
                     </div>
                     <ul class="advanced-tips">
+                        <li>The normal picker only lists devices that look like a Summit. "Pick port manually" shows every serial port on the system.</li>
                         <li>"Port in use" on Windows: close Arduino IDE, PuTTY, or any serial monitor, then try again. Still stuck? Device Manager → Ports → right-click the COM port → Disable, wait 2 seconds, Enable.</li>
                         <li>Flashing fails or stalls: unplug for 5 seconds, replug, and use the manual BOOT + RESET steps above.</li>
                         <li>Some cables are charge-only. Use one you know carries data.</li>
@@ -325,7 +327,7 @@
     </section>
 </div>
 
-<script src="esp-flasher.js?v=2026-07-04.1" type="module"></script>
+<script src="esp-flasher.js?v=2026-10-24.1" type="module"></script>
 <script src="avr109-flasher.js?v=2026-06-11.1"></script>
 <script src="samba-flasher.js?v=2026-07-08.3"></script>
 <script src="script.js?v=2026-10-21.1" defer></script>

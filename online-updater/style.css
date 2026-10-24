@@ -602,6 +602,13 @@ h4 { color: var(--text-dim); font-size: 0.95rem; margin-top: 0.5rem; }
     color: var(--green);
 }
 
+.flash-hint.err {
+    background: var(--red-soft);
+    border-color: rgba(220, 90, 80, 0.4);
+    border-left-color: var(--red);
+    color: var(--red);
+}
+
 /* Timeline: indicator lamps on a dashed line */
 
 .flash-timeline {
