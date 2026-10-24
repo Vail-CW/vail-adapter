@@ -368,7 +368,31 @@ class ESP32Flasher {
         }
         ['directConnectButton', 'summitManualPortButton'].forEach(id => enable(id, !live && state !== 'connecting'));
 
+        // Changing the version mid-write used to swap the file list out from
+        // under the flash. Lock the picker while work is running and give it
+        // back exactly as it was afterwards (it starts disabled until the
+        // release list loads, so do not just re-enable it).
+        const working = state === 'busy' || state === 'connecting';
+        ['versionSelect', 'showTestRelease'].forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (working && !el.dataset.lockedByFlash) {
+                el.dataset.lockedByFlash = el.disabled ? 'was-disabled' : 'was-enabled';
+                el.disabled = true;
+            } else if (!working && el.dataset.lockedByFlash) {
+                el.disabled = el.dataset.lockedByFlash === 'was-disabled';
+                delete el.dataset.lockedByFlash;
+            }
+        });
+
         if (message !== undefined) this.hint(message, tone);
+    }
+
+    connectedMessage() {
+        const v = this.selectedRelease
+            ? (this.selectedRelease.name || this.selectedRelease.tag_name)
+            : 'the selected version';
+        return `Connected. Click Flash Firmware to install ${v}.`;
     }
 
     // The one line people actually read. The log stays for troubleshooting.
@@ -381,20 +405,13 @@ class ESP32Flasher {
         el.classList.toggle('err', tone === 'err');
     }
 
-    // Reuse a Summit this browser already has permission for, otherwise open
-    // a picker filtered to Espressif and Adafruit USB devices so Bluetooth COM
-    // ports and other boards stay out of the list. showAll skips both.
+    // Always ask. The picker is filtered to Espressif and Adafruit USB devices
+    // so Bluetooth COM ports and other boards stay out of the list, which makes
+    // it one obvious pick. It never reuses a remembered port on its own: this
+    // erases and writes flash, and silently grabbing some other ESP32 the site
+    // once had permission for is not a mistake anyone can undo. showAll drops
+    // the filter.
     async pickPort({ showAll = false } = {}) {
-        if (!showAll) {
-            const granted = await navigator.serial.getPorts();
-            const known = granted.find(p => summitPortKind(p) === 'jtag') ||
-                          granted.find(p => summitPortKind(p) === 'rom');
-            if (known) {
-                this.log(`Reusing remembered Summit (${summitPortLabel(known)})`);
-                return known;
-            }
-        }
-
         this.hint(showAll
             ? 'Pick your Summit from the full list of serial ports.'
             : 'Pick your Summit in the popup. It shows up as "USB JTAG/serial debug unit".');
@@ -464,10 +481,7 @@ class ESP32Flasher {
             this.hint('Connecting to your Summit\u2026');
             await this.connect(port);
 
-            const v = this.selectedRelease
-                ? (this.selectedRelease.name || this.selectedRelease.tag_name)
-                : 'the selected version';
-            this.setState('connected', `Connected. Click Flash Firmware to install ${v}.`, 'ok');
+            this.setState('connected', this.connectedMessage(), 'ok');
             return true;
         } catch (err) {
             this.log(`Connection error: ${err.message}`);
@@ -551,6 +565,8 @@ class ESP32Flasher {
     }
 
     async flashFirmware() {
+        // Snapshot, so a version change mid-flash cannot mix two releases.
+        const files = this.firmwareFiles.slice();
         if (!this.connected) {
             this.log("Error: Not connected to device");
             return;
@@ -562,10 +578,10 @@ class ESP32Flasher {
 
             // Load all firmware files
             const fileArray = [];
-            for (let i = 0; i < this.firmwareFiles.length; i++) {
-                const fw = this.firmwareFiles[i];
+            for (let i = 0; i < files.length; i++) {
+                const fw = files[i];
                 const label = fw.name || fw.file.split('/').pop();
-                this.updateProgress((i / this.firmwareFiles.length) * 20, `Loading ${label}...`);
+                this.updateProgress((i / files.length) * 20, `Loading ${label}...`);
 
                 const data = await this.loadFirmwareFile(fw.file, fw.name);
 
@@ -595,7 +611,7 @@ class ESP32Flasher {
                         const baseProgress = 25 + (fileIndex * 25);
                         const fileProgress = (written / total) * 25;
                         const totalProgress = baseProgress + fileProgress;
-                        const fwLabel = this.firmwareFiles[fileIndex].name || this.firmwareFiles[fileIndex].file.split('/').pop();
+                        const fwLabel = files[fileIndex].name || files[fileIndex].file.split('/').pop();
                         this.updateProgress(totalProgress, `Flashing ${fwLabel}...`);
                     }
                 }
@@ -716,14 +732,16 @@ class ESP32Flasher {
 
     // Internal flash method (no prompts, used by eraseAndFlash)
     async flashFirmwareInternal() {
+        // Snapshot, so a version change mid-flash cannot mix two releases.
+        const files = this.firmwareFiles.slice();
         this.log("Loading firmware files...");
 
         // Load all firmware files
         const fileArray = [];
-        for (let i = 0; i < this.firmwareFiles.length; i++) {
-            const fw = this.firmwareFiles[i];
+        for (let i = 0; i < files.length; i++) {
+            const fw = files[i];
             const label = fw.name || fw.file.split('/').pop();
-            const progress = 20 + (i / this.firmwareFiles.length) * 15;
+            const progress = 20 + (i / files.length) * 15;
             this.updateProgress(progress, `Loading ${label}...`);
 
             const data = await this.loadFirmwareFile(fw.file, fw.name);
@@ -752,7 +770,7 @@ class ESP32Flasher {
                     const baseProgress = 40 + (fileIndex * 20);
                     const fileProgress = (written / total) * 20;
                     const totalProgress = baseProgress + fileProgress;
-                    const fwLabel = this.firmwareFiles[fileIndex].name || this.firmwareFiles[fileIndex].file.split('/').pop();
+                    const fwLabel = files[fileIndex].name || files[fileIndex].file.split('/').pop();
                     this.updateProgress(totalProgress, `Flashing ${fwLabel}...`);
                 }
             }
@@ -773,6 +791,9 @@ class ESP32Flasher {
     }
 
     async disconnect({ quiet = false } = {}) {
+        // Lock the buttons before the first await, so nothing can start on a
+        // transport that is halfway through closing.
+        if (!quiet) this.setState('busy', 'Disconnecting\u2026');
         this.log("Disconnecting...");
 
         if (this.transport) {
@@ -828,8 +849,12 @@ function initializeESPFlasher() {
             await fn();
         } finally {
             if (el) el.textContent = original;
+            // Still busy means the operation bailed out without saying what
+            // happened next, a cancelled erase confirmation for instance, so
+            // replace the "working" line rather than leave it up.
             if (espFlasher.state === 'busy') {
-                espFlasher.setState(espFlasher.connected ? 'connected' : 'idle');
+                if (espFlasher.connected) espFlasher.setState('connected', espFlasher.connectedMessage(), 'ok');
+                else espFlasher.setState('idle', '');
             }
         }
     };
@@ -842,7 +867,10 @@ function initializeESPFlasher() {
     wire('eraseButton', () => busy('eraseButton', 'Erasing\u2026', () => espFlasher.eraseFlash()));
     wire('eraseAndFlashButton', () => busy('eraseAndFlashButton', 'Erasing & flashing\u2026', () => espFlasher.eraseAndFlash()));
 
-    espFlasher.setState(espFlasher.connected ? 'connected' : 'idle');
+    // This runs again every time the Summit view is shown. Redraw whatever is
+    // actually happening rather than resetting it, or coming back mid-flash
+    // would unlock the buttons.
+    espFlasher.setState(espFlasher.state);
 }
 
 // Export for use by main script
