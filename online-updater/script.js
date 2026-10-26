@@ -24,6 +24,11 @@ const STORAGE_KEY = 'vailUpdaterSetup';
 // serves Summit; generalized to accept a repo segment: /<repo>/<tag>/<file>.
 const ADAPTER_FIRMWARE_PROXY = 'https://vail-firmware-proxy.brett-hollifield.workers.dev';
 
+// Firmware downloads retry with backoff: waits of 1, 2, 4, 6 and 8 seconds,
+// about 21 seconds in all before giving up.
+const DOWNLOAD_ATTEMPTS = 6;
+const DOWNLOAD_BACKOFF_MS = [1000, 2000, 4000, 6000, 8000];
+
 // Only surface releases at or above this version. Earlier releases used a
 // different firmware layout/board set and shouldn't be offered for flashing.
 const MIN_ADAPTER_VERSION = 5.0;
@@ -817,19 +822,21 @@ const flashEngine = {
     async fetchFirmware(firmware) {
         const tag = adapterReleases.selected && adapterReleases.selected.tag_name;
         const proxyUrl = `${ADAPTER_FIRMWARE_PROXY}/vail-adapter/${tag}/${firmware.filename}`;
-        // GitHub occasionally 5xxs the first fetch of an asset, so retry a
-        // couple of times before giving up.
+        // The proxy's trip to GitHub fails now and then (about one request in
+        // five when GitHub is throttling Cloudflare), and the failures come in
+        // bursts. Three quick tries over three seconds was not enough to get
+        // through a burst, so back off over about twenty seconds instead.
         let resp;
-        for (let attempt = 1; attempt <= 3; attempt++) {
+        for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
             try {
                 resp = await fetch(proxyUrl, { cache: 'no-cache' });
             } catch (err) {
                 resp = null;
             }
             if (resp && (resp.ok || resp.status < 500)) break;
-            if (attempt < 3) {
-                flashLog(`Firmware download hiccup (${resp ? 'HTTP ' + resp.status : 'network error'}), retrying...`);
-                await new Promise(r => setTimeout(r, 1000 * attempt));
+            if (attempt < DOWNLOAD_ATTEMPTS) {
+                flashLog(`GitHub is slow right now (${resp ? 'HTTP ' + resp.status : 'network error'}), retrying ${attempt + 1} of ${DOWNLOAD_ATTEMPTS}...`);
+                await new Promise(r => setTimeout(r, DOWNLOAD_BACKOFF_MS[attempt - 1]));
             }
         }
         if (!resp) throw new Error('Firmware download failed (network error). Check your connection and try again.');
