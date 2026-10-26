@@ -542,7 +542,28 @@ class ESP32Flasher {
         const label = displayName || url.split('/').pop();
         this.log(`Downloading ${label}...`);
         try {
-            const response = await fetch(url);
+            // Same retry as the Adapter side. This used to be a single fetch,
+            // and a Summit flash pulls three files, so one GitHub blip on any
+            // of them ended the whole flash.
+            const waits = [1000, 2000, 4000, 6000, 8000];
+            let response = null;
+            for (let attempt = 1; attempt <= waits.length + 1; attempt++) {
+                try {
+                    response = await fetch(url, { cache: 'no-cache' });
+                } catch (err) {
+                    response = null;
+                }
+                if (response && (response.ok || response.status < 500)) break;
+                if (attempt <= waits.length) {
+                    const why = response ? `HTTP ${response.status}` : 'network error';
+                    this.log(`GitHub is slow right now (${why}), retrying ${label} (${attempt + 1} of ${waits.length + 1})...`);
+                    this.hint('GitHub is slow right now, still trying to download the firmware\u2026');
+                    await sleep(waits[attempt - 1]);
+                }
+            }
+            if (!response) {
+                throw new Error('network error, check your connection');
+            }
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }

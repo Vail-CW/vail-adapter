@@ -24,6 +24,32 @@ const STORAGE_KEY = 'vailUpdaterSetup';
 // serves Summit; generalized to accept a repo segment: /<repo>/<tag>/<file>.
 const ADAPTER_FIRMWARE_PROXY = 'https://vail-firmware-proxy.brett-hollifield.workers.dev';
 
+// Firmware downloads retry with backoff: waits of 1, 2, 4, 6 and 8 seconds,
+// about 21 seconds in all before giving up.
+const DOWNLOAD_ATTEMPTS = 6;
+const DOWNLOAD_BACKOFF_MS = [1000, 2000, 4000, 6000, 8000];
+
+// One retrying fetch for every firmware download on the page, so the flash
+// path and the plain Download button cannot drift apart. Retries 5xx and
+// network errors; anything below 500 (a 404 for a missing file) comes back
+// straight away. onRetry(attempt, why) runs before each wait.
+async function fetchFirmwareWithRetry(url, onRetry) {
+    let resp = null;
+    for (let attempt = 1; attempt <= DOWNLOAD_ATTEMPTS; attempt++) {
+        try {
+            resp = await fetch(url, { cache: 'no-cache' });
+        } catch (err) {
+            resp = null;
+        }
+        if (resp && (resp.ok || resp.status < 500)) break;
+        if (attempt < DOWNLOAD_ATTEMPTS) {
+            if (onRetry) onRetry(attempt + 1, resp ? 'HTTP ' + resp.status : 'network error');
+            await new Promise(r => setTimeout(r, DOWNLOAD_BACKOFF_MS[attempt - 1]));
+        }
+    }
+    return resp;
+}
+
 // Only surface releases at or above this version. Earlier releases used a
 // different firmware layout/board set and shouldn't be offered for flashing.
 const MIN_ADAPTER_VERSION = 5.0;
@@ -817,21 +843,12 @@ const flashEngine = {
     async fetchFirmware(firmware) {
         const tag = adapterReleases.selected && adapterReleases.selected.tag_name;
         const proxyUrl = `${ADAPTER_FIRMWARE_PROXY}/vail-adapter/${tag}/${firmware.filename}`;
-        // GitHub occasionally 5xxs the first fetch of an asset, so retry a
-        // couple of times before giving up.
-        let resp;
-        for (let attempt = 1; attempt <= 3; attempt++) {
-            try {
-                resp = await fetch(proxyUrl, { cache: 'no-cache' });
-            } catch (err) {
-                resp = null;
-            }
-            if (resp && (resp.ok || resp.status < 500)) break;
-            if (attempt < 3) {
-                flashLog(`Firmware download hiccup (${resp ? 'HTTP ' + resp.status : 'network error'}), retrying...`);
-                await new Promise(r => setTimeout(r, 1000 * attempt));
-            }
-        }
+        // The proxy's trip to GitHub fails now and then (about one request in
+        // five when GitHub is throttling Cloudflare), and the failures come in
+        // bursts. Three quick tries over three seconds was not enough to get
+        // through a burst, so back off over about twenty seconds instead.
+        const resp = await fetchFirmwareWithRetry(proxyUrl, (attempt, why) =>
+            flashLog(`GitHub is slow right now (${why}), retrying ${attempt} of ${DOWNLOAD_ATTEMPTS}...`));
         if (!resp) throw new Error('Firmware download failed (network error). Check your connection and try again.');
         if (!resp.ok) throw new Error(`Firmware download failed (HTTP ${resp.status}). Check your connection and try again.`);
         if (firmware.ext === 'hex') {
@@ -1236,8 +1253,54 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // UF2 flow
     document.getElementById('bootModeButton')?.addEventListener('click', () => enterBootloaderOnly(uf2Log, 'uf2BootHint'));
-    document.getElementById('downloadButton')?.addEventListener('click', function (event) {
-        if (this.classList.contains('disabled')) event.preventDefault();
+    // UF2 files link straight to GitHub and download like any other link,
+    // which never touches the proxy. .hex files go through the proxy, and a
+    // plain link there hands the browser the proxy's 502 page as a broken
+    // download, so those get fetched through the retrying path instead. Only
+    // proxy links are intercepted: a page fetch of a github.com asset is
+    // blocked by CORS, so doing this for UF2 would break them.
+    document.getElementById('downloadButton')?.addEventListener('click', async function (event) {
+        if (this.classList.contains('disabled') || this.dataset.busy) {
+            event.preventDefault();
+            return;
+        }
+        const firmwareFile = getFirmwareFile();
+        if (!firmwareFile || firmwareFile.unavailable) {
+            event.preventDefault();
+            return;
+        }
+        if (!firmwareFile.url.startsWith(ADAPTER_FIRMWARE_PROXY)) return;   // plain download
+        event.preventDefault();
+
+        const text = document.getElementById('downloadText');
+        const label = text ? text.textContent : '';
+        this.dataset.busy = '1';
+        if (text) text.textContent = `Downloading ${firmwareFile.filename}\u2026`;
+        try {
+            const resp = await fetchFirmwareWithRetry(firmwareFile.url, () => {
+                if (text) text.textContent = 'GitHub is slow right now, still trying\u2026';
+            });
+            if (!resp || !resp.ok) {
+                throw new Error(resp ? `HTTP ${resp.status}` : 'network error');
+            }
+            const blob = await resp.blob();
+            if (firmwareFile.size && blob.size !== firmwareFile.size) {
+                throw new Error(`incomplete download (${blob.size} of ${firmwareFile.size} bytes)`);
+            }
+            const href = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = href;
+            a.download = firmwareFile.filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(href), 10000);
+            if (text) text.textContent = label;
+        } catch (err) {
+            if (text) text.textContent = `Download failed (${err.message}), click to try again`;
+        } finally {
+            delete this.dataset.busy;
+        }
     });
 
     // Test-only erase tool reveal
