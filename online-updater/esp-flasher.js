@@ -73,6 +73,18 @@ class ESP32Flasher {
         return parseFloat(`${match[1]}.${match[2]}`);
     }
 
+    // Compare two version tags part by part, so v0.100 sorts after v0.93.
+    // Returns > 0 if a is newer, < 0 if b is newer, 0 if equal.
+    compareVersions(a, b) {
+        const pa = (a.match(/\d+/g) || []).map(Number);
+        const pb = (b.match(/\d+/g) || []).map(Number);
+        for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+            const d = (pa[i] || 0) - (pb[i] || 0);
+            if (d !== 0) return d;
+        }
+        return 0;
+    }
+
     // Fetch available releases from GitHub
     async fetchReleases() {
         try {
@@ -94,11 +106,15 @@ class ESP32Flasher {
                 r.assets && r.assets.length >= 3
             );
 
-            // Find the most recent pre-release (test release)
+            // Find the most recent pre-release (test release). Once an official
+            // release catches up to it, it's old news, so only offer a test
+            // release that's newer than the latest stable one.
+            const latestStable = this.releases.length > 0 ? this.releases[0].tag_name : null;
             const preReleases = allReleases.filter(r =>
                 r.prerelease &&
                 !r.draft &&
-                r.assets && r.assets.length >= 3
+                r.assets && r.assets.length >= 3 &&
+                (!latestStable || this.compareVersions(r.tag_name, latestStable) > 0)
             );
             this.testRelease = preReleases.length > 0 ? preReleases[0] : null;
 
