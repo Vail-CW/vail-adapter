@@ -5,7 +5,7 @@
 // records what the Summit reports while they do it. Needs troubleshoot.js
 // (loaded first) for the serial session, sendVail/waitForVail and the log.
 //
-// Summit side (firmware 0.94+): "@vail bt status|mark|keys" plus a stream of
+// Summit side (firmware 0.93.3+): "@vail bt status|mark|keys" plus a stream of
 //   @vail {"t":"bt","ms":..,"ph":"<phase>","a":..,"b":..,"s":".."}
 // lines while a computer is attached, and "bt_map" lines with the keyboard's
 // HID Report Map.
