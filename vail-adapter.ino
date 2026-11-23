@@ -482,6 +482,15 @@ void loop() {
 #ifdef BUTTON_PIN
   decoderActive = decoderActive && !recordingState.isRecording && !playbackState.isPlaying;
 #endif
+  // Coming back from a pause (radio mode, memory record or playback): throw
+  // away whatever the decoder was holding when it stopped. Radio mode now
+  // exits without a reboot, so a half keyed character from before it would
+  // otherwise be finished off and typed to the host afterward.
+  static bool wasDecoderActive = true;
+  if (decoderActive && !wasDecoderActive) {
+    morseDecoder.reset();
+  }
+  wasDecoderActive = decoderActive;
   if (decoderActive) {
     bool keyIsDown = false;
     bool usingKeyer = (adapter.getCurrentKeyerType() > 1);

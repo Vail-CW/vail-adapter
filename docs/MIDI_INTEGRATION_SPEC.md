@@ -86,7 +86,8 @@ The Vail Adapter responds to the following MIDI message types:
 - **Works while in Radio Mode**: The adapter keeps parsing MIDI in every mode, so `B0 04 00` is the software way to **exit** Radio Mode even though keying output is diverted to the radio pins. (Previously Radio Mode could only be toggled by tapping the capacitive dah pad 10x within 500 ms.)
 - **No reset**: Exiting Radio Mode is a clean, in-place transition — the USB connection stays up and the host MIDI port is **not** dropped. (The capacitive-dah gesture now exits the same clean way.)
 - **Persistence**: Not saved to EEPROM — the adapter always boots out of Radio Mode.
-- **Audible feedback**: Ascending 3-note cue on entering, descending 3-note cue on exiting.
+- **Audible feedback**: Ascending 3-note cue on entering, descending 3-note cue on exiting. Sending the state the adapter is already in does nothing (no cue).
+- **Side effects on change**: Any in-flight transmission is ended on the path it started on, and the keyer, host keys/notes, hold timers and the Morse decoder are cleared, so nothing keyed before the switch leaks out after it.
 - **Examples**:
   - `B0 04 7F` → enter Radio Mode
   - `B0 04 00` → exit Radio Mode
@@ -100,7 +101,10 @@ The Vail Adapter responds to the following MIDI message types:
   - `40-7F` (64-127): Buzzer **enabled** (ascending cue)
 - **Note**: This is the only way to **re-enable** the buzzer short of a reboot — the physical gesture (holding the key 5-6 s) can only disable it.
 - **Persistence**: Not saved to EEPROM — the buzzer always boots enabled.
+- **Repeats**: Sending the state the buzzer is already in does nothing (no cue), so a host can safely re-send CC5.
+- **Held key**: Enabling while a key is held does not get undone by the hold-to-mute timer. That only re-arms on the next press.
 - **Radio Mode**: The sidetone is suppressed in Radio Mode regardless of this setting; CC5 still updates the stored state for when Radio Mode is exited.
+- **Memory recording**: While a CW memory is being recorded the sidetone always plays as feedback, even with the buzzer disabled.
 - **Examples**:
   - `B0 05 00` → disable buzzer
   - `B0 05 7F` → enable buzzer
