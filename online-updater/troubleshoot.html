@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2026-07-04.6">
+    <link rel="stylesheet" href="style.css?v=2026-11-01.1">
 </head>
 <body>
 <nav>
@@ -86,9 +86,38 @@
             <p class="hint" id="connectHint" style="margin-top: 10px;"></p>
         </div>
 
-        <div class="flash-step">
+        <div class="flash-step" id="selfCheckStep" style="display: none;">
             <div class="step-header">
                 <span class="step-badge">2</span>
+                <h3>Run the self check</h3>
+            </div>
+            <p>The Summit tests its SD card, keyboard, battery, sound, screen and paddle, then tells you what it found.
+               It takes about two minutes and asks you a few questions along the way.</p>
+            <div class="debug-controls">
+                <button id="scRunButton" class="btn-primary" disabled>🩺 Run Self Check</button>
+                <span id="scStatus" class="conn-status">Connect the Summit first.</span>
+            </div>
+            <div id="scGuided" class="sc-guided" style="display: none;">
+                <p id="scPrompt"></p>
+                <div id="scGuidedExtra"></div>
+                <div id="scButtons" class="debug-controls"></div>
+            </div>
+            <ul id="scResults" class="sc-results" style="display: none;"></ul>
+            <div id="scDone" style="display: none;">
+                <p>Need help with anything above? Send the report: it has these results and the Summit's log.</p>
+                <div class="debug-controls">
+                    <button id="scCopyButton" class="btn-primary">📋 Copy report</button>
+                    <button id="scSaveButton" class="btn-secondary">💾 Save report to a file</button>
+                    <a id="scEmailLink" class="btn-secondary" href="mailto:ke9bos@pigletradio.org">✉️ Email support</a>
+                </div>
+                <p class="hint" style="margin-top: 10px;">Email support opens your mail app with a summary filled in.
+                   Paste the copied report into the message (Ctrl+V), or attach the saved file.</p>
+            </div>
+        </div>
+
+        <div class="flash-step">
+            <div class="step-header">
+                <span class="step-badge" id="badgeRecord">2</span>
                 <h3>Recreate the problem</h3>
             </div>
             <p>Leave this page open and do whatever makes the issue happen. Everything the device reports appears in the box below.</p>
@@ -113,7 +142,7 @@
 
         <div class="flash-step">
             <div class="step-header">
-                <span class="step-badge">3</span>
+                <span class="step-badge" id="badgeSave">3</span>
                 <h3>Save &amp; send it in</h3>
             </div>
             <p>Save the recording to a file, then send it over so we can take a look.</p>
@@ -160,6 +189,6 @@
     </div>
 </div>
 
-<script src="troubleshoot.js?v=2026-06-12.1" defer></script>
+<script src="troubleshoot.js?v=2026-11-01.1" defer></script>
 </body>
 </html>

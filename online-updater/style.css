@@ -1243,3 +1243,44 @@ a:hover { text-decoration: underline; }
     .method-toggle { width: 100%; }
     .method-tab { flex: 1; justify-content: center; padding: 0.6rem 0.5rem; }
 }
+
+/* ---- Summit self check (troubleshoot.html) ---- */
+.sc-results { list-style: none; padding: 0; margin: 14px 0 0; }
+.sc-item {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--panel-2);
+}
+.sc-item.sc-pass { border-left-color: var(--green); }
+.sc-item.sc-warn { border-left-color: var(--amber); background: var(--amber-soft); }
+.sc-item.sc-fail { border-left-color: var(--red); background: var(--red-soft); }
+.sc-icon { flex: 0 0 auto; }
+.sc-detail { color: var(--text-dim); font-family: var(--mono); font-size: 0.85rem; }
+.sc-advice { margin-top: 4px; color: var(--text); font-size: 0.92rem; }
+.sc-guided {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border: 1px solid rgba(240, 166, 60, 0.35);
+    border-left: 3px solid var(--amber);
+    border-radius: var(--radius-sm);
+    background: var(--amber-soft);
+}
+.sc-guided p { margin: 0 0 8px; }
+.sc-keys { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.sc-key {
+    min-width: 72px;
+    padding: 8px 12px;
+    text-align: center;
+    font-family: var(--mono);
+    border: 2px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--panel);
+}
+.sc-key.hit { border-color: var(--green); background: var(--green-soft); color: var(--green); }
+a.btn-secondary { display: inline-block; text-decoration: none; }
