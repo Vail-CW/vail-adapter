@@ -1284,3 +1284,39 @@ a:hover { text-decoration: underline; }
 }
 .sc-key.hit { border-color: var(--green); background: var(--green-soft); color: var(--green); }
 a.btn-secondary { display: inline-block; text-decoration: none; }
+
+/* ---- Summit Bluetooth keyboard check (troubleshoot.html) ---- */
+.bt-check {
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+.bt-check h4 { margin: 0 0 6px; }
+.bt-tips { margin: 6px 0 8px 18px; padding: 0; }
+.bt-pin {
+    margin: 8px 0;
+    padding: 10px 12px;
+    font-size: 1.15rem;
+    text-align: center;
+    border: 2px solid var(--amber);
+    border-radius: var(--radius-sm);
+    background: var(--panel);
+}
+.bt-pin strong { font-family: var(--mono); font-size: 1.4rem; letter-spacing: 0.08em; }
+.bt-typed { font-family: var(--mono); color: var(--text); }
+.bt-timeline {
+    margin-top: 12px;
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 8px 10px;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.5;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--panel-2);
+}
+.bt-line { overflow-wrap: anywhere; }
+.bt-line.bad { color: var(--red); }
+.bt-line.good { color: var(--green); }
+.bt-time { color: var(--text-dim); display: inline-block; min-width: 5.5em; }

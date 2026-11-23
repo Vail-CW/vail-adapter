@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2026-11-01.1">
+    <link rel="stylesheet" href="style.css?v=2026-11-19.1">
 </head>
 <body>
 <nav>
@@ -113,6 +113,31 @@
                 <p class="hint" style="margin-top: 10px;">Email support opens your mail app with a summary filled in.
                    Paste the copied report into the message (Ctrl+V), or attach the saved file.</p>
             </div>
+
+            <div class="bt-check">
+                <h4>Bluetooth keyboard won't pair?</h4>
+                <p>This walks you through pairing your keyboard on the Summit, one step at a time, and records what
+                   happens at each step so we can see where it goes wrong. Have the keyboard with you. It takes about five minutes.</p>
+                <div class="debug-controls">
+                    <button id="btRunButton" class="btn-primary" disabled>⌨️ Check a Bluetooth Keyboard</button>
+                    <span id="btStatus" class="conn-status">Connect the Summit first.</span>
+                </div>
+                <div id="btGuided" class="sc-guided" style="display: none;">
+                    <p id="btPrompt"></p>
+                    <div id="btGuidedExtra"></div>
+                    <div id="btButtons" class="debug-controls"></div>
+                </div>
+                <div id="btTimeline" class="bt-timeline" style="display: none;"></div>
+                <ul id="btResults" class="sc-results" style="display: none;"></ul>
+                <div id="btDone" style="display: none;">
+                    <p>Send this report so we can take a look. Please add your keyboard's make and model.</p>
+                    <div class="debug-controls">
+                        <button id="btCopyButton" class="btn-primary">📋 Copy report</button>
+                        <button id="btSaveButton" class="btn-secondary">💾 Save report to a file</button>
+                        <a id="btEmailLink" class="btn-secondary" href="mailto:ke9bos@pigletradio.org">✉️ Email support</a>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="flash-step">
@@ -189,6 +214,7 @@
     </div>
 </div>
 
-<script src="troubleshoot.js?v=2026-11-01.1" defer></script>
+<script src="troubleshoot.js?v=2026-11-19.1" defer></script>
+<script src="bt-check.js?v=2026-11-19.1" defer></script>
 </body>
 </html>
