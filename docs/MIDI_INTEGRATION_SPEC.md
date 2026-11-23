@@ -31,9 +31,10 @@ The Vail Adapter responds to the following MIDI message types:
   - `B0 00 00` → enable MIDI mode
   - `B0 00 7F` → enable Keyboard mode
 
-> Note: the mode is controlled **only** by CC0. Sending other MIDI messages
-> (CC1/CC2, Program Change, Note On/Off) does **not** change the mode — issue a
-> CC0 with a value of `00-3F` to put the adapter into MIDI mode first.
+> Note: CC0 selects **only** the Keyboard-vs-MIDI output mode. Sending other
+> MIDI messages (CC1/CC2, Program Change, Note On/Off) does **not** change it —
+> issue a CC0 with a value of `00-3F` to put the adapter into MIDI mode first.
+> Radio Mode is a separate output path controlled by CC4 (see below).
 
 #### CC1 - Dit Duration (Speed Control)
 **Purpose**: Control keying speed by setting dit duration
@@ -73,6 +74,45 @@ The Vail Adapter responds to the following MIDI message types:
   - `B0 03 40` → swap everything ("INV")
   - `B0 03 7F` → toggle off/all ("INV" or "INV OFF")
 - **Special-feature gestures**: Gesture detection (5-second dit hold for buzzer disable, capacitive dah taps for radio mode, etc.) keys off the **post-swap** dit/dah roles, so documented gestures follow whichever input currently acts as dit or dah.
+
+#### CC4 - Radio Mode On/Off
+**Purpose**: Enter or exit Radio Mode from software. Radio Mode routes keying to the radio output pins (RADIO_DIT_PIN / RADIO_DAH_PIN) instead of USB and mutes the sidetone.
+
+- **Message**: `B0 04 xx`
+- **Values** (threshold, `value > 0x3F` = on):
+  - `00-3F` (0-63): Radio Mode **OFF**
+  - `40-7F` (64-127): Radio Mode **ON**
+- **Availability**: Advanced PCB only (firmware built with `HAS_RADIO_OUTPUT`). On other boards CC4 is ignored.
+- **Works while in Radio Mode**: The adapter keeps parsing MIDI in every mode, so `B0 04 00` is the software way to **exit** Radio Mode even though keying output is diverted to the radio pins. (Previously Radio Mode could only be toggled by tapping the capacitive dah pad 10x within 500 ms.)
+- **No reset**: Exiting Radio Mode is a clean, in-place transition — the USB connection stays up and the host MIDI port is **not** dropped. (The capacitive-dah gesture now exits the same clean way.)
+- **Persistence**: Not saved to EEPROM — the adapter always boots out of Radio Mode.
+- **Audible feedback**: Ascending 3-note cue on entering, descending 3-note cue on exiting.
+- **Examples**:
+  - `B0 04 7F` → enter Radio Mode
+  - `B0 04 00` → exit Radio Mode
+
+#### CC5 - Buzzer Enable/Disable
+**Purpose**: Turn the sidetone buzzer on or off from software. (Pitch is set separately by CC2.)
+
+- **Message**: `B0 05 xx`
+- **Values** (threshold, `value > 0x3F` = on):
+  - `00-3F` (0-63): Buzzer **disabled** (descending cue, then silent)
+  - `40-7F` (64-127): Buzzer **enabled** (ascending cue)
+- **Note**: This is the only way to **re-enable** the buzzer short of a reboot — the physical gesture (holding the key 5-6 s) can only disable it.
+- **Persistence**: Not saved to EEPROM — the buzzer always boots enabled.
+- **Radio Mode**: The sidetone is suppressed in Radio Mode regardless of this setting; CC5 still updates the stored state for when Radio Mode is exited.
+- **Examples**:
+  - `B0 05 00` → disable buzzer
+  - `B0 05 7F` → enable buzzer
+
+#### CC6 - Software Reset
+**Purpose**: Reboot the adapter on demand (equivalent to unplugging/replugging) without touching the USB cable.
+
+- **Message**: `B0 06 xx`
+- **Values**: Only `7F` (127) triggers the reset. All other values are ignored, so a stray CC6 cannot accidentally reboot the device.
+- **Availability**: SAMD boards only (uses `NVIC_SystemReset()`); ignored on other architectures.
+- **USB re-enumeration**: A reset drops and re-enumerates USB by nature, so the host application **will lose the MIDI port and must reconnect** after sending this. Unlike CC4's Radio Mode exit, this is a true reboot, not a seamless transition.
+- **Example**: `B0 06 7F` → reboot the adapter
 
 ### Program Change Messages (0xCn)
 
@@ -160,8 +200,8 @@ C0 00
 
 ### Implementation Notes
 
-1. **Mode switching**: The mode is set exclusively by CC0 (`00-3F` = MIDI, `40-7F` = Keyboard). The adapter does **not** auto-switch on other messages.
-2. **Settings persistence**: Keyer type, dit duration, sidetone note, and paddle swap are saved to EEPROM and restored on power-up. (Output mode from CC0 is **not** persisted — the adapter always boots in Keyboard mode.)
+1. **Mode switching**: Keyboard-vs-MIDI output is set exclusively by CC0 (`00-3F` = MIDI, `40-7F` = Keyboard). Radio Mode is set by CC4 (`40-7F` = on, `00-3F` = off) on Advanced-PCB firmware, and works even while Radio Mode is active. The adapter does **not** auto-switch on other messages.
+2. **Settings persistence**: Keyer type, dit duration, sidetone note, and paddle swap are saved to EEPROM and restored on power-up. (CC0 output mode, CC4 Radio Mode, and CC5 buzzer state are **not** persisted — the adapter always boots in Keyboard mode, out of Radio Mode, with the buzzer enabled.)
 3. **Real-time response**: All MIDI commands take effect immediately.
 4. **Keyboard-mode output**: In Keyboard mode, dit sends Left Ctrl and dah sends Right Ctrl as USB HID key events.
 5. **Keyboard Sim mode**: Keying the prosign KSKS as its own word puts the adapter in Keyboard Sim mode. It then decodes the operator's Morse and types the letters over USB instead of sending Ctrl keys or notes. BT is a space, BK is Enter, and 8 or more dits is a backspace. It stays on until the adapter is unplugged. This is turned on from the key, not over MIDI.

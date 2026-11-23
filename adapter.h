@@ -89,10 +89,12 @@ public:
 
     void Tick(unsigned long millis);
     
-    void ResetDitCounter(); 
-    void DisableBuzzer(); 
+    void ResetDitCounter();
+    void DisableBuzzer();
+    void EnableBuzzer();
     bool isBuzzerEnabled() const;
 
+    void SetRadioMode(bool active);
     void ToggleRadioMode();
     bool isRadioModeActive() const;
     void ToggleRadioKeyerMode();

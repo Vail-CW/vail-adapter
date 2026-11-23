@@ -588,9 +588,25 @@ this->buzzerEnabled = false;
 Serial.println(F("Buzzer Disabled"));
 }
 
-void VailAdapter::ToggleRadioMode() {
+void VailAdapter::EnableBuzzer() {
+this->buzzerEnabled = true;
+// Ascending confirmation cue (mirror of DisableBuzzer's descending cue).
+this->buzzer->NoTone(0);
+this->buzzer->Note(1, 60); delay(100);
+this->buzzer->Note(1, 65); delay(100);
+this->buzzer->Note(1, 70); delay(100);
+this->buzzer->NoTone(1);
+Serial.println(F("Buzzer Enabled"));
+}
+
+void VailAdapter::SetRadioMode(bool active) {
 #ifdef HAS_RADIO_OUTPUT
-this->radioModeActive = !this->radioModeActive;
+// Already in the requested state: nothing to do. Avoids a spurious cue and
+// cleanup when e.g. CC4 re-asserts the current mode.
+if (this->radioModeActive == active) {
+    return;
+}
+this->radioModeActive = active;
 
 if (keyer) keyer->Release();
 if (keyIsPressed) EndTx();
@@ -618,15 +634,28 @@ if (this->radioModeActive) {
     this->buzzer->Note(1, 70); delay(100);
     this->buzzer->NoTone(1);
 } else {
-    Serial.println(F("Radio Mode Deactivated. Resetting controller..."));
+    // Clean, in-place exit — no MCU reset, so USB stays enumerated and the
+    // host MIDI port is never dropped. Output returns to USB because the
+    // radio-mode gates in Tx/BeginTx/EndTx fall through now that
+    // radioModeActive is false, the radio pins were driven inactive above,
+    // and the Morse decoder re-enables itself in the main loop
+    // (decoderActive = !radioModeActive).
+    Serial.println(F("Radio Mode Deactivated."));
     this->buzzer->Note(1, 70); delay(100);
     this->buzzer->Note(1, 65); delay(100);
     this->buzzer->Note(1, 60); delay(100);
     this->buzzer->NoTone(1);
-    delay(100);
-
-    NVIC_SystemReset();
 }
+#else
+(void)active;
+Serial.println(F("Radio output not configured. Radio mode unavailable."));
+this->buzzer->Tone(1, 100); delay(200); this->buzzer->NoTone(1);
+#endif
+}
+
+void VailAdapter::ToggleRadioMode() {
+#ifdef HAS_RADIO_OUTPUT
+this->SetRadioMode(!this->radioModeActive);
 #else
 Serial.println(F("Radio output not configured. Radio mode unavailable."));
 this->buzzer->Tone(1, 100); delay(200); this->buzzer->NoTone(1);
@@ -894,6 +923,37 @@ case 3:
         desired = PADDLE_SWAP_OFF;
     }
     this->SetPaddleSwapMode(desired, true);
+}
+break;
+case 4:
+// CC4 - Radio Mode on/off (Advanced PCB only). Parsed every loop even while
+// radio mode is active, so this is the software exit from radio mode.
+//   0..63   -> Radio Mode OFF
+//   64..127 -> Radio Mode ON
+#ifdef HAS_RADIO_OUTPUT
+this->SetRadioMode(event.byte3 > 0x3f);
+#else
+Serial.println(F("CC4 ignored: radio output not configured."));
+#endif
+break;
+case 5:
+// CC5 - Buzzer (sidetone) enable/disable.
+//   0..63   -> disable
+//   64..127 -> enable
+if (event.byte3 > 0x3f) this->EnableBuzzer();
+else this->DisableBuzzer();
+break;
+case 6:
+// CC6 - Software reset. Requires value 127 to avoid accidental reboots.
+// USB re-enumerates on reset, so the host must reconnect to the port after.
+if (event.byte3 == 127) {
+Serial.println(F("Software reset requested."));
+delay(20);
+#if defined(ARDUINO_ARCH_SAMD)
+NVIC_SystemReset();
+#else
+Serial.println(F("Software reset not supported on this board."));
+#endif
 }
 break;
 }
