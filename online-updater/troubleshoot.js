@@ -66,8 +66,11 @@ function applyDeviceButtons() {
     if (sc) sc.style.display = isSummit ? 'block' : 'none';
     if ($('badgeRecord')) $('badgeRecord').textContent = isSummit ? '3' : '2';
     if ($('badgeSave')) $('badgeSave').textContent = isSummit ? '4' : '3';
+    const busy = selfCheck.running || (typeof btCheck !== 'undefined' && btCheck.running);
     const runBtn = $('scRunButton');
-    if (runBtn) runBtn.disabled = !connected || selfCheck.running;
+    if (runBtn) runBtn.disabled = !connected || busy;
+    const btBtn = $('btRunButton');
+    if (btBtn) btBtn.disabled = !connected || busy;
 }
 
 function setConnected(connected) {
@@ -294,7 +297,7 @@ function timestampSlug() {
 
 function saveLog() {
     const deviceLabel = state.device ? DEVICES[state.device].label : 'Unknown device';
-    const report = selfCheckReportText();
+    const report = allReportsText();
     const header = [
         '=== Vail Troubleshooting Recording ===',
         `Device:    ${deviceLabel}`,
@@ -320,7 +323,7 @@ function saveLog() {
 
 async function copyLog() {
     try {
-        const report = selfCheckReportText();
+        const report = allReportsText();
         await navigator.clipboard.writeText(report ? report + '\n\n=== Full device log ===\n' + fullText() : fullText());
         const btn = $('copyButton');
         const original = btn.textContent;
@@ -366,6 +369,9 @@ const VAIL_ERRORS = {
     not_on_menu: "The Summit is busy with something else. On the Summit, press ESC until you're on a menu " +
                  '(and close any pop-up), then click Run Self Check again.',
     busy: 'The Summit is still finishing a test. Wait a moment, then click Run Self Check again.',
+    'unknown command': "The Summit's firmware is too old for this check. Update it from the Home page, then try again.",
+    not_on_bt_screen: 'The typing test only runs on the External Keyboard screen. On the Summit, go to Settings → Device Settings → Bluetooth → External Keyboard, then try again.',
+    bt_not_connected: "The keyboard isn't connected right now. Press a key on it to wake it, wait for the Summit to show Connected, then try again.",
 };
 
 // Usually at the start of a line, but an ordinary log print the Summit had to
@@ -382,6 +388,7 @@ function handleVailLine(text) {
         return;
     }
     onVailMessage(msg);
+    if (typeof btCheckOnMessage === 'function') btCheckOnMessage(msg);
     for (let i = vailWaiters.length - 1; i >= 0; i--) {
         const w = vailWaiters[i];
         if (w.match(msg)) {
@@ -576,7 +583,7 @@ function hideGuided() {
 
 // ---- the flow -------------------------------------------------------------
 async function runSelfCheck() {
-    if (selfCheck.running || !state.port) return;
+    if (selfCheck.running || (typeof btCheck !== 'undefined' && btCheck.running) || !state.port) return;
     selfCheck.running = true;
     selfCheck.results = [];
     selfCheck.events = [];
@@ -725,6 +732,13 @@ async function guidedPaddle() {
 }
 
 // ---- report ---------------------------------------------------------------
+// Every finished check's report (self check, Bluetooth keyboard check), for
+// the top of Copy / Save
+function allReportsText() {
+    const bt = typeof btReportText === 'function' ? btReportText() : '';
+    return [selfCheckReportText(), bt].filter(Boolean).join('\n\n');
+}
+
 function selfCheckReportText() {
     if (!selfCheck.finishedAt || !selfCheck.results.length) return '';
     const h = selfCheck.hello || {};
