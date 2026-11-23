@@ -27,6 +27,8 @@ const btCheck = {
     reportMap: null,       // { len, total, hex } (total > len when the Summit cut a long map)
     mapChunks: {},
     events: [],
+    collectingEvents: false,
+    skipped: [],           // names of steps the user skipped
     finishedAt: null,
     startedAt: null,
     listeners: [],         // fn(msg) for the step that is watching
@@ -125,7 +127,7 @@ function btCheckOnMessage(msg) {
             btCheck.lastStatus = msg;
             break;
         case 'event':
-            btCheck.events.push(msg);
+            if (btCheck.collectingEvents) btCheck.events.push(msg);
             break;
         default:
             break;
@@ -134,14 +136,17 @@ function btCheckOnMessage(msg) {
 }
 
 // Resolve when a bt message matching pred arrives, or reject after timeoutMs
+// or when the check is aborted (unplug, Disconnect)
 function btWait(pred, timeoutMs, timeoutMessage) {
     return new Promise((resolve, reject) => {
         const fn = (msg) => {
             if (msg.t === 'bt' && pred(msg)) { cleanup(); resolve(msg); }
         };
         const timer = setTimeout(() => { cleanup(); reject(new Error(timeoutMessage || 'Timed out.')); }, timeoutMs);
+        const off = onAbort((reason) => { cleanup(); reject(new Error(reason)); });
         function cleanup() {
             clearTimeout(timer);
+            off();
             const i = btCheck.listeners.indexOf(fn);
             if (i >= 0) btCheck.listeners.splice(i, 1);
         }
@@ -169,27 +174,22 @@ function setBtStatus(text, kind) {
     el.className = 'conn-status' + (kind ? ' ' + kind : '');
 }
 
+// promptHtml/extraHtml are page-authored; anything from the device is passed
+// through escapeHtml() (or Number()) before it goes in
 function btAsk(promptHtml, buttons, extraHtml = '') {
-    const panel = $('btGuided');
-    panel.style.display = 'block';
-    $('btPrompt').innerHTML = promptHtml;
-    $('btGuidedExtra').innerHTML = extraHtml;
-    const row = $('btButtons');
-    row.innerHTML = '';
-    return new Promise((resolve) => {
-        buttons.forEach((b) => {
-            const btn = document.createElement('button');
-            btn.className = b.primary ? 'btn-primary' : 'btn-secondary';
-            btn.textContent = b.label;
-            btn.addEventListener('click', () => resolve(b.value));
-            row.appendChild(btn);
-        });
-    });
+    return askIn('bt', promptHtml, buttons, extraHtml);
 }
 
 function btHideGuided() {
+    if (promptCleanup.bt) { promptCleanup.bt(); delete promptCleanup.bt; }
     const panel = $('btGuided');
     if (panel) panel.style.display = 'none';
+}
+
+// A step the user skipped: shown and reported, never counted as a pass
+function btSkip(id, name) {
+    btCheck.skipped.push(name);
+    btResult(id, name, 'info', 'skipped');
 }
 
 function btResult(id, name, st, detail, advice = '') {
@@ -210,12 +210,13 @@ function btResult(id, name, st, detail, advice = '') {
 function renderBtTimeline() {
     const box = $('btTimeline');
     if (!box) return;
-    const t0 = btCheck.timeline.length ? btCheck.timeline[0].ms : 0;
+    // Page time, not Summit uptime: uptime starts over when the Summit restarts
+    const t0 = btCheck.timeline.length ? btCheck.timeline[0].at.getTime() : 0;
     box.innerHTML = btCheck.timeline
         .filter((m) => m.ph !== 'report')
         .slice(-40)
         .map((m) => `<div class="bt-line${BT_BAD_PHASES.has(m.ph) || (m.ph === 'done' && !m.a) ? ' bad' : ''}${m.ph === 'done' && m.a ? ' good' : ''}">` +
-            `<span class="bt-time">+${((m.ms - t0) / 1000).toFixed(1)}s</span> ${escapeHtml(btPhaseText(m))}</div>`)
+            `<span class="bt-time">+${((m.at.getTime() - t0) / 1000).toFixed(1)}s</span> ${escapeHtml(btPhaseText(m))}</div>`)
         .join('');
     box.style.display = btCheck.timeline.length ? 'block' : 'none';
     box.scrollTop = box.scrollHeight;
@@ -227,13 +228,17 @@ async function runBtCheck() {
     Object.assign(btCheck, {
         running: true, status: null, lastStatus: null, answers: [], results: [], timeline: [],
         found: [], others: [], keys: [], reports: 0, reportMap: null, mapChunks: {},
-        events: [], finishedAt: null, startedAt: new Date(), listeners: [],
+        events: [], collectingEvents: false, skipped: [], finishedAt: null, startedAt: new Date(), listeners: [],
     });
     $('btResults').innerHTML = '';
     $('btResults').style.display = 'none';
     $('btDone').style.display = 'none';
     renderBtTimeline();
     applyDeviceButtons();
+    // Unplug, Disconnect or an unexpected restart: don't spend the wrap-up
+    // talking to a Summit that's gone
+    btCheck.aborted = false;
+    const offAbort = onAbort(() => { btCheck.aborted = true; });
 
     try {
         setBtStatus('Talking to the Summit…', 'wait');
@@ -264,7 +269,9 @@ async function runBtCheck() {
         btResult('stopped', 'Check stopped', 'warn', err.message);
         await finishBtCheck(true);
     } finally {
+        offAbort();
         btCheck.running = false;
+        btCheck.collectingEvents = false;
         btCheck.listeners = [];
         try { await sendVail('bt keys off'); } catch (_) {}
         applyDeviceButtons();
@@ -322,7 +329,10 @@ async function btStepOpenScreen() {
         while (!stop) {
             await sleep(1500);
             if (stop) return;
-            try { st = await btStatus(3000); } catch (_) { continue; }
+            try { st = await btStatus(3000); } catch (err) {
+                if (!state.port) throw err;   // disconnected: end the check
+                continue;
+            }
             if (st.mode === BT_KB_SETTINGS_MODE) return 'there';
         }
     })();
@@ -355,21 +365,27 @@ async function btStepScan() {
         const ended = btWait((m) => {
             if (m.ph === 'scan') userScan = true;
             else if (m.ph === 'autoscan') userScan = false;
+            if (m.ph === 'scan_fail') return true;
             return m.ph === 'scan_end' && userScan;
         }, 90000, "The Summit didn't finish a scan. Make sure you selected Scan for Keyboards on the Summit.");
         const go = btAsk('Put the keyboard in <strong>pairing mode</strong>: usually hold its Bluetooth or connect key ' +
             'until a light blinks quickly. Then select <strong>Scan for Keyboards</strong> on the Summit.<br>' +
             '<span class="muted">The scan takes 10 seconds.</span>',
             [{ label: 'Skip', value: 'skip' }]);
-        const r = await Promise.race([ended.then(() => 'ended'), go]);
+        const r = await Promise.race([ended, go]);
         if (r === 'skip') {
             ended.catch(() => {});
-            btResult('scan', 'Scan', 'info', 'skipped');
+            btSkip('scan', 'Scan');
+            return false;
+        }
+        if (r.ph === 'scan_fail') {
+            btResult('scan', 'Scan', 'fail', 'the Summit could not start a scan',
+                'Restart the Summit and try again. If it keeps failing, please send this report.');
             return false;
         }
 
         const list = btCheck.found.length
-            ? '<ul class="bt-tips">' + btCheck.found.map((d) => `<li>${escapeHtml(d.name)} <span class="muted">${d.rssi} dBm</span></li>`).join('') + '</ul>'
+            ? '<ul class="bt-tips">' + btCheck.found.map((d) => `<li>${escapeHtml(d.name)} <span class="muted">${Number(d.rssi)} dBm</span></li>`).join('') + '</ul>'
             : '<p class="muted">No keyboards were found.</p>';
         const a = await btAsk('Is your keyboard in the list the Summit found?', [
             { label: 'Yes', value: 'yes', primary: true },
@@ -401,11 +417,19 @@ async function btStepConnect() {
     const onPin = (msg) => {
         if (msg.t === 'bt' && msg.ph === 'passkey' && !pinShown) {
             pinShown = true;
-            $('btGuidedExtra').innerHTML = `<div class="bt-pin">Type <strong>${msg.a}</strong> then press <strong>Enter</strong> on the keyboard</div>`;
+            const pin = String(Math.trunc(Number(msg.a)) || 0).padStart(6, '0');
+            $('btGuidedExtra').innerHTML = `<div class="bt-pin">Type <strong>${pin}</strong> then press <strong>Enter</strong> on the keyboard</div>`;
         }
     };
     btCheck.listeners.push(onPin);
-    const done = btWait((m) => m.ph === 'done', 150000, 'Pairing did not finish within 2½ minutes.');
+    // Selecting a keyboard from the scan list starts a fresh pairing
+    // ("connect" with a=1). A "done" from an auto-reconnect that was already
+    // under way doesn't count.
+    let sawFresh = false;
+    const done = btWait((m) => {
+        if (m.ph === 'connect') sawFresh = m.a === 1;
+        return m.ph === 'done' && sawFresh;
+    }, 150000, 'Pairing did not finish within 2½ minutes.');
     const skip = btAsk('On the Summit, select <strong>your keyboard</strong> in the list. ' +
         'If the keyboard wants a PIN, the number to type appears here.',
         [{ label: 'Skip', value: 'skip' }]);
@@ -417,7 +441,7 @@ async function btStepConnect() {
     }
     if (res === 'skip') {
         done.catch(() => {});
-        btResult('pair', 'Pairing', 'info', 'skipped');
+        btSkip('pair', 'Pairing');
         return false;
     }
     if (res.a) {
@@ -469,7 +493,7 @@ async function btStepKeys() {
         } catch (err) {
             const a = await btAsk(escapeHtml(err.message), [
                 { label: 'Try again', value: 'again', primary: true }, { label: 'Skip', value: 'skip' }]);
-            if (a === 'skip') { btResult('keys', 'Typing', 'info', 'skipped'); return; }
+            if (a === 'skip') { btSkip('keys', 'Typing'); return; }
         }
     }
     const ended = waitForVail((m) => m.t === 'bt_keys' && m.on === false, 40000).catch(() => {});
@@ -499,15 +523,18 @@ async function btStepReconnect() {
     const go = await btAsk('Now check it comes back on its own. Click <strong>Start</strong>, then turn the keyboard ' +
         '<strong>off</strong>, wait 5 seconds, and turn it back <strong>on</strong>.',
         [{ label: 'Start', value: 'go', primary: true }, { label: 'Skip', value: 'skip' }]);
-    if (go === 'skip') { btResult('reconnect', 'Reconnect', 'info', 'skipped'); return; }
+    if (go === 'skip') { btSkip('reconnect', 'Reconnect'); return; }
     await btMark('reconnect');
     const t0 = Date.now();
     const back = btWait((m) => m.ph === 'done' && m.a, 120000, 'timeout');
     const skip = btAsk('Waiting for the keyboard to reconnect (up to 2 minutes). Press a key on it if it is asleep.',
         [{ label: 'Skip', value: 'skip' }]);
     let r;
-    try { r = await Promise.race([back, skip]); } catch (_) { r = null; }
-    if (r === 'skip') { back.catch(() => {}); btResult('reconnect', 'Reconnect', 'info', 'skipped'); return; }
+    try { r = await Promise.race([back, skip]); } catch (err) {
+        if (!state.port) throw err;   // disconnected: end the check
+        r = null;
+    }
+    if (r === 'skip') { back.catch(() => {}); btSkip('reconnect', 'Reconnect'); return; }
     if (r) {
         btResult('reconnect', 'Reconnect', 'pass', `back in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
     } else {
@@ -523,20 +550,42 @@ async function btStepRestart() {
     const go = await btAsk('Last one: does the Summit remember the keyboard after a restart? Click <strong>Restart Summit</strong> ' +
         'and keep the keyboard on.',
         [{ label: '🔄 Restart Summit', value: 'go', primary: true }, { label: 'Skip', value: 'skip' }]);
-    if (go === 'skip') { btResult('restart', 'After restart', 'info', 'skipped'); return; }
+    if (go === 'skip') { btSkip('restart', 'After restart'); return; }
     await btMark('restart');
-    await restartDevice();
-    btAsk('Waiting for the Summit to start up and find the keyboard (up to 90 seconds)…', []);
+    if (!(await restartDevice({ expected: true }))) {
+        btResult('restart', 'After restart', 'fail', "the page couldn't restart the Summit",
+            'Turn the Summit off and on with its switch, then run this check again to test the restart.');
+        return;
+    }
+    btAsk('Waiting for the Summit to start up and find the keyboard (up to 90 seconds)…', []).catch(() => {});
     const t0 = Date.now();
     // After a restart nothing is traced until the page talks to the Summit again,
-    // so keep asking for status until it answers, then watch it.
+    // so keep asking until it answers. Its uptime proves it really restarted.
     let st = null;
+    let rebooted = false;
     while (Date.now() - t0 < 90000) {
         await sleep(2000);
-        try { st = await btStatus(1500); } catch (_) { continue; }
+        if (!state.port) {
+            btResult('restart', 'After restart', 'fail', 'the USB connection dropped during the restart',
+                'Click Connect again, then run this check again. The pairing itself may be fine.');
+            return;
+        }
+        try {
+            if (!rebooted) {
+                const hello = waitForVail((m) => m.t === 'hello', 1500);
+                await sendVail('hello');
+                const h = await hello;
+                rebooted = h.uptime <= (Date.now() - t0) / 1000 + 5;
+                if (!rebooted) continue;
+            }
+            st = await btStatus(1500);
+        } catch (_) { continue; }
         if (st.state === 'connected') break;
     }
-    if (st && st.state === 'connected') {
+    if (!rebooted) {
+        btResult('restart', 'After restart', 'fail', "the Summit didn't restart",
+            'Turn the Summit off and on with its switch, then run this check again to test the restart.');
+    } else if (st && st.state === 'connected') {
         btResult('restart', 'After restart', 'pass', `reconnected ${((Date.now() - t0) / 1000).toFixed(0)} s after restart`);
     } else {
         btResult('restart', 'After restart', 'fail', st ? `Summit is ${st.state}${st.paired ? '' : ', pairing NOT saved'}` : 'Summit did not answer after restart',
@@ -547,19 +596,23 @@ async function btStepRestart() {
 
 async function finishBtCheck(quiet = false) {
     btHideGuided();
-    try {
+    if (!btCheck.aborted) try {
         btCheck.events = [];
+        btCheck.collectingEvents = true;
         const evDone = waitForVail((m) => m.t === 'events_end', 5000);
         await sendVail('events');
         await evDone;
+        btCheck.collectingEvents = false;
         await btStatus().catch(() => null);
         await btMark('end');
     } catch (_) {}
     btCheck.finishedAt = new Date();
     if (!quiet) {
         const fails = btCheck.results.filter((r) => r.st === 'fail').length;
-        setBtStatus(fails ? `Finished: ${fails} problem(s). See the advice above, and send the report.` : 'Finished: the keyboard works!',
-            fails ? 'err' : 'ok');
+        const skipped = btCheck.skipped.length;
+        setBtStatus(fails ? `Finished: ${fails} problem(s). See the advice above, and send the report.`
+            : skipped ? `Finished: no problems in the steps that ran, ${skipped} skipped (${btCheck.skipped.join(', ')}).`
+            : 'Finished: the keyboard works!', fails ? 'err' : 'ok');
     }
     showBtDone();
 }
@@ -589,6 +642,7 @@ function btReportText() {
     }
     lines.push('', 'Answers:');
     for (const a of btCheck.answers) lines.push(`  ${a.q} ${a.a}`);
+    if (btCheck.skipped.length) lines.push(`  Skipped: ${btCheck.skipped.join(', ')}`);
     lines.push('', 'Keyboards found in last scan:');
     if (!btCheck.found.length) lines.push('  (none)');
     for (const d of btCheck.found) lines.push(`  ${d.name} [${d.addr} type ${d.atype}] ${d.rssi} dBm`);
@@ -596,10 +650,10 @@ function btReportText() {
         lines.push('Other named devices seen:');
         for (const o of btCheck.others) lines.push(`  ${o.name} ${o.rssi} dBm appearance ${o.appearance}`);
     }
-    lines.push('', 'Timeline (Summit time):');
-    const t0 = btCheck.timeline.length ? btCheck.timeline[0].ms : 0;
+    lines.push('', 'Timeline (seconds since the first entry; Summit uptime in brackets):');
+    const t0 = btCheck.timeline.length ? btCheck.timeline[0].at.getTime() : 0;
     for (const m of btCheck.timeline) {
-        lines.push(`  +${((m.ms - t0) / 1000).toFixed(2).padStart(7)}s  ${m.ph.padEnd(12)} ${btPhaseText(m)}`);
+        lines.push(`  +${((m.at.getTime() - t0) / 1000).toFixed(2).padStart(7)}s [${(m.ms / 1000).toFixed(2)}]  ${String(m.ph).padEnd(12)} ${btPhaseText(m)}`);
     }
     if (btCheck.reportMap) {
         const rm = btCheck.reportMap;
@@ -623,7 +677,9 @@ function showBtDone() {
     const problems = btCheck.results.filter((r) => r.st === 'fail' || r.st === 'warn').map((r) => `${r.name}: ${r.detail}`);
     const subject = `Summit Bluetooth keyboard check v${h.fw || '?'}${h.call ? ' ' + h.call : ''}`;
     const body = 'Hi, here is my Summit Bluetooth keyboard check.\n\nKeyboard make and model: \n\n' +
-        (problems.length ? 'Problems found:\n- ' + problems.join('\n- ') + '\n\n' : 'Everything passed.\n\n') +
+        (problems.length ? 'Problems found:\n- ' + problems.join('\n- ') + '\n\n'
+            : btCheck.skipped.length ? 'No problems in the steps that ran.\n\n' : 'Everything passed.\n\n') +
+        (btCheck.skipped.length ? `Skipped: ${btCheck.skipped.join(', ')}\n\n` : '') +
         'Full report: (click "Copy report" on the page, then paste it here with Ctrl+V, or attach the saved file)\n';
     $('btEmailLink').href = `${SELF_CHECK_EMAIL_URL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
