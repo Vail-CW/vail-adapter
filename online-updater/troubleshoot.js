@@ -193,7 +193,7 @@ async function softClose() {
 }
 
 async function disconnect() {
-    failVailWaiters('Disconnected.');
+    abortPending('Disconnected.');
     state.watching = false; // doubles as "Cancel" while waiting for a replug
     await softClose();
     setConnected(false);
@@ -260,8 +260,11 @@ function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 // ---- restart device (Summit) ----------------------------------------------
 // ESP32 auto-reset: pulse RTS (wired to EN) while DTR (GPIO0) stays high so it
 // boots the application, not the bootloader.
-async function restartDevice() {
-    if (!state.port) return;
+// Returns true if the reset signals went out. A check that is running gets
+// cancelled unless it asked for the restart itself (opts.expected).
+async function restartDevice(opts) {
+    if (!state.port) return false;
+    if (!(opts && opts.expected === true)) abortPending('The Summit was restarted.');
     try {
         logNotice('Restarting device…');
         await state.port.setSignals({ dataTerminalReady: false, requestToSend: true });
@@ -269,8 +272,10 @@ async function restartDevice() {
         await state.port.setSignals({ dataTerminalReady: false, requestToSend: false });
         await sleep(50);
         await state.port.setSignals({ dataTerminalReady: true });
+        return true;
     } catch (err) {
         logNotice(`Restart did not work: ${err.message}. Try the physical reset button.`);
+        return false;
     }
 }
 
@@ -343,6 +348,10 @@ const SELF_CHECK_EMAIL_URL = 'mailto:ke9bos@pigletradio.org';
 
 const selfCheck = {
     running: false,
+    diagActive: false,     // between sending "diag" and its diag_end
+    collectingEvents: false,
+    error: '',             // why the run stopped early, if it did
+    skipped: [],           // names of guided tests the user skipped
     hello: null,           // device info from "hello"
     results: [],           // check lines, in order (guided answers included)
     events: [],            // event history entries
@@ -403,6 +412,23 @@ function failVailWaiters(reason) {
     }
 }
 
+// Anything else a running check is waiting on (an on-page question, a trace
+// watcher) registers here, so losing the device ends the check instead of
+// leaving it stuck on a prompt nobody can answer.
+const pendingAborts = new Set();
+
+function onAbort(fn) {
+    pendingAborts.add(fn);
+    return () => pendingAborts.delete(fn);
+}
+
+function abortPending(reason) {
+    failVailWaiters(reason);
+    const fns = [...pendingAborts];
+    pendingAborts.clear();
+    for (const fn of fns) fn(reason);
+}
+
 async function sendVail(command) {
     if (!state.port || !state.port.writable) throw new Error('Not connected.');
     const writer = state.port.writable.getWriter();
@@ -420,20 +446,27 @@ function onVailMessage(msg) {
             selfCheck.hello = msg;
             break;
         case 'diag_start':
+            // Only the run we started; a late reply from a timed-out run
+            // must not wipe the current one
+            if (!selfCheck.diagActive) break;
             selfCheck.results = [];
             renderSelfCheckResults();
             break;
+        case 'diag_end':
+            selfCheck.diagActive = false;
+            break;
         case 'check':
+            if (!selfCheck.running) break;
             // A re-run of a guided test replaces its earlier answer
             selfCheck.results = selfCheck.results.filter((r) => r.id !== msg.id);
             selfCheck.results.push(msg);
             renderSelfCheckResults();
             break;
         case 'event':
-            selfCheck.events.push(msg);
+            if (selfCheck.collectingEvents) selfCheck.events.push(msg);
             break;
         case 'events_end':
-            selfCheck.eventsInfo = msg;
+            if (selfCheck.collectingEvents) selfCheck.eventsInfo = msg;
             break;
         case 'key_target': {
             const box = document.querySelector(`#scKeyBoxes [data-index="${msg.index}"]`);
@@ -451,7 +484,7 @@ function onVailMessage(msg) {
                 : 'Now press the <strong>DAH</strong> side.');
             break;
         case 'closed':
-            failVailWaiters('The self check screen was closed on the Summit.');
+            if (selfCheck.running) abortPending('The self check screen was closed on the Summit.');
             break;
         default:
             break;
@@ -491,27 +524,52 @@ function setGuidedPrompt(html) {
     if (el) el.innerHTML = html;
 }
 
-// Show the guided panel with a prompt and a row of buttons; resolves with the
-// clicked button's value.
-function askGuided(promptHtml, buttons, extraHtml = '') {
-    const panel = $('scGuided');
-    panel.style.display = 'block';
-    setGuidedPrompt(promptHtml);
-    $('scGuidedExtra').innerHTML = extraHtml;
-    const row = $('scButtons');
+// Show a guided panel (ids <prefix>Guided, <prefix>Prompt, <prefix>GuidedExtra,
+// <prefix>Buttons) with a prompt and a row of buttons; resolves with the
+// clicked button's value, rejects if the check is aborted.
+//
+// promptHtml and extraHtml are page-authored markup: callers escape anything
+// that came from the device with escapeHtml() before putting it in.
+const promptCleanup = {};
+
+function askIn(prefix, promptHtml, buttons, extraHtml = '') {
+    if (promptCleanup[prefix]) promptCleanup[prefix]();   // drop a prompt nobody waits on any more
+    $(prefix + 'Guided').style.display = 'block';
+    $(prefix + 'Prompt').innerHTML = promptHtml;
+    $(prefix + 'GuidedExtra').innerHTML = extraHtml;
+    const row = $(prefix + 'Buttons');
     row.innerHTML = '';
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
+        const off = onAbort((reason) => reject(new Error(reason)));
+        promptCleanup[prefix] = off;
         buttons.forEach((b) => {
             const btn = document.createElement('button');
             btn.className = b.primary ? 'btn-primary' : 'btn-secondary';
             btn.textContent = b.label;
-            btn.addEventListener('click', () => resolve(b.value));
+            btn.addEventListener('click', () => {
+                off();
+                if (promptCleanup[prefix] === off) delete promptCleanup[prefix];
+                resolve(b.value);
+            });
             row.appendChild(btn);
         });
     });
 }
 
+function askGuided(promptHtml, buttons, extraHtml = '') {
+    return askIn('sc', promptHtml, buttons, extraHtml);
+}
+
+// A guided test the user skipped: shown and reported, never counted as a pass
+function noteSkipped(id, name) {
+    selfCheck.skipped.push(name);
+    selfCheck.results = selfCheck.results.filter((r) => r.id !== id);
+    selfCheck.results.push({ id, name, st: 'info', detail: 'skipped' });
+    renderSelfCheckResults();
+}
+
 function hideGuided() {
+    if (promptCleanup.sc) { promptCleanup.sc(); delete promptCleanup.sc; }
     const panel = $('scGuided');
     if (panel) panel.style.display = 'none';
 }
@@ -524,6 +582,8 @@ async function runSelfCheck() {
     selfCheck.events = [];
     selfCheck.eventsInfo = null;
     selfCheck.finishedAt = null;
+    selfCheck.error = '';
+    selfCheck.skipped = [];
     renderSelfCheckResults();
     $('scDone').style.display = 'none';
     applyDeviceButtons();
@@ -537,6 +597,7 @@ async function runSelfCheck() {
 
         setSelfCheckStatus('Running automatic checks (about 10 seconds)…', 'wait');
         const diagDone = waitForVail((m) => m.t === 'diag_end', 60000);
+        selfCheck.diagActive = true;
         await sendVail('diag');
         await diagDone;
 
@@ -548,19 +609,24 @@ async function runSelfCheck() {
 
         setSelfCheckStatus('Collecting the event history…', 'wait');
         selfCheck.events = [];
+        selfCheck.collectingEvents = true;
         const evDone = waitForVail((m) => m.t === 'events_end', 5000);
         await sendVail('events');
         await evDone;
+        selfCheck.collectingEvents = false;
 
         selfCheck.finishedAt = new Date();
         const fails = selfCheck.results.filter((r) => r.st === 'fail').length;
         const warns = selfCheck.results.filter((r) => r.st === 'warn').length;
+        const skipped = selfCheck.skipped.length;
+        const skipNote = skipped ? ` ${skipped} test(s) skipped.` : '';
         setSelfCheckStatus(fails + warns === 0
-            ? 'All done: everything passed!'
-            : `All done: ${fails} problem(s), ${warns} warning(s). See the advice above.`, fails ? 'err' : 'ok');
+            ? (skipped ? `All done: everything that ran passed.${skipNote}` : 'All done: everything passed!')
+            : `All done: ${fails} problem(s), ${warns} warning(s). See the advice above.${skipNote}`, fails ? 'err' : 'ok');
         showSelfCheckDone();
     } catch (err) {
         hideGuided();
+        selfCheck.error = err.message;
         setSelfCheckStatus(err.message, 'err');
         try { await sendVail('stop'); } catch (_) {}
         if (selfCheck.results.length) {
@@ -569,6 +635,8 @@ async function runSelfCheck() {
         }
     } finally {
         selfCheck.running = false;
+        selfCheck.diagActive = false;
+        selfCheck.collectingEvents = false;
         applyDeviceButtons();
     }
 }
@@ -585,6 +653,7 @@ async function guidedScreen() {
          { label: 'No, something is off', value: 'no' },
          { label: 'Skip', value: 'skip' }]);
     if (answer !== 'skip') await sendVail(`answer screen ${answer}`);
+    else noteSkipped('screen', 'Screen');
     await sendVail('screen off');
 }
 
@@ -598,7 +667,7 @@ async function guidedSound() {
     setSelfCheckStatus('Sound test', 'wait');
     let answer = await askGuided('Listen to the Summit, then click <strong>Play tone</strong>.',
         [{ label: '🔊 Play tone', value: 'play', primary: true }, { label: 'Skip', value: 'skip' }]);
-    if (answer === 'skip') return;
+    if (answer === 'skip') { noteSkipped('sound', 'Sound'); return; }
     for (;;) {
         await playTone(false);
         answer = await askGuided('Did you hear a short beep from the Summit?',
@@ -622,7 +691,7 @@ async function guidedKeys() {
     setSelfCheckStatus('Keyboard test', 'wait');
     const start = await askGuided('Next, the keyboard. Click <strong>Start</strong>, then press the keys shown on the Summit keyboard.',
         [{ label: 'Start', value: 'go', primary: true }, { label: 'Skip', value: 'skip' }]);
-    if (start === 'skip') return;
+    if (start === 'skip') { noteSkipped('keys', 'Keyboard'); return; }
     const boxes = ['A', '1', 'an arrow', 'ENTER']
         .map((k, i) => `<span class="sc-key" data-index="${i}">${k}</span>`).join('');
     const ended = waitForVail((m) => m.t === 'keys_end', 30000);
@@ -634,6 +703,7 @@ async function guidedKeys() {
     if (which === 'skip') {
         await sendVail('stop');
         await ended.catch(() => {});
+        noteSkipped('keys', 'Keyboard');
     }
 }
 
@@ -641,7 +711,7 @@ async function guidedPaddle() {
     setSelfCheckStatus('Paddle test', 'wait');
     const start = await askGuided('Last one: plug your paddle (or straight key) into the Summit, then click <strong>Start</strong>.',
         [{ label: 'Start', value: 'go', primary: true }, { label: 'Skip (no paddle)', value: 'skip' }]);
-    if (start === 'skip') return;
+    if (start === 'skip') { noteSkipped('paddle', 'Paddle'); return; }
     const ended = waitForVail((m) => m.t === 'paddle_end', 45000);
     await sendVail('paddle');
     const skip = askGuided('Press the <strong>DIT</strong> side of your paddle (or your straight key).',
@@ -650,6 +720,7 @@ async function guidedPaddle() {
     if (which === 'skip') {
         await sendVail('stop');
         await ended.catch(() => {});
+        noteSkipped('paddle', 'Paddle');
     }
 }
 
@@ -671,6 +742,8 @@ function selfCheckReportText() {
         lines.push(`  [${tag[r.st] || r.st}] ${r.name}: ${r.detail}`);
         if (r.advice && (r.st === 'warn' || r.st === 'fail')) lines.push(`         -> ${r.advice}`);
     }
+    if (selfCheck.skipped.length) lines.push(`  Skipped: ${selfCheck.skipped.join(', ')}`);
+    if (selfCheck.error) lines.push(`  STOPPED EARLY: ${selfCheck.error}`);
     lines.push('', 'Event history (since power-on):');
     if (!selfCheck.events.length) lines.push('  (none)');
     for (const e of selfCheck.events) {
@@ -689,8 +762,11 @@ function showSelfCheckDone() {
     const problems = selfCheck.results.filter((r) => r.st === 'fail' || r.st === 'warn')
         .map((r) => `${r.name}: ${r.detail}`);
     const subject = `Summit self check v${h.fw || '?'}${h.call ? ' ' + h.call : ''}`;
-    const body = 'Hi, here is my Summit self check report.\n\n' +
-        (problems.length ? 'Problems found:\n- ' + problems.join('\n- ') + '\n\n' : 'Everything passed.\n\n') +
+    let summary = problems.length ? 'Problems found:\n- ' + problems.join('\n- ') + '\n\n'
+        : (selfCheck.error || selfCheck.skipped.length ? 'No problems in the tests that ran.\n\n' : 'Everything passed.\n\n');
+    if (selfCheck.skipped.length) summary += `Skipped: ${selfCheck.skipped.join(', ')}\n\n`;
+    if (selfCheck.error) summary += `The check stopped early: ${selfCheck.error}\n\n`;
+    const body = 'Hi, here is my Summit self check report.\n\n' + summary +
         'Full report: (click "Copy report" on the page, then paste it here with Ctrl+V, or attach the saved file)\n';
     $('scEmailLink').href = `${SELF_CHECK_EMAIL_URL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
@@ -729,7 +805,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     document.querySelectorAll('#deviceCards .selection-card').forEach((card) => {
-        card.addEventListener('click', () => {
+        card.addEventListener('click', async () => {
+            // A different device: the open connection belongs to the old one,
+            // so close it rather than send Summit commands to an Adapter
+            if (card.dataset.device !== state.device && (state.connected || state.watching)) {
+                await disconnect();
+                logNotice('Switched device, disconnected. Click Connect to pick the new one');
+            }
             document.querySelectorAll('#deviceCards .selection-card').forEach((c) => c.classList.remove('selected'));
             card.classList.add('selected');
 
@@ -774,7 +856,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if ('serial' in navigator) {
         navigator.serial.addEventListener('disconnect', (e) => {
             if (state.port && e.target === state.port) {
-                failVailWaiters('The Summit was unplugged.');
+                abortPending('The Summit was unplugged.');
                 state.keepReading = false;
                 setConnected(false);
                 setStatus('Device unplugged.', 'err');
