@@ -43,6 +43,10 @@ public:
         arr[arrlen] = val;
         arrlen++;
     }
+
+    void clear() {
+        arrlen = 0;
+    }
 };
 
 
@@ -256,8 +260,15 @@ public:
 class UltimaticKeyer: public ElBugKeyer {
 public:
     QSet queue;
-    
+
     using ElBugKeyer::ElBugKeyer;
+
+    // Drop queued elements too, or one pressed before a reset (mode switch,
+    // paddle swap, keyer change) gets sent on the next press.
+    void Reset() {
+        ElBugKeyer::Reset();
+        this->queue.clear();
+    }
 
     void Key(Paddle key, bool pressed) {
         if (pressed) {
@@ -280,7 +291,12 @@ public:
     QSet queue;
 
     using ElBugKeyer::ElBugKeyer;
-    
+
+    void Reset() {
+        ElBugKeyer::Reset();
+        this->queue.clear();
+    }
+
     void Key(Paddle key, bool pressed) {
         if (pressed && (key == PADDLE_DIT)) {
             this->queue.add(key);
@@ -318,7 +334,12 @@ public:
     QSet queue;
 
     using IambicKeyer::IambicKeyer;
-    
+
+    void Reset() {
+        IambicKeyer::Reset();
+        this->queue.clear();
+    }
+
     void Key(Paddle key, bool pressed) {
         if (pressed && (key == PADDLE_DIT)) {
             this->queue.add(key);
@@ -344,6 +365,7 @@ public:
 
     void Reset() {
         IambicKeyer::Reset();
+        this->queue.clear();
     }
 
     void Key(Paddle key, bool pressed) {

@@ -579,6 +579,9 @@ if (!this->radioModeActive) {
 }
 
 void VailAdapter::DisableBuzzer() {
+// Already off: skip the cue. A host streaming repeated CC5 values would
+// otherwise stall the main loop 300 ms per message and drop key events.
+if (!this->buzzerEnabled) return;
 this->buzzer->NoTone(0);
 this->buzzer->Note(1, 70); delay(100);
 this->buzzer->Note(1, 65); delay(100);
@@ -588,27 +591,47 @@ this->buzzerEnabled = false;
 Serial.println(F("Buzzer Disabled"));
 }
 
-void VailAdapter::ToggleRadioMode() {
+void VailAdapter::EnableBuzzer() {
+// Already on: skip the cue (see DisableBuzzer).
+if (this->buzzerEnabled) return;
+this->buzzerEnabled = true;
+// Forget the hold timers for the key that's down right now. Otherwise a key
+// held past the mute threshold mutes the buzzer again on the very next Tick,
+// and CC5 can't turn it back on until the key is let go.
+this->ditIsHeld = false;
+this->ditHoldStartTime = 0;
+this->keyPressStartTime = 0;
+// Ascending confirmation cue (mirror of DisableBuzzer's descending cue).
+this->buzzer->NoTone(0);
+this->buzzer->Note(1, 60); delay(100);
+this->buzzer->Note(1, 65); delay(100);
+this->buzzer->Note(1, 70); delay(100);
+this->buzzer->NoTone(1);
+Serial.println(F("Buzzer Enabled"));
+}
+
+void VailAdapter::SetRadioMode(bool active) {
 #ifdef HAS_RADIO_OUTPUT
-this->radioModeActive = !this->radioModeActive;
+// Already in the requested state: nothing to do. Avoids a spurious cue and
+// cleanup when e.g. CC4 re-asserts the current mode.
+if (this->radioModeActive == active) {
+    return;
+}
+// Drop all in-flight input BEFORE switching paths, so anything keyed ends on
+// the output it started on. ResetInputState clears the keyer (relays and
+// queued elements), host keys and notes, the key-press timer, and the dit and
+// dah hold timers. A stale dah hold left over from radio mode would otherwise
+// look like a fresh 5 s hold the next time radio mode is on and flip Radio
+// Keyer Mode by itself.
+this->ResetInputState();
 
-if (keyer) keyer->Release();
-if (keyIsPressed) EndTx();
-
-// Ensure all keyboard keys are released
-ReleaseAllKeys();
+this->radioModeActive = active;
 
 setRadioDit(false);
 setRadioDah(false);
 radioDitState = false;
 radioDahState = false;
 keyIsPressed = false;
-
-// Restore the keyer's dit duration after releasing
-if (this->keyer) {
-    this->keyer->SetDitDuration(this->ditDuration);
-    Serial.print(F("Keyer dit duration restored to: ")); Serial.println(this->ditDuration);
-}
 
 if (this->radioModeActive) {
     Serial.println(F("Radio Mode Activated (Sidetone Disabled)"));
@@ -618,15 +641,28 @@ if (this->radioModeActive) {
     this->buzzer->Note(1, 70); delay(100);
     this->buzzer->NoTone(1);
 } else {
-    Serial.println(F("Radio Mode Deactivated. Resetting controller..."));
+    // Clean, in-place exit — no MCU reset, so USB stays enumerated and the
+    // host MIDI port is never dropped. Output returns to USB because the
+    // radio-mode gates in Tx/BeginTx/EndTx fall through now that
+    // radioModeActive is false, and the radio pins were driven inactive
+    // above. The main loop resets the Morse decoder when it resumes, so a
+    // character half keyed before radio mode can't be typed afterward.
+    Serial.println(F("Radio Mode Deactivated."));
     this->buzzer->Note(1, 70); delay(100);
     this->buzzer->Note(1, 65); delay(100);
     this->buzzer->Note(1, 60); delay(100);
     this->buzzer->NoTone(1);
-    delay(100);
-
-    NVIC_SystemReset();
 }
+#else
+(void)active;
+Serial.println(F("Radio output not configured. Radio mode unavailable."));
+this->buzzer->Tone(1, 100); delay(200); this->buzzer->NoTone(1);
+#endif
+}
+
+void VailAdapter::ToggleRadioMode() {
+#ifdef HAS_RADIO_OUTPUT
+this->SetRadioMode(!this->radioModeActive);
 #else
 Serial.println(F("Radio output not configured. Radio mode unavailable."));
 this->buzzer->Tone(1, 100); delay(200); this->buzzer->NoTone(1);
@@ -758,6 +794,11 @@ this->capDahPressCount++;
 if (this->capDahPressCount >= DAH_SPAM_COUNT_RADIO_MODE) {
 this->ToggleRadioMode();
 this->capDahPressCount = 0;
+this->lastCapDahTime = currentTime;
+// Consume the tap that finished the gesture. Without this it carries on into
+// the output path that was just switched to: a stray dah to the host when
+// leaving radio mode, or a dah keyed to the radio when entering it.
+return;
 }
 } else {
 this->capDahPressCount = 1;
@@ -894,6 +935,37 @@ case 3:
         desired = PADDLE_SWAP_OFF;
     }
     this->SetPaddleSwapMode(desired, true);
+}
+break;
+case 4:
+// CC4 - Radio Mode on/off (Advanced PCB only). Parsed every loop even while
+// radio mode is active, so this is the software exit from radio mode.
+//   0..63   -> Radio Mode OFF
+//   64..127 -> Radio Mode ON
+#ifdef HAS_RADIO_OUTPUT
+this->SetRadioMode(event.byte3 > 0x3f);
+#else
+Serial.println(F("CC4 ignored: radio output not configured."));
+#endif
+break;
+case 5:
+// CC5 - Buzzer (sidetone) enable/disable.
+//   0..63   -> disable
+//   64..127 -> enable
+if (event.byte3 > 0x3f) this->EnableBuzzer();
+else this->DisableBuzzer();
+break;
+case 6:
+// CC6 - Software reset. Requires value 127 to avoid accidental reboots.
+// USB re-enumerates on reset, so the host must reconnect to the port after.
+if (event.byte3 == 127) {
+Serial.println(F("Software reset requested."));
+delay(20);
+#if defined(ARDUINO_ARCH_SAMD)
+NVIC_SystemReset();
+#else
+Serial.println(F("Software reset not supported on this board."));
+#endif
 }
 break;
 }
