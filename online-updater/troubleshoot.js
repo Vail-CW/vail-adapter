@@ -361,6 +361,8 @@ const VAIL_ERRORS = {
                  '(and close any pop-up), then click Run Self Check again.',
     busy: 'The Summit is still finishing a test. Wait a moment, then click Run Self Check again.',
     'unknown command': "The Summit's firmware is too old for this check. Update it from the Home page, then try again.",
+    not_on_bt_screen: 'The typing test only runs on the External Keyboard screen. On the Summit, go to Settings → Device Settings → Bluetooth → External Keyboard, then try again.',
+    bt_not_connected: "The keyboard isn't connected right now. Press a key on it to wake it, wait for the Summit to show Connected, then try again.",
 };
 
 // Usually at the start of a line, but an ordinary log print the Summit had to

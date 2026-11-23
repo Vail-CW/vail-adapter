@@ -24,7 +24,7 @@ const btCheck = {
     others: [],            // { name, rssi, appearance } non-keyboard devices from the last scan
     keys: [],              // typed characters seen during the key test
     reports: 0,            // raw key reports seen during the key test
-    reportMap: null,       // { len, hex }
+    reportMap: null,       // { len, total, hex } (total > len when the Summit cut a long map)
     mapChunks: {},
     events: [],
     finishedAt: null,
@@ -118,7 +118,7 @@ function btCheckOnMessage(msg) {
             {
                 const offs = Object.keys(btCheck.mapChunks).map(Number).sort((a, b) => a - b);
                 const hex = offs.map((o) => btCheck.mapChunks[o]).join('');
-                if (hex.length / 2 >= msg.len) btCheck.reportMap = { len: msg.len, hex };
+                if (hex.length / 2 >= msg.len) btCheck.reportMap = { len: msg.len, total: msg.total ?? msg.len, hex };
             }
             break;
         case 'bt_status':
@@ -458,15 +458,26 @@ async function btStepKeys() {
     await btMark('keys');
     btCheck.keys = [];
     btCheck.reports = 0;
-    const got = waitForVail((m) => m.t === 'bt_keys' && m.on === true, 3000);
-    await sendVail('bt keys 30');
-    await got;
+    // The Summit only starts the typing test on the External Keyboard screen
+    // with the keyboard connected
+    for (;;) {
+        try {
+            const got = waitForVail((m) => m.t === 'bt_keys' && m.on === true, 3000);
+            await sendVail('bt keys 30');
+            await got;
+            break;
+        } catch (err) {
+            const a = await btAsk(escapeHtml(err.message), [
+                { label: 'Try again', value: 'again', primary: true }, { label: 'Skip', value: 'skip' }]);
+            if (a === 'skip') { btResult('keys', 'Typing', 'info', 'skipped'); return; }
+        }
+    }
     const ended = waitForVail((m) => m.t === 'bt_keys' && m.on === false, 40000).catch(() => {});
     const typed = () => `<div class="muted">Summit received: <span class="bt-typed">${escapeHtml(btCheck.keys.join(' ')) || '(nothing yet)'}</span></div>`;
     const refresh = (msg) => { if (msg.t === 'bt' && (msg.ph === 'key' || msg.ph === 'report')) $('btGuidedExtra').innerHTML = typed(); };
     btCheck.listeners.push(refresh);
     const a = await btAsk('Type <strong>a s d 1</strong> and press <strong>Enter</strong> on the Bluetooth keyboard. ' +
-        '<span class="muted">Only what you type in the next 30 seconds is recorded.</span>',
+        '<span class="muted">Only what you type in the next 30 seconds is recorded, and those keys won\'t do anything on the Summit.</span>',
         [{ label: 'Done', value: 'done', primary: true }, { label: 'Nothing happens', value: 'nothing' }], typed());
     btCheck.listeners = btCheck.listeners.filter((f) => f !== refresh);
     await sendVail('bt keys off');
@@ -591,7 +602,10 @@ function btReportText() {
         lines.push(`  +${((m.ms - t0) / 1000).toFixed(2).padStart(7)}s  ${m.ph.padEnd(12)} ${btPhaseText(m)}`);
     }
     if (btCheck.reportMap) {
-        lines.push('', `HID report map (${btCheck.reportMap.len} bytes):`);
+        const rm = btCheck.reportMap;
+        lines.push('', rm.total > rm.len
+            ? `HID report map (first ${rm.len} of ${rm.total} bytes, the rest was cut):`
+            : `HID report map (${rm.len} bytes):`);
         for (let i = 0; i < btCheck.reportMap.hex.length; i += 64) {
             lines.push('  ' + btCheck.reportMap.hex.slice(i, i + 64).replace(/(..)/g, '$1 ').trim());
         }
